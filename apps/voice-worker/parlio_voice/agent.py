@@ -57,7 +57,6 @@ ATTR_DIALED = "sip.trunkPhoneNumber"
 
 def prewarm(proc: JobProcess) -> None:
     proc.userdata["vad"] = providers.load_vad()
-    proc.userdata["turn_detector"] = MultilingualModel()
 
 
 class Receptionist(Agent):
@@ -120,7 +119,7 @@ async def entrypoint(ctx: JobContext) -> None:
         stt=providers.build_stt(cfg, settings),
         llm=providers.build_llm(cfg, settings),
         tts=providers.build_tts(cfg, settings),
-        turn_detection=ctx.proc.userdata["turn_detector"],
+        turn_detection=MultilingualModel(),
         min_endpointing_delay=cfg.turn.min_endpointing_delay,
         max_endpointing_delay=cfg.turn.max_endpointing_delay,
         allow_interruptions=cfg.turn.allow_interruptions,

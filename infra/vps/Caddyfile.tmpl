@@ -1,0 +1,8 @@
+# TLS via Let's Encrypt. Hostnames are IP-derived (sslip.io) until a real domain exists.
+api.${PUBLIC_HOST} {
+	reverse_proxy 127.0.0.1:8000
+}
+
+lk.${PUBLIC_HOST} {
+	reverse_proxy 127.0.0.1:7880
+}
