@@ -14,6 +14,14 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
 
 from parlio_api.analytics import OverviewAnalytics, compute_overview
+from parlio_api.analytics_query import (
+    ComparisonAnalytics,
+    LlmQuestionParser,
+    Question,
+    Segment,
+    compare,
+    parse_question,
+)
 from parlio_api.auth import UserDep, current_user
 from parlio_api.deps import SettingsDep, StoreDep, TicketsDep
 from parlio_api.onboarding import suggest_faqs
@@ -219,6 +227,42 @@ async def overview_analytics(
         timezone=timezone,
         now=datetime.now(UTC),
     )
+
+
+class AnalyticsQuery(BaseModel):
+    """Either a free-text `question` (Ask AI) or explicit segments."""
+
+    question: str | None = None
+    period: Segment | None = None
+    compare: Segment | None = None
+    tenant_id: str | None = None
+    timezone: str = "Europe/London"
+
+
+@router.post("/analytics/query", response_model=ComparisonAnalytics)
+async def query_analytics(
+    body: AnalyticsQuery, store: StoreDep, settings: SettingsDep
+) -> ComparisonAnalytics:
+    today = datetime.now(UTC).date()
+    if body.period is not None:
+        q = Question(period=body.period, compare=body.compare)
+        q.interpretation = q.period.describe() + (
+            f" vs {q.compare.describe()}" if q.compare else ""
+        )
+    elif body.question:
+        if settings.openai_api_key and settings.postcall_analyser == "openai":
+            parser = LlmQuestionParser(settings.openai_api_key, model=settings.openai_model)
+            q = await parser.parse(body.question, today)
+        else:
+            q = parse_question(body.question, today)
+    else:
+        raise HTTPException(422, "question or period required")
+
+    calls = await store.filter_calls(CallFilter(tenant_id=body.tenant_id, limit=5000))
+    contacts = await store.list_contacts(body.tenant_id, limit=5000)
+    assistants = await store.list_assistants(body.tenant_id)
+    schedule = assistants[0].hours if assistants else None
+    return compare(calls, contacts, q, schedule=schedule, timezone=body.timezone)
 
 
 # -- transfers ---------------------------------------------------------------------------------

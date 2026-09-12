@@ -113,6 +113,44 @@ export type PeriodSummary = {
   avg_calls_per_caller: number | null;
 };
 
+export type Segment = {
+  start: string;
+  end: string;
+  hours: "all" | "business" | "after";
+  days: "all" | "weekdays" | "weekends";
+  label?: string | null;
+};
+
+export type SegmentAnalytics = {
+  segment: Segment;
+  summary: PeriodSummary;
+  business_hours_calls: number;
+  after_hours_calls: number;
+  by_hour: number[];
+  by_weekday: number[];
+  daily: { day: string; calls: number; answered: number; missed: number }[];
+  by_department: { name: string; count: number }[];
+  by_outcome: { name: string; count: number }[];
+  first_time_callers: number;
+  returning_callers: number;
+  transfers_total: number;
+  transfers_answered: number;
+  tickets: number;
+};
+
+export type ComparisonAnalytics = {
+  timezone: string;
+  question: {
+    period: Segment;
+    compare: Segment | null;
+    interpretation: string;
+    source: "rules" | "llm";
+  } | null;
+  current: SegmentAnalytics;
+  compare: SegmentAnalytics | null;
+  change: Record<string, number | null>;
+};
+
 export type OverviewAnalytics = {
   timezone: string;
   current: PeriodSummary;
@@ -357,6 +395,13 @@ export const fetchTransfers = () => get<TransferRecord[]>("/v1/transfers");
 export const fetchHandoffAnalytics = () => get<HandoffAnalytics>("/v1/analytics/handoff");
 export const fetchOverview = (params: { tenant_id?: string; days?: number; timezone?: string } = {}) =>
   get<OverviewAnalytics>(`/v1/analytics/overview${qs(params)}`);
+export const queryAnalytics = (body: {
+  question?: string;
+  period?: Segment;
+  compare?: Segment | null;
+  tenant_id?: string;
+  timezone?: string;
+}) => request<ComparisonAnalytics>("/v1/analytics/query", { method: "POST", body: JSON.stringify(body) });
 export const fetchContacts = (params: { tenant_id?: string; q?: string } = {}) =>
   get<Contact[]>(`/v1/contacts${qs(params)}`);
 export const fetchContact = (id: string) => get<Contact>(`/v1/contacts/${id}`);
