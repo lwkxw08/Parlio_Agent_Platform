@@ -28,6 +28,15 @@ class Settings(BaseSettings):
     openai_api_key: str | None = None
     openai_model: str = "gpt-4o-mini"
 
+    # Dashboard auth: "dev" trusts X-Parlio-User / seeded demo owner; "supabase" verifies JWTs.
+    auth_mode: Literal["dev", "supabase"] = "dev"
+    supabase_url: str | None = None
+    supabase_jwt_secret: str | None = None
+    # Onboarding enrichment (optional; heuristics run without them)
+    google_places_api_key: str | None = None
+    dashboard_url: str = "http://localhost:3000"
+    cors_origins: list[str] = ["http://localhost:3000"]
+
     # Ticket alerts: Slack-incoming-webhook-compatible URL; unset = log only.
     notify_webhook_url: str | None = None
     sla_check_interval_s: float = 30.0

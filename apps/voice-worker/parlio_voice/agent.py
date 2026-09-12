@@ -103,6 +103,11 @@ async def entrypoint(ctx: JobContext) -> None:
         CallEventType.CALL_STARTED,
         {"caller": caller, "dialed": dialed, "room": ctx.room.name, "direction": "inbound"},
     )
+    if cfg.is_blocked(caller):
+        log.info("blocked caller %s on call %s", caller, call_id)
+        events.emit(cfg, call_id, CallEventType.CALL_ENDED, {"reason": "blocked", "duration_s": 0})
+        ctx.shutdown(reason="blocked")
+        return
 
     latency = LatencyTracker(
         on_turn_complete=lambda t: events.emit(

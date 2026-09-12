@@ -13,7 +13,7 @@ from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Any, Protocol
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, computed_field
 from redis.asyncio import Redis
 
 from parlio_voice.models import (
@@ -56,6 +56,106 @@ class CallRecord(BaseModel):
     ticket_ids: list[str] = Field(default_factory=list)
     escalated: bool = False
     escalation_keyword: str | None = None
+    # dashboard state
+    read: bool = False
+    feedback: list[dict[str, Any]] = Field(default_factory=list)
+    share_token: str | None = None
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def kind(self) -> str:
+        """Dashboard bucket: blocked | missed | transferred | ticketed | answered | active."""
+        if self.end_reason == "blocked":
+            return "blocked"
+        if self.status == "failed" or (self.status == "completed" and self.answered_at is None):
+            return "missed"
+        if any(t.get("outcome") == "answered" for t in self.transfers):
+            return "transferred"
+        if self.ticket_ids:
+            return "ticketed"
+        return "answered" if self.status == "completed" else "active"
+
+
+class CallFilter(BaseModel):
+    tenant_id: str | None = None
+    kind: str | None = None  # answered|missed|transferred|ticketed|blocked|escalated|unread
+    since: datetime | None = None
+    until: datetime | None = None
+    hour: int | None = None  # 0-23, local to the assistant timezone is a later refinement
+    q: str | None = None  # caller / summary substring
+    limit: int = 100
+
+    def matches(self, c: CallRecord) -> bool:
+        if self.tenant_id and c.tenant_id != self.tenant_id:
+            return False
+        if self.since and c.started_at < self.since:
+            return False
+        if self.until and c.started_at >= self.until:
+            return False
+        if self.hour is not None and c.started_at.hour != self.hour:
+            return False
+        if self.kind == "escalated":
+            if not c.escalated:
+                return False
+        elif self.kind == "unread":
+            if c.read:
+                return False
+        elif self.kind and c.kind != self.kind:
+            return False
+        if self.q:
+            hay = " ".join(filter(None, [c.caller, c.summary, c.dialed])).lower()
+            if self.q.lower() not in hay:
+                return False
+        return True
+
+
+class CallFeedback(BaseModel):
+    type: str  # incorrect_response | tone | missed_transfer | latency | other
+    note: str | None = None
+    actor: str | None = None
+    at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+
+
+class Contact(BaseModel):
+    id: str
+    tenant_id: str
+    company_id: str
+    e164: str
+    name: str | None = None
+    email: str | None = None
+    vip: bool = False
+    notes: str | None = None
+    status: str = "prospect"  # prospect | customer | blocked
+    call_count: int = 0
+    first_seen_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    last_seen_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+
+
+class ContactUpdate(BaseModel):
+    name: str | None = None
+    email: str | None = None
+    vip: bool | None = None
+    notes: str | None = None
+    status: str | None = None
+
+
+class Member(BaseModel):
+    tenant_id: str
+    user_id: str
+    email: str
+    name: str | None = None
+    role: str = "member"  # owner | admin | member | viewer
+    status: str = "active"  # active | invited
+    invited_at: datetime | None = None
+
+
+class AssistantVersion(BaseModel):
+    assistant_id: str
+    version: int
+    created_at: datetime
+    created_by: str | None = None
+    note: str | None = None
+    config: AssistantConfig
 
 
 class TransferRecord(BaseModel):
@@ -170,22 +270,45 @@ def new_worker_key() -> str:
 
 
 class CallStore(Protocol):
-    async def upsert_assistant(self, cfg: AssistantConfig, numbers: list[str]) -> None: ...
+    async def upsert_assistant(self, cfg: AssistantConfig, numbers: list[str]) -> None:
+        """Save as a new version; `cfg.assistant_version` is set to the stored version."""
+        ...
+
     async def get_assistant(self, assistant_id: str) -> AssistantConfig | None: ...
+    async def list_assistant_versions(self, assistant_id: str) -> list[AssistantVersion]: ...
+    async def get_assistant_version(
+        self, assistant_id: str, version: int
+    ) -> AssistantConfig | None: ...
     async def resolve_number(self, number: str) -> AssistantConfig | None: ...
     async def list_assistants(self, tenant_id: str | None = None) -> list[AssistantConfig]: ...
     async def list_calls(
         self, tenant_id: str | None = None, limit: int = 50
     ) -> list[CallRecord]: ...
+    async def filter_calls(self, f: CallFilter) -> list[CallRecord]: ...
     async def get_call(self, call_id: str) -> CallRecord | None: ...
+    async def get_call_by_share_token(self, token: str) -> CallRecord | None: ...
+    async def mark_call_read(self, call_id: str, read: bool = True) -> CallRecord | None: ...
+    async def add_call_feedback(self, call_id: str, fb: CallFeedback) -> CallRecord | None: ...
+    async def ensure_share_token(self, call_id: str) -> str | None: ...
     async def apply_event(self, ev: CallEvent) -> bool: ...
     async def record_postcall(self, call_id: str, result: PostCallResult) -> None: ...
     async def touch_contact(self, tenant_id: str, company_id: str, e164: str) -> tuple[str, bool]:
         """Upsert a contact by number; returns (contact_id, is_returning)."""
         ...
 
+    async def list_contacts(
+        self, tenant_id: str | None = None, q: str | None = None, limit: int = 200
+    ) -> list[Contact]: ...
+    async def get_contact(self, contact_id: str) -> Contact | None: ...
+    async def update_contact(self, contact_id: str, upd: ContactUpdate) -> Contact | None: ...
     async def required_fields(self, assistant_id: str) -> list[RequiredField]: ...
     async def set_required_fields(self, assistant_id: str, fields: list[RequiredField]) -> None: ...
+
+    # organisation members (Phase 4)
+    async def list_members(self, tenant_id: str) -> list[Member]: ...
+    async def upsert_member(self, m: Member) -> Member: ...
+    async def remove_member(self, tenant_id: str, user_id: str) -> bool: ...
+    async def memberships_for_email(self, email: str) -> list[Member]: ...
     async def create_worker_key(self, tenant_id: str | None, name: str) -> str: ...
     async def verify_worker_key(self, key: str) -> bool: ...
 
@@ -393,7 +516,10 @@ class MemoryStore:
         self._number_to_assistant: dict[str, str] = {}
         self._calls: dict[str, CallRecord] = {}
         self._seen_events: set[str] = set()
-        self._contacts: dict[tuple[str, str], tuple[str, int]] = {}
+        self._contacts: dict[str, Contact] = {}
+        self._contact_by_number: dict[tuple[str, str], str] = {}
+        self._versions: dict[str, list[AssistantVersion]] = {}
+        self._members: dict[tuple[str, str], Member] = {}
         self._required: dict[str, list[RequiredField]] = {}
         self._worker_keys: set[str] = set()
         self._transfers: dict[str, TransferRecord] = {}
@@ -402,7 +528,17 @@ class MemoryStore:
 
     # -- assistants ---------------------------------------------------------------------------
     async def upsert_assistant(self, cfg: AssistantConfig, numbers: list[str]) -> None:
+        prev = self._assistants.get(cfg.assistant_id)
+        cfg.assistant_version = (prev.assistant_version + 1) if prev else 1
         self._assistants[cfg.assistant_id] = cfg
+        self._versions.setdefault(cfg.assistant_id, []).append(
+            AssistantVersion(
+                assistant_id=cfg.assistant_id,
+                version=cfg.assistant_version,
+                created_at=datetime.now(UTC),
+                config=cfg.model_copy(deep=True),
+            )
+        )
         for n in numbers:
             self._number_to_assistant[n] = cfg.assistant_id
         if self._redis is not None:
@@ -436,14 +572,53 @@ class MemoryStore:
             a for a in self._assistants.values() if tenant_id is None or a.tenant_id == tenant_id
         ]
 
+    async def list_assistant_versions(self, assistant_id: str) -> list[AssistantVersion]:
+        return sorted(self._versions.get(assistant_id, []), key=lambda v: -v.version)
+
+    async def get_assistant_version(
+        self, assistant_id: str, version: int
+    ) -> AssistantConfig | None:
+        for v in self._versions.get(assistant_id, []):
+            if v.version == version:
+                return v.config.model_copy(deep=True)
+        return None
+
     # -- calls --------------------------------------------------------------------------------
     async def list_calls(self, tenant_id: str | None = None, limit: int = 50) -> list[CallRecord]:
         calls = [c for c in self._calls.values() if tenant_id is None or c.tenant_id == tenant_id]
         calls.sort(key=lambda c: c.started_at, reverse=True)
         return calls[:limit]
 
+    async def filter_calls(self, f: CallFilter) -> list[CallRecord]:
+        calls = [c for c in self._calls.values() if f.matches(c)]
+        calls.sort(key=lambda c: c.started_at, reverse=True)
+        return calls[: f.limit]
+
     async def get_call(self, call_id: str) -> CallRecord | None:
         return self._calls.get(call_id)
+
+    async def get_call_by_share_token(self, token: str) -> CallRecord | None:
+        return next((c for c in self._calls.values() if c.share_token == token), None)
+
+    async def mark_call_read(self, call_id: str, read: bool = True) -> CallRecord | None:
+        call = self._calls.get(call_id)
+        if call is not None:
+            call.read = read
+        return call
+
+    async def add_call_feedback(self, call_id: str, fb: CallFeedback) -> CallRecord | None:
+        call = self._calls.get(call_id)
+        if call is not None:
+            call.feedback.append(fb.model_dump(mode="json"))
+        return call
+
+    async def ensure_share_token(self, call_id: str) -> str | None:
+        call = self._calls.get(call_id)
+        if call is None:
+            return None
+        if not call.share_token:
+            call.share_token = secrets.token_urlsafe(16)
+        return call.share_token
 
     async def apply_event(self, ev: CallEvent) -> bool:
         """Fold a call event into the call record. Idempotent on event_id."""
@@ -479,9 +654,57 @@ class MemoryStore:
     # -- contacts / config --------------------------------------------------------------------
     async def touch_contact(self, tenant_id: str, company_id: str, e164: str) -> tuple[str, bool]:
         key = (tenant_id, e164)
-        cid, seen = self._contacts.get(key, (f"contact-{len(self._contacts) + 1}", 0))
-        self._contacts[key] = (cid, seen + 1)
-        return cid, seen > 0
+        cid = self._contact_by_number.get(key)
+        if cid is None:
+            cid = f"contact-{len(self._contacts) + 1}"
+            self._contact_by_number[key] = cid
+            self._contacts[cid] = Contact(
+                id=cid, tenant_id=tenant_id, company_id=company_id, e164=e164, call_count=1
+            )
+            return cid, False
+        c = self._contacts[cid]
+        c.call_count += 1
+        c.last_seen_at = datetime.now(UTC)
+        return cid, True
+
+    async def list_contacts(
+        self, tenant_id: str | None = None, q: str | None = None, limit: int = 200
+    ) -> list[Contact]:
+        out = [
+            c
+            for c in self._contacts.values()
+            if (tenant_id is None or c.tenant_id == tenant_id)
+            and (not q or q.lower() in f"{c.e164} {c.name or ''} {c.email or ''}".lower())
+        ]
+        out.sort(key=lambda c: c.last_seen_at, reverse=True)
+        return out[:limit]
+
+    async def get_contact(self, contact_id: str) -> Contact | None:
+        return self._contacts.get(contact_id)
+
+    async def update_contact(self, contact_id: str, upd: ContactUpdate) -> Contact | None:
+        c = self._contacts.get(contact_id)
+        if c is None:
+            return None
+        for k, v in upd.model_dump(exclude_none=True).items():
+            setattr(c, k, v)
+        return c
+
+    # -- members ------------------------------------------------------------------------------
+    async def list_members(self, tenant_id: str) -> list[Member]:
+        return sorted(
+            (m for m in self._members.values() if m.tenant_id == tenant_id), key=lambda m: m.email
+        )
+
+    async def upsert_member(self, m: Member) -> Member:
+        self._members[(m.tenant_id, m.user_id)] = m
+        return m
+
+    async def remove_member(self, tenant_id: str, user_id: str) -> bool:
+        return self._members.pop((tenant_id, user_id), None) is not None
+
+    async def memberships_for_email(self, email: str) -> list[Member]:
+        return [m for m in self._members.values() if m.email.lower() == email.lower()]
 
     async def required_fields(self, assistant_id: str) -> list[RequiredField]:
         return list(self._required.get(assistant_id, []))

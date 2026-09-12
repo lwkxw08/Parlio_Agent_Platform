@@ -8,6 +8,7 @@ from typing import cast
 
 import uvicorn
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from redis.asyncio import Redis
 from redis.exceptions import ResponseError
 from sqlalchemy.ext.asyncio import AsyncEngine
@@ -16,7 +17,7 @@ from parlio_api import __version__
 from parlio_api.db.engine import make_engine, migrate
 from parlio_api.db.postgres import PostgresStore
 from parlio_api.postcall import Analyser, HeuristicAnalyser, OpenAIAnalyser, PostCallProcessor
-from parlio_api.routes import dashboard, worker
+from parlio_api.routes import account, dashboard, worker
 from parlio_api.settings import Settings, get_settings
 from parlio_api.store import CallStore, MemoryStore
 from parlio_api.tickets import (
@@ -160,8 +161,18 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 def create_app() -> FastAPI:
     app = FastAPI(title="Parlio Core API", version=__version__, lifespan=lifespan)
+    s = get_settings()
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=sorted({*s.cors_origins, s.dashboard_url}),
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
     app.include_router(worker.router)
     app.include_router(dashboard.router)
+    app.include_router(account.router)
+    app.include_router(account.public)
 
     @app.get("/healthz", tags=["ops"])
     async def healthz() -> dict[str, str]:

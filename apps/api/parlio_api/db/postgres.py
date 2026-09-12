@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import logging
+import secrets
 from datetime import UTC, datetime
 from typing import Any
 from uuid import uuid4
@@ -18,7 +19,13 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from parlio_api.db.engine import tenant_tx
 from parlio_api.store import (
+    AssistantVersion,
+    CallFeedback,
+    CallFilter,
     CallRecord,
+    Contact,
+    ContactUpdate,
+    Member,
     PostCallResult,
     RequiredField,
     Ticket,
@@ -44,7 +51,12 @@ _CALL_COLS = """
     id, organization_id, company_id, assistant_id, caller, dialed, direction, status,
     started_at, answered_at, ended_at, answer_latency_s, duration_s, latency, recordings,
     end_reason, summary, extracted, missed_fields, caller_type, contact_id,
-    escalated, escalation_keyword
+    escalated, escalation_keyword, read, feedback, share_token
+"""
+
+_CONTACT_COLS = """
+    id, organization_id, company_id, e164, name, email, vip, notes, status, call_count,
+    first_seen_at, last_seen_at
 """
 
 _TICKET_COLS = """
@@ -133,7 +145,72 @@ def _row_to_call(r: Row[Any], transcript: list[dict[str, Any]]) -> CallRecord:
         contact_id=m["contact_id"],
         escalated=bool(m["escalated"]),
         escalation_keyword=m["escalation_keyword"],
+        read=bool(m["read"]),
+        feedback=m["feedback"] or [],
+        share_token=m["share_token"],
     )
+
+
+def _row_to_member(r: Row[Any]) -> Member:
+    return Member(
+        tenant_id=r.organization_id,
+        user_id=r.user_id,
+        email=r.email,
+        name=r.name,
+        role=r.role,
+        status=r.status,
+        invited_at=r.invited_at,
+    )
+
+
+def _row_to_contact(r: Row[Any]) -> Contact:
+    m = r._mapping
+    return Contact(
+        id=m["id"],
+        tenant_id=m["organization_id"],
+        company_id=m["company_id"],
+        e164=m["e164"],
+        name=m["name"],
+        email=m["email"],
+        vip=bool(m["vip"]),
+        notes=m["notes"],
+        status=m["status"],
+        call_count=m["call_count"],
+        first_seen_at=m["first_seen_at"],
+        last_seen_at=m["last_seen_at"],
+    )
+
+
+async def _hydrate_handoff(conn: AsyncConnection, calls: list[CallRecord]) -> None:
+    """Attach transfers/ticket ids (kept in their own tables) to call records."""
+    if not calls:
+        return
+    by_id = {c.call_id: c for c in calls}
+    ids = list(by_id)
+    rows = await conn.execute(
+        text(
+            "SELECT call_id, id, destination, department, mode, outcome, reason"
+            " FROM transfers WHERE call_id = ANY(:ids) ORDER BY started_at"
+        ),
+        {"ids": ids},
+    )
+    for r in rows:
+        by_id[r.call_id].transfers.append(
+            {
+                "transfer_id": r.id,
+                "destination": r.destination,
+                "department": r.department,
+                "mode": r.mode,
+                "outcome": r.outcome,
+                "reason": r.reason,
+            }
+        )
+    rows = await conn.execute(
+        text("SELECT call_id, id FROM tickets WHERE call_id = ANY(:ids) ORDER BY created_at"),
+        {"ids": ids},
+    )
+    for r in rows:
+        by_id[r.call_id].ticket_ids.append(r.id)
 
 
 class PostgresStore:
@@ -158,26 +235,33 @@ class PostgresStore:
                 ),
                 {"cid": cfg.company_id, "oid": cfg.tenant_id, "name": cfg.business_name},
             )
-            row = await conn.execute(
+            prev = (
+                await conn.execute(
+                    text("SELECT version FROM assistants WHERE id = :aid FOR UPDATE"),
+                    {"aid": cfg.assistant_id},
+                )
+            ).scalar_one_or_none()
+            version = (prev or 0) + 1
+            cfg.assistant_version = version
+            await conn.execute(
                 text(
                     """
                     INSERT INTO assistants (id, organization_id, company_id, version, config)
-                    VALUES (:aid, :oid, :cid, 1, CAST(:cfg AS jsonb))
+                    VALUES (:aid, :oid, :cid, :v, CAST(:cfg AS jsonb))
                     ON CONFLICT (id) DO UPDATE SET
                         config = EXCLUDED.config,
-                        version = assistants.version + 1,
+                        version = EXCLUDED.version,
                         updated_at = now()
-                    RETURNING version
                     """
                 ),
                 {
                     "aid": cfg.assistant_id,
                     "oid": cfg.tenant_id,
                     "cid": cfg.company_id,
+                    "v": version,
                     "cfg": cfg.model_dump_json(),
                 },
             )
-            version = row.scalar_one()
             await conn.execute(
                 text(
                     """
@@ -219,6 +303,42 @@ class PostgresStore:
             raw = (
                 await conn.execute(
                     text("SELECT config FROM assistants WHERE id = :aid"), {"aid": assistant_id}
+                )
+            ).scalar_one_or_none()
+        return AssistantConfig.model_validate(raw) if raw is not None else None
+
+    async def list_assistant_versions(self, assistant_id: str) -> list[AssistantVersion]:
+        async with tenant_tx(self._engine, None) as conn:
+            rows = await conn.execute(
+                text(
+                    "SELECT version, config, created_by, created_at, note FROM assistant_versions"
+                    " WHERE assistant_id = :aid ORDER BY version DESC"
+                ),
+                {"aid": assistant_id},
+            )
+            return [
+                AssistantVersion(
+                    assistant_id=assistant_id,
+                    version=r.version,
+                    created_at=r.created_at,
+                    created_by=r.created_by,
+                    note=r.note,
+                    config=AssistantConfig.model_validate(r.config),
+                )
+                for r in rows
+            ]
+
+    async def get_assistant_version(
+        self, assistant_id: str, version: int
+    ) -> AssistantConfig | None:
+        async with tenant_tx(self._engine, None) as conn:
+            raw = (
+                await conn.execute(
+                    text(
+                        "SELECT config FROM assistant_versions"
+                        " WHERE assistant_id = :aid AND version = :v"
+                    ),
+                    {"aid": assistant_id, "v": version},
                 )
             ).scalar_one_or_none()
         return AssistantConfig.model_validate(raw) if raw is not None else None
@@ -279,18 +399,77 @@ class PostgresStore:
                     {"tid": tenant_id, "lim": limit},
                 )
             ).all()
-            return [_row_to_call(r, await self._transcript(conn, r.id)) for r in rows]
+            calls = [_row_to_call(r, await self._transcript(conn, r.id)) for r in rows]
+            await _hydrate_handoff(conn, calls)
+            return calls
+
+    async def filter_calls(self, f: CallFilter) -> list[CallRecord]:
+        # SQL narrows by tenant/time; the derived `kind` bucket is applied in Python
+        async with tenant_tx(self._engine, f.tenant_id) as conn:
+            rows = (
+                await conn.execute(
+                    text(
+                        f"SELECT {_CALL_COLS} FROM calls"
+                        " WHERE (CAST(:tid AS text) IS NULL OR organization_id = :tid)"
+                        " AND (CAST(:since AS timestamptz) IS NULL OR started_at >= :since)"
+                        " AND (CAST(:until AS timestamptz) IS NULL OR started_at < :until)"
+                        " ORDER BY started_at DESC LIMIT :lim"
+                    ),
+                    {"tid": f.tenant_id, "since": f.since, "until": f.until, "lim": f.limit * 5},
+                )
+            ).all()
+            calls = [_row_to_call(r, []) for r in rows]
+            await _hydrate_handoff(conn, calls)
+        return [c for c in calls if f.matches(c)][: f.limit]
+
+    async def _get_call(
+        self, conn: AsyncConnection, where: str, params: dict[str, Any]
+    ) -> CallRecord | None:
+        row = (
+            await conn.execute(text(f"SELECT {_CALL_COLS} FROM calls WHERE {where}"), params)
+        ).first()
+        if row is None:
+            return None
+        call = _row_to_call(row, await self._transcript(conn, row.id))
+        await _hydrate_handoff(conn, [call])
+        return call
 
     async def get_call(self, call_id: str) -> CallRecord | None:
         async with tenant_tx(self._engine, None) as conn:
+            return await self._get_call(conn, "id = :cid", {"cid": call_id})
+
+    async def get_call_by_share_token(self, token: str) -> CallRecord | None:
+        async with tenant_tx(self._engine, None) as conn:
+            return await self._get_call(conn, "share_token = :tok", {"tok": token})
+
+    async def mark_call_read(self, call_id: str, read: bool = True) -> CallRecord | None:
+        async with tenant_tx(self._engine, None) as conn:
+            await conn.execute(
+                text("UPDATE calls SET read = :read WHERE id = :cid"),
+                {"cid": call_id, "read": read},
+            )
+            return await self._get_call(conn, "id = :cid", {"cid": call_id})
+
+    async def add_call_feedback(self, call_id: str, fb: CallFeedback) -> CallRecord | None:
+        async with tenant_tx(self._engine, None) as conn:
+            await conn.execute(
+                text("UPDATE calls SET feedback = feedback || CAST(:fb AS jsonb) WHERE id = :cid"),
+                {"cid": call_id, "fb": _jsonb([fb.model_dump(mode="json")])},
+            )
+            return await self._get_call(conn, "id = :cid", {"cid": call_id})
+
+    async def ensure_share_token(self, call_id: str) -> str | None:
+        async with tenant_tx(self._engine, None) as conn:
             row = (
                 await conn.execute(
-                    text(f"SELECT {_CALL_COLS} FROM calls WHERE id = :cid"), {"cid": call_id}
+                    text(
+                        "UPDATE calls SET share_token = COALESCE(share_token, :tok)"
+                        " WHERE id = :cid RETURNING share_token"
+                    ),
+                    {"cid": call_id, "tok": secrets.token_urlsafe(16)},
                 )
             ).first()
-            if row is None:
-                return None
-            return _row_to_call(row, await self._transcript(conn, call_id))
+        return row.share_token if row else None
 
     async def apply_event(self, ev: CallEvent) -> bool:
         async with tenant_tx(self._engine, None) as conn:
@@ -500,6 +679,109 @@ class PostgresStore:
                 )
             ).one()
         return row.id, row.call_count > 1
+
+    async def list_contacts(
+        self, tenant_id: str | None = None, q: str | None = None, limit: int = 200
+    ) -> list[Contact]:
+        async with tenant_tx(self._engine, tenant_id) as conn:
+            rows = await conn.execute(
+                text(
+                    f"SELECT {_CONTACT_COLS} FROM contacts"
+                    " WHERE (CAST(:tid AS text) IS NULL OR organization_id = :tid)"
+                    " AND (CAST(:pat AS text) IS NULL OR e164 ILIKE :pat OR name ILIKE :pat"
+                    "      OR email ILIKE :pat)"
+                    " ORDER BY last_seen_at DESC LIMIT :lim"
+                ),
+                {"tid": tenant_id, "pat": f"%{q}%" if q else None, "lim": limit},
+            )
+            return [_row_to_contact(r) for r in rows]
+
+    async def get_contact(self, contact_id: str) -> Contact | None:
+        async with tenant_tx(self._engine, None) as conn:
+            row = (
+                await conn.execute(
+                    text(f"SELECT {_CONTACT_COLS} FROM contacts WHERE id = :id"), {"id": contact_id}
+                )
+            ).first()
+        return _row_to_contact(row) if row else None
+
+    async def update_contact(self, contact_id: str, upd: ContactUpdate) -> Contact | None:
+        fields = upd.model_dump(exclude_none=True)
+        if fields:
+            sets = ", ".join(f"{k} = :{k}" for k in fields)
+            async with tenant_tx(self._engine, None) as conn:
+                await conn.execute(
+                    text(f"UPDATE contacts SET {sets} WHERE id = :id"), {"id": contact_id, **fields}
+                )
+        return await self.get_contact(contact_id)
+
+    # -- members ------------------------------------------------------------------------------
+    async def list_members(self, tenant_id: str) -> list[Member]:
+        async with tenant_tx(self._engine, tenant_id) as conn:
+            rows = await conn.execute(
+                text(
+                    "SELECT m.organization_id, m.user_id, u.email, u.name, m.role, m.status,"
+                    " m.invited_at FROM memberships m JOIN users u ON u.id = m.user_id"
+                    " WHERE m.organization_id = :tid ORDER BY u.email"
+                ),
+                {"tid": tenant_id},
+            )
+            return [_row_to_member(r) for r in rows]
+
+    async def upsert_member(self, m: Member) -> Member:
+        async with tenant_tx(self._engine, None) as conn:
+            await conn.execute(
+                text("INSERT INTO organizations (id, name) VALUES (:t, :t) ON CONFLICT DO NOTHING"),
+                {"t": m.tenant_id},
+            )
+            await conn.execute(
+                text(
+                    "INSERT INTO users (id, email, name) VALUES (:uid, :email, :name)"
+                    " ON CONFLICT (email) DO UPDATE SET name = COALESCE(EXCLUDED.name, users.name)"
+                ),
+                {"uid": m.user_id, "email": m.email.lower(), "name": m.name},
+            )
+            uid = (
+                await conn.execute(
+                    text("SELECT id FROM users WHERE email = :email"), {"email": m.email.lower()}
+                )
+            ).scalar_one()
+            await conn.execute(
+                text(
+                    "INSERT INTO memberships (user_id, organization_id, role, status, invited_at)"
+                    " VALUES (:uid, :tid, :role, :status, :inv)"
+                    " ON CONFLICT (organization_id, user_id) DO UPDATE SET role = EXCLUDED.role,"
+                    " status = EXCLUDED.status"
+                ),
+                {
+                    "uid": uid,
+                    "tid": m.tenant_id,
+                    "role": m.role,
+                    "status": m.status,
+                    "inv": m.invited_at,
+                },
+            )
+        return m.model_copy(update={"user_id": uid, "email": m.email.lower()})
+
+    async def remove_member(self, tenant_id: str, user_id: str) -> bool:
+        async with tenant_tx(self._engine, None) as conn:
+            res = await conn.execute(
+                text("DELETE FROM memberships WHERE organization_id = :tid AND user_id = :uid"),
+                {"tid": tenant_id, "uid": user_id},
+            )
+        return bool(res.rowcount)
+
+    async def memberships_for_email(self, email: str) -> list[Member]:
+        async with tenant_tx(self._engine, None) as conn:
+            rows = await conn.execute(
+                text(
+                    "SELECT m.organization_id, m.user_id, u.email, u.name, m.role, m.status,"
+                    " m.invited_at FROM memberships m JOIN users u ON u.id = m.user_id"
+                    " WHERE u.email = :email"
+                ),
+                {"email": email.lower()},
+            )
+            return [_row_to_member(r) for r in rows]
 
     async def required_fields(self, assistant_id: str) -> list[RequiredField]:
         async with tenant_tx(self._engine, None) as conn:
