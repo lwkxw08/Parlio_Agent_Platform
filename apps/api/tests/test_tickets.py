@@ -4,7 +4,8 @@ from typing import Any
 from fastapi import FastAPI
 from httpx import AsyncClient
 
-from parlio_api.tickets import LogNotifier, TicketService, build_ticket, classify_category
+from parlio_api.notifications import RuleNotifier
+from parlio_api.tickets import TicketService, build_ticket, classify_category
 from parlio_voice.models import CallEventType, TicketIntake, TicketPriority, TransferConfig
 
 from .test_api import HEADERS, ev
@@ -57,7 +58,7 @@ async def test_worker_intake_creates_classified_ticket_with_alert(
     assert t["contact_id"] is not None
     assert t["sla_due_at"] is not None
     notifier = app.state.tickets.notifier
-    assert isinstance(notifier, LogNotifier)
+    assert isinstance(notifier, RuleNotifier)
     assert notifier.sent and notifier.sent[0][1] == "urgent"
 
     r = await client.get("/v1/tickets", params={"tenant_id": "demo"})

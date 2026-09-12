@@ -5,8 +5,13 @@ from typing import Annotated
 
 from fastapi import Depends, Header, HTTPException, Request, status
 
+from parlio_api.calendar import CalendarService
+from parlio_api.integrations import IntegrationHub
+from parlio_api.messaging import MessageService
+from parlio_api.notifications import NotificationService
 from parlio_api.postcall import PostCallProcessor
 from parlio_api.settings import Settings, get_settings
+from parlio_api.sip import SipService
 from parlio_api.store import CallStore
 from parlio_api.tickets import TicketService
 
@@ -26,7 +31,37 @@ def get_tickets(request: Request) -> TicketService:
     return svc
 
 
+def get_sms(request: Request) -> MessageService:
+    svc: MessageService = request.app.state.sms
+    return svc
+
+
+def get_notifications(request: Request) -> NotificationService:
+    svc: NotificationService = request.app.state.notifications
+    return svc
+
+
+def get_calendar(request: Request) -> CalendarService:
+    svc: CalendarService = request.app.state.calendar
+    return svc
+
+
+def get_sip(request: Request) -> SipService:
+    svc: SipService = request.app.state.sip
+    return svc
+
+
+def get_hub(request: Request) -> IntegrationHub:
+    hub: IntegrationHub = request.app.state.hub
+    return hub
+
+
 StoreDep = Annotated[CallStore, Depends(get_store)]
+SmsDep = Annotated[MessageService, Depends(get_sms)]
+NotificationsDep = Annotated[NotificationService, Depends(get_notifications)]
+CalendarDep = Annotated[CalendarService, Depends(get_calendar)]
+SipDep = Annotated[SipService, Depends(get_sip)]
+HubDep = Annotated[IntegrationHub, Depends(get_hub)]
 TicketsDep = Annotated[TicketService, Depends(get_tickets)]
 PostCallDep = Annotated[PostCallProcessor, Depends(get_postcall)]
 SettingsDep = Annotated[Settings, Depends(get_settings)]

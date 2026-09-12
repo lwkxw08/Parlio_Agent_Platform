@@ -335,6 +335,32 @@ class CallStore(Protocol):
     async def mark_sla_breached(self, ticket_id: str) -> None: ...
     async def ticket_stats(self, tenant_id: str | None = None) -> TicketStats: ...
 
+    # -- tenant documents (Phase 5 integrations: messages, notification rules, trunks, ...) ---
+    async def put_doc(self, doc: TenantDoc) -> TenantDoc: ...
+    async def get_doc(self, kind: str, doc_id: str) -> TenantDoc | None: ...
+    async def list_docs(
+        self, kind: str, tenant_id: str | None = None, limit: int = 200
+    ) -> list[TenantDoc]: ...
+    async def delete_doc(self, kind: str, doc_id: str) -> bool: ...
+    async def assign_number(
+        self, tenant_id: str, company_id: str, e164: str, assistant_id: str
+    ) -> None:
+        """Route an inbound number (DDI) to an assistant; used by BYO SIP trunk DDIs."""
+        ...
+
+    async def unassign_number(self, e164: str) -> None: ...
+
+
+class TenantDoc(BaseModel):
+    """Schemaless tenant-owned record; typed models live in the owning service module."""
+
+    kind: str
+    id: str
+    tenant_id: str
+    data: dict[str, Any] = Field(default_factory=dict)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+
 
 def transfer_from_event(ev: CallEvent) -> TransferRecord | None:
     """Build a TransferRecord from a `call.transfer_completed` event (None if no attempt made)."""
@@ -525,6 +551,7 @@ class MemoryStore:
         self._transfers: dict[str, TransferRecord] = {}
         self._tickets: dict[str, Ticket] = {}
         self._ticket_events: list[TicketEvent] = []
+        self._docs: dict[tuple[str, str], TenantDoc] = {}
 
     # -- assistants ---------------------------------------------------------------------------
     async def upsert_assistant(self, cfg: AssistantConfig, numbers: list[str]) -> None:
@@ -797,3 +824,52 @@ class MemoryStore:
         tickets = await self.list_tickets(tenant_id, limit=10_000)
         ids = {t.id for t in tickets}
         return compute_ticket_stats(tickets, [e for e in self._ticket_events if e.ticket_id in ids])
+
+    # -- tenant documents ---------------------------------------------------------------------
+    async def put_doc(self, doc: TenantDoc) -> TenantDoc:
+        key = (doc.kind, doc.id)
+        prev = self._docs.get(key)
+        doc = doc.model_copy(
+            update={
+                "created_at": prev.created_at if prev else doc.created_at,
+                "updated_at": datetime.now(UTC),
+            }
+        )
+        self._docs[key] = doc
+        return doc
+
+    async def get_doc(self, kind: str, doc_id: str) -> TenantDoc | None:
+        return self._docs.get((kind, doc_id))
+
+    async def list_docs(
+        self, kind: str, tenant_id: str | None = None, limit: int = 200
+    ) -> list[TenantDoc]:
+        docs = [
+            d
+            for d in self._docs.values()
+            if d.kind == kind and (tenant_id is None or d.tenant_id == tenant_id)
+        ]
+        docs.sort(key=lambda d: d.created_at, reverse=True)
+        return docs[:limit]
+
+    async def delete_doc(self, kind: str, doc_id: str) -> bool:
+        return self._docs.pop((kind, doc_id), None) is not None
+
+    async def assign_number(
+        self, tenant_id: str, company_id: str, e164: str, assistant_id: str
+    ) -> None:
+        self._number_to_assistant[e164] = assistant_id
+        if self._redis is not None:
+            try:
+                await self._redis.set(f"parlio:number:{e164}", assistant_id)
+                await self._redis.delete(f"parlio:assistant_config:{e164}")
+            except Exception:
+                log.warning("redis mirror failed", exc_info=True)
+
+    async def unassign_number(self, e164: str) -> None:
+        self._number_to_assistant.pop(e164, None)
+        if self._redis is not None:
+            try:
+                await self._redis.delete(f"parlio:number:{e164}", f"parlio:assistant_config:{e164}")
+            except Exception:
+                log.warning("redis mirror failed", exc_info=True)

@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
 from typing import Protocol
 from uuid import uuid4
@@ -138,9 +139,15 @@ def ticket_summary_line(t: Ticket) -> str:
 
 
 class TicketService:
-    def __init__(self, store: CallStore, notifier: Notifier) -> None:
+    def __init__(
+        self,
+        store: CallStore,
+        notifier: Notifier,
+        on_created: Callable[[Ticket], Awaitable[None]] | None = None,
+    ) -> None:
         self.store = store
         self.notifier = notifier
+        self.on_created = on_created
 
     async def create_from_intake(
         self, tenant_id: str, company_id: str, intake: TicketIntake
@@ -164,6 +171,8 @@ class TicketService:
             f"New {ticket.priority} ticket {ticket.id}",
             ticket_summary_line(ticket),
         )
+        if self.on_created is not None:
+            await self.on_created(ticket)
         return ticket
 
     async def rebuild_from_event(self, ev: CallEvent) -> Ticket | None:

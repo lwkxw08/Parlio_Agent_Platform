@@ -9,24 +9,40 @@ from typing import cast
 import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from livekit import api
 from redis.asyncio import Redis
 from redis.exceptions import ResponseError
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from parlio_api import __version__
+from parlio_api.calendar import (
+    CalendarBackend,
+    CalendarProvider,
+    CalendarService,
+    GoogleCalendarBackend,
+    MicrosoftCalendarBackend,
+    SimulatedBackend,
+)
 from parlio_api.db.engine import make_engine, migrate
 from parlio_api.db.postgres import PostgresStore
-from parlio_api.postcall import Analyser, HeuristicAnalyser, OpenAIAnalyser, PostCallProcessor
-from parlio_api.routes import account, dashboard, worker
-from parlio_api.settings import Settings, get_settings
-from parlio_api.store import CallStore, MemoryStore
-from parlio_api.tickets import (
-    LogNotifier,
-    Notifier,
-    SlaMonitor,
-    TicketService,
-    WebhookNotifier,
+from parlio_api.integrations import IntegrationHub
+from parlio_api.messaging import CarrierSmsProvider, LogSmsProvider, MessageService, SmsProvider
+from parlio_api.notifications import (
+    EmailSender,
+    LogEmailSender,
+    NotificationService,
+    ResendEmailSender,
+    RuleNotifier,
 )
+from parlio_api.postcall import Analyser, HeuristicAnalyser, OpenAIAnalyser, PostCallProcessor
+from parlio_api.routes import account, dashboard, integrations, worker
+from parlio_api.settings import Settings, get_settings
+from parlio_api.sip import SimulatedProvisioner, SimulatedRegistrar, SipProvisioner, SipService
+from parlio_api.sip_livekit import LiveKitProvisioner
+from parlio_api.store import CallStore, MemoryStore
+from parlio_api.telephony.telnyx import TelnyxProvider
+from parlio_api.tickets import Notifier, SlaMonitor, TicketService
+from parlio_api.vault import LocalVault
 from parlio_voice.config_client import DEMO_CONFIG
 from parlio_voice.models import CallEvent, CallEventType
 
@@ -41,6 +57,7 @@ async def consume_events(
     stop: asyncio.Event,
     postcall: PostCallProcessor | None = None,
     tickets: TicketService | None = None,
+    hub: IntegrationHub | None = None,
 ) -> None:
     """Redis Streams consumer: folds worker call events into the store.
 
@@ -71,15 +88,55 @@ async def consume_events(
                             postcall.enqueue(ev.call_id)
                         if applied and tickets and ev.type == CallEventType.TICKET_CREATED:
                             await tickets.rebuild_from_event(ev)
+                        if applied and hub is not None:
+                            await hub.on_event(ev)
                     except Exception:
                         log.exception("bad event %s", msg_id)
                 await redis.xack(stream, group, msg_id)
 
 
-def build_notifier(settings: Settings) -> Notifier:
-    if settings.notify_webhook_url:
-        return WebhookNotifier(settings.notify_webhook_url)
-    return LogNotifier()
+def build_sms_provider(settings: Settings) -> SmsProvider:
+    if settings.sms_provider == "telnyx" and settings.telnyx_api_key:
+        return CarrierSmsProvider(
+            TelnyxProvider(
+                settings.telnyx_api_key,
+                messaging_profile_id=settings.telnyx_messaging_profile_id,
+            )
+        )
+    return LogSmsProvider()
+
+
+def build_email(settings: Settings) -> EmailSender:
+    if settings.resend_api_key:
+        return ResendEmailSender(settings.resend_api_key, settings.email_from)
+    return LogEmailSender()
+
+
+def build_calendar_backends(
+    settings: Settings, vault: LocalVault
+) -> dict[CalendarProvider, CalendarBackend]:
+    backends: dict[CalendarProvider, CalendarBackend] = {
+        CalendarProvider.SIMULATED: SimulatedBackend()
+    }
+    if settings.google_client_id and settings.google_client_secret:
+        backends[CalendarProvider.GOOGLE] = GoogleCalendarBackend(
+            settings.google_client_id, settings.google_client_secret, vault
+        )
+    if settings.microsoft_client_id and settings.microsoft_client_secret:
+        backends[CalendarProvider.MICROSOFT] = MicrosoftCalendarBackend(
+            settings.microsoft_client_id, settings.microsoft_client_secret, vault
+        )
+    return backends
+
+
+def build_sip_provisioner(settings: Settings) -> SipProvisioner:
+    if settings.sip_provisioner == "livekit" and settings.livekit_url:
+        return LiveKitProvisioner(
+            api.LiveKitAPI(
+                settings.livekit_url, settings.livekit_api_key, settings.livekit_api_secret
+            )
+        )
+    return SimulatedProvisioner()
 
 
 def build_analyser(settings: Settings) -> Analyser:
@@ -119,10 +176,35 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     if settings.seed_demo_assistant:
         await store.upsert_assistant(DEMO_CONFIG, [settings.demo_number])
 
-    postcall = PostCallProcessor(store, build_analyser(settings), settings.postcall_concurrency)
+    vault = LocalVault(settings.vault_key)
+    app.state.vault = vault
+    if settings.env != "dev" and settings.vault_key == "dev-only-change-me":
+        log.error("PARLIO_VAULT_KEY is the dev default in env=%s; set a real key", settings.env)
+    sms = MessageService(store, build_sms_provider(settings), settings.sms_from_number)
+    app.state.sms = sms
+    notifications = NotificationService(
+        store, build_email(settings), sms, fallback_webhook_url=settings.notify_webhook_url
+    )
+    app.state.notifications = notifications
+    calendar = CalendarService(store, vault, build_calendar_backends(settings, vault))
+    app.state.calendar = calendar
+    sip = SipService(
+        store,
+        vault,
+        build_sip_provisioner(settings),
+        SimulatedRegistrar(),
+        sip_domain=settings.sip_domain,
+    )
+    app.state.sip = sip
+    hub = IntegrationHub(store, sms, notifications, sip)
+    app.state.hub = hub
+
+    postcall = PostCallProcessor(
+        store, build_analyser(settings), settings.postcall_concurrency, on_done=hub.on_postcall
+    )
     app.state.postcall = postcall
-    notifier = build_notifier(settings)
-    tickets = TicketService(store, notifier)
+    notifier: Notifier = RuleNotifier(notifications)
+    tickets = TicketService(store, notifier, on_created=hub.on_ticket)
     app.state.tickets = tickets
     sla = SlaMonitor(tickets, settings.sla_check_interval_s)
     sla.start()
@@ -139,6 +221,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                 stop,
                 postcall,
                 tickets,
+                hub,
             )
         )
     try:
@@ -151,8 +234,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                 await consumer
         await postcall.close()
         await sla.aclose()
-        if isinstance(notifier, WebhookNotifier):
-            await notifier.aclose()
+        await notifications.aclose()
         if redis is not None:
             await redis.aclose()
         if engine is not None:
@@ -173,6 +255,9 @@ def create_app() -> FastAPI:
     app.include_router(dashboard.router)
     app.include_router(account.router)
     app.include_router(account.public)
+    app.include_router(integrations.router)
+    app.include_router(integrations.public)
+    app.include_router(integrations.worker)
 
     @app.get("/healthz", tags=["ops"])
     async def healthz() -> dict[str, str]:

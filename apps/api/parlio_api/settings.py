@@ -41,6 +41,27 @@ class Settings(BaseSettings):
     notify_webhook_url: str | None = None
     sla_check_interval_s: float = 30.0
 
+    # Phase 5 integrations. Key derives the Fernet key that seals tenant credentials at rest.
+    vault_key: str = "dev-only-change-me"
+    public_api_url: str = "http://localhost:8000"
+    sms_provider: Literal["log", "telnyx"] = "log"
+    sms_from_number: str | None = None  # E.164 sender (Telnyx SMS-capable number)
+    telnyx_api_key: str | None = None
+    telnyx_messaging_profile_id: str | None = None
+    resend_api_key: str | None = None
+    email_from: str = "Parlio <alerts@parlio.local>"
+    google_client_id: str | None = None
+    google_client_secret: str | None = None
+    microsoft_client_id: str | None = None
+    microsoft_client_secret: str | None = None
+
+    # Phase 5b BYO SIP. "simulated" keeps trunks fully testable without a SIP edge.
+    sip_provisioner: Literal["simulated", "livekit"] = "simulated"
+    sip_domain: str = "sip.parlio.local"
+    livekit_url: str | None = None
+    livekit_api_key: str | None = None
+    livekit_api_secret: str | None = None
+
 
 @lru_cache
 def get_settings() -> Settings:

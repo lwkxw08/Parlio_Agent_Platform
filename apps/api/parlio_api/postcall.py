@@ -12,6 +12,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
+from collections.abc import Awaitable, Callable
 from typing import Any, Protocol
 
 import httpx
@@ -137,9 +138,16 @@ async def process_call(store: CallStore, analyser: Analyser, call_id: str) -> Po
 class PostCallProcessor:
     """Bounded in-process worker pool feeding `process_call`."""
 
-    def __init__(self, store: CallStore, analyser: Analyser, concurrency: int = 4) -> None:
+    def __init__(
+        self,
+        store: CallStore,
+        analyser: Analyser,
+        concurrency: int = 4,
+        on_done: Callable[[CallRecord], Awaitable[None]] | None = None,
+    ) -> None:
         self._store = store
         self._analyser = analyser
+        self.on_done = on_done
         self._queue: asyncio.Queue[str] = asyncio.Queue()
         self._workers = [asyncio.create_task(self._run()) for _ in range(concurrency)]
 
@@ -153,7 +161,11 @@ class PostCallProcessor:
         while True:
             call_id = await self._queue.get()
             try:
-                await process_call(self._store, self._analyser, call_id)
+                result = await process_call(self._store, self._analyser, call_id)
+                if result is not None and self.on_done is not None:
+                    call = await self._store.get_call(call_id)
+                    if call is not None:
+                        await self.on_done(call)
             except Exception:
                 log.exception("post-call processing failed for %s", call_id)
             finally:
