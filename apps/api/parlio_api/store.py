@@ -10,12 +10,19 @@ import hashlib
 import logging
 import secrets
 from datetime import UTC, datetime
+from enum import StrEnum
 from typing import Any, Protocol
 
 from pydantic import BaseModel, Field
 from redis.asyncio import Redis
 
-from parlio_voice.models import AssistantConfig, CallEvent, CallEventType
+from parlio_voice.models import (
+    AssistantConfig,
+    CallEvent,
+    CallEventType,
+    TicketIntake,
+    TicketPriority,
+)
 
 log = logging.getLogger("parlio.api.store")
 
@@ -44,6 +51,100 @@ class CallRecord(BaseModel):
     missed_fields: list[str] = Field(default_factory=list)
     caller_type: str | None = None  # new | returning | unknown
     contact_id: str | None = None
+    # human hand-off
+    transfers: list[dict[str, Any]] = Field(default_factory=list)
+    ticket_ids: list[str] = Field(default_factory=list)
+    escalated: bool = False
+    escalation_keyword: str | None = None
+
+
+class TransferRecord(BaseModel):
+    id: str
+    tenant_id: str
+    call_id: str
+    destination: str
+    destination_id: str | None = None
+    department: str | None = None
+    mode: str = "warm"
+    outcome: str
+    reason: str | None = None
+    started_at: datetime
+    ended_at: datetime | None = None
+
+
+class TicketStatus(StrEnum):
+    OPEN = "open"
+    CLAIMED = "claimed"
+    RESOLVED = "resolved"
+    CANCELLED = "cancelled"
+
+
+class Ticket(BaseModel):
+    id: str
+    tenant_id: str
+    company_id: str
+    call_id: str | None = None
+    contact_id: str | None = None
+    status: TicketStatus = TicketStatus.OPEN
+    priority: TicketPriority = TicketPriority.NORMAL
+    category: str | None = None
+    department: str | None = None
+    caller_name: str | None = None
+    caller_number: str | None = None
+    reason: str
+    callback_window: str | None = None
+    source: str = "ai_intake"
+    sla_due_at: datetime | None = None
+    sla_breached: bool = False
+    assigned_to: str | None = None
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    resolved_at: datetime | None = None
+
+    @property
+    def sla_remaining_s(self) -> float | None:
+        if self.sla_due_at is None or self.status in (
+            TicketStatus.RESOLVED,
+            TicketStatus.CANCELLED,
+        ):
+            return None
+        return (self.sla_due_at - datetime.now(UTC)).total_seconds()
+
+
+class TicketEvent(BaseModel):
+    ticket_id: str
+    type: str  # created | claimed | assigned | note | resolved | reopened | sla_breached | callback
+    actor: str | None = None
+    note: str | None = None
+    at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+
+
+class TicketUpdate(BaseModel):
+    status: TicketStatus | None = None
+    assigned_to: str | None = None
+    priority: TicketPriority | None = None
+    note: str | None = None
+    actor: str | None = None
+
+
+class TransferStats(BaseModel):
+    total: int = 0
+    by_outcome: dict[str, int] = Field(default_factory=dict)
+    by_department: dict[str, int] = Field(default_factory=dict)
+    by_destination: dict[str, int] = Field(default_factory=dict)
+    answer_rate: float | None = None
+
+
+class TicketStats(BaseModel):
+    total: int = 0
+    open: int = 0
+    claimed: int = 0
+    resolved: int = 0
+    by_priority: dict[str, int] = Field(default_factory=dict)
+    by_category: dict[str, int] = Field(default_factory=dict)
+    sla_breached: int = 0
+    avg_time_to_claim_s: float | None = None
+    avg_time_to_resolve_s: float | None = None
 
 
 class PostCallResult(BaseModel):
@@ -88,6 +189,144 @@ class CallStore(Protocol):
     async def create_worker_key(self, tenant_id: str | None, name: str) -> str: ...
     async def verify_worker_key(self, key: str) -> bool: ...
 
+    # transfers / tickets (Phase 3)
+    async def list_transfers(
+        self, tenant_id: str | None = None, limit: int = 100
+    ) -> list[TransferRecord]: ...
+    async def transfer_stats(self, tenant_id: str | None = None) -> TransferStats: ...
+    async def create_ticket(self, ticket: Ticket) -> Ticket: ...
+    async def get_ticket(self, ticket_id: str) -> Ticket | None: ...
+    async def list_tickets(
+        self,
+        tenant_id: str | None = None,
+        status: TicketStatus | None = None,
+        limit: int = 100,
+    ) -> list[Ticket]: ...
+    async def update_ticket(self, ticket_id: str, upd: TicketUpdate) -> Ticket | None: ...
+    async def add_ticket_event(self, ev: TicketEvent) -> None: ...
+    async def ticket_events(self, ticket_id: str) -> list[TicketEvent]: ...
+    async def overdue_tickets(self, now: datetime) -> list[Ticket]:
+        """Open/claimed tickets past `sla_due_at` not yet flagged as breached."""
+        ...
+
+    async def mark_sla_breached(self, ticket_id: str) -> None: ...
+    async def ticket_stats(self, tenant_id: str | None = None) -> TicketStats: ...
+
+
+def transfer_from_event(ev: CallEvent) -> TransferRecord | None:
+    """Build a TransferRecord from a `call.transfer_completed` event (None if no attempt made)."""
+    p = ev.payload
+    if ev.type != CallEventType.TRANSFER_COMPLETED or not p.get("transfer_id"):
+        return None
+    started = p.get("started_at")
+    ended = p.get("ended_at")
+    return TransferRecord(
+        id=str(p["transfer_id"]),
+        tenant_id=ev.tenant_id,
+        call_id=ev.call_id,
+        destination=str(p.get("destination", "")),
+        destination_id=p.get("destination_id"),
+        department=p.get("department"),
+        mode=str(p.get("mode", "warm")),
+        outcome=str(p.get("outcome", "no_answer")),
+        reason=p.get("reason"),
+        started_at=datetime.fromisoformat(started) if started else ev.occurred_at,
+        ended_at=datetime.fromisoformat(ended) if ended else ev.occurred_at,
+    )
+
+
+def intake_from_event(ev: CallEvent) -> TicketIntake | None:
+    """Intake carried on a `call.ticket_created` event whose API call failed (no ticket_id)."""
+    if ev.type != CallEventType.TICKET_CREATED or ev.payload.get("ticket_id"):
+        return None
+    raw = ev.payload.get("intake")
+    return TicketIntake.model_validate(raw) if raw else None
+
+
+def apply_ticket_update(t: Ticket, upd: TicketUpdate, now: datetime) -> list[TicketEvent]:
+    """Mutate `t` per `upd` and return the audit events to append (shared by both stores)."""
+    events: list[TicketEvent] = []
+    if upd.assigned_to is not None and upd.assigned_to != t.assigned_to:
+        t.assigned_to = upd.assigned_to
+        events.append(
+            TicketEvent(
+                ticket_id=t.id, type="assigned", actor=upd.actor, note=upd.assigned_to, at=now
+            )
+        )
+        if t.status == TicketStatus.OPEN and upd.status is None:
+            upd = upd.model_copy(update={"status": TicketStatus.CLAIMED})
+    if upd.priority is not None and upd.priority != t.priority:
+        t.priority = upd.priority
+        events.append(
+            TicketEvent(ticket_id=t.id, type="priority", actor=upd.actor, note=upd.priority, at=now)
+        )
+    if upd.status is not None and upd.status != t.status:
+        prev = t.status
+        t.status = upd.status
+        kind = {
+            TicketStatus.CLAIMED: "claimed",
+            TicketStatus.RESOLVED: "resolved",
+            TicketStatus.CANCELLED: "cancelled",
+            TicketStatus.OPEN: "reopened",
+        }[upd.status]
+        if upd.status == TicketStatus.CLAIMED and upd.actor and not t.assigned_to:
+            t.assigned_to = upd.actor
+        if upd.status in (TicketStatus.RESOLVED, TicketStatus.CANCELLED):
+            t.resolved_at = now
+        elif prev in (TicketStatus.RESOLVED, TicketStatus.CANCELLED):
+            t.resolved_at = None
+        events.append(TicketEvent(ticket_id=t.id, type=kind, actor=upd.actor, at=now))
+    if upd.note:
+        events.append(
+            TicketEvent(ticket_id=t.id, type="note", actor=upd.actor, note=upd.note, at=now)
+        )
+    if events:
+        t.updated_at = now
+    return events
+
+
+def compute_transfer_stats(rows: list[TransferRecord]) -> TransferStats:
+    s = TransferStats(total=len(rows))
+    for r in rows:
+        s.by_outcome[r.outcome] = s.by_outcome.get(r.outcome, 0) + 1
+        dep = r.department or "general"
+        s.by_department[dep] = s.by_department.get(dep, 0) + 1
+        s.by_destination[r.destination] = s.by_destination.get(r.destination, 0) + 1
+    if rows:
+        s.answer_rate = round(s.by_outcome.get("answered", 0) / len(rows), 3)
+    return s
+
+
+def compute_ticket_stats(tickets: list[Ticket], events: list[TicketEvent]) -> TicketStats:
+    s = TicketStats(total=len(tickets))
+    claimed_at: dict[str, datetime] = {}
+    for e in events:
+        if e.type == "claimed" and e.ticket_id not in claimed_at:
+            claimed_at[e.ticket_id] = e.at
+    claim_deltas: list[float] = []
+    resolve_deltas: list[float] = []
+    for t in tickets:
+        if t.status == TicketStatus.OPEN:
+            s.open += 1
+        elif t.status == TicketStatus.CLAIMED:
+            s.claimed += 1
+        elif t.status == TicketStatus.RESOLVED:
+            s.resolved += 1
+        s.by_priority[t.priority] = s.by_priority.get(t.priority, 0) + 1
+        cat = t.category or "uncategorised"
+        s.by_category[cat] = s.by_category.get(cat, 0) + 1
+        if t.sla_breached:
+            s.sla_breached += 1
+        if t.id in claimed_at:
+            claim_deltas.append((claimed_at[t.id] - t.created_at).total_seconds())
+        if t.resolved_at and t.status == TicketStatus.RESOLVED:
+            resolve_deltas.append((t.resolved_at - t.created_at).total_seconds())
+    if claim_deltas:
+        s.avg_time_to_claim_s = round(sum(claim_deltas) / len(claim_deltas), 1)
+    if resolve_deltas:
+        s.avg_time_to_resolve_s = round(sum(resolve_deltas) / len(resolve_deltas), 1)
+    return s
+
 
 def fold_event(call: CallRecord, ev: CallEvent) -> CallRecord:
     """Apply one lifecycle event to a call record (pure; shared by both stores)."""
@@ -121,7 +360,26 @@ def fold_event(call: CallRecord, ev: CallEvent) -> CallRecord:
             call.status = "failed"
             call.ended_at = ev.occurred_at
             call.end_reason = p.get("reason")
-        case CallEventType.TURN_COMPLETED:
+        case CallEventType.TRANSFER_COMPLETED:
+            if p.get("transfer_id"):
+                call.transfers.append(
+                    {
+                        "transfer_id": p["transfer_id"],
+                        "destination": p.get("destination"),
+                        "department": p.get("department"),
+                        "mode": p.get("mode"),
+                        "outcome": p.get("outcome"),
+                        "at": ev.occurred_at.isoformat(),
+                    }
+                )
+        case CallEventType.TICKET_CREATED:
+            tid = p.get("ticket_id")
+            if tid and tid not in call.ticket_ids:
+                call.ticket_ids.append(tid)
+        case CallEventType.ESCALATION:
+            call.escalated = True
+            call.escalation_keyword = p.get("keyword")
+        case CallEventType.TURN_COMPLETED | CallEventType.TRANSFER_STARTED:
             pass
     return call
 
@@ -138,6 +396,9 @@ class MemoryStore:
         self._contacts: dict[tuple[str, str], tuple[str, int]] = {}
         self._required: dict[str, list[RequiredField]] = {}
         self._worker_keys: set[str] = set()
+        self._transfers: dict[str, TransferRecord] = {}
+        self._tickets: dict[str, Ticket] = {}
+        self._ticket_events: list[TicketEvent] = []
 
     # -- assistants ---------------------------------------------------------------------------
     async def upsert_assistant(self, cfg: AssistantConfig, numbers: list[str]) -> None:
@@ -200,6 +461,9 @@ class MemoryStore:
             )
             self._calls[ev.call_id] = call
         fold_event(call, ev)
+        tr = transfer_from_event(ev)
+        if tr is not None:
+            self._transfers[tr.id] = tr
         return True
 
     async def record_postcall(self, call_id: str, result: PostCallResult) -> None:
@@ -233,3 +497,80 @@ class MemoryStore:
 
     async def verify_worker_key(self, key: str) -> bool:
         return hash_key(key) in self._worker_keys
+
+    # -- transfers / tickets ------------------------------------------------------------------
+    async def list_transfers(
+        self, tenant_id: str | None = None, limit: int = 100
+    ) -> list[TransferRecord]:
+        rows = [
+            t for t in self._transfers.values() if tenant_id is None or t.tenant_id == tenant_id
+        ]
+        rows.sort(key=lambda t: t.started_at, reverse=True)
+        return rows[:limit]
+
+    async def transfer_stats(self, tenant_id: str | None = None) -> TransferStats:
+        return compute_transfer_stats(await self.list_transfers(tenant_id, limit=10_000))
+
+    async def create_ticket(self, ticket: Ticket) -> Ticket:
+        self._tickets[ticket.id] = ticket
+        self._ticket_events.append(
+            TicketEvent(
+                ticket_id=ticket.id, type="created", note=ticket.source, at=ticket.created_at
+            )
+        )
+        call = self._calls.get(ticket.call_id or "")
+        if call is not None and ticket.id not in call.ticket_ids:
+            call.ticket_ids.append(ticket.id)
+        return ticket
+
+    async def get_ticket(self, ticket_id: str) -> Ticket | None:
+        return self._tickets.get(ticket_id)
+
+    async def list_tickets(
+        self,
+        tenant_id: str | None = None,
+        status: TicketStatus | None = None,
+        limit: int = 100,
+    ) -> list[Ticket]:
+        rows = [
+            t
+            for t in self._tickets.values()
+            if (tenant_id is None or t.tenant_id == tenant_id)
+            and (status is None or t.status == status)
+        ]
+        rows.sort(key=lambda t: t.created_at, reverse=True)
+        return rows[:limit]
+
+    async def update_ticket(self, ticket_id: str, upd: TicketUpdate) -> Ticket | None:
+        t = self._tickets.get(ticket_id)
+        if t is None:
+            return None
+        self._ticket_events.extend(apply_ticket_update(t, upd, datetime.now(UTC)))
+        return t
+
+    async def add_ticket_event(self, ev: TicketEvent) -> None:
+        self._ticket_events.append(ev)
+
+    async def ticket_events(self, ticket_id: str) -> list[TicketEvent]:
+        return [e for e in self._ticket_events if e.ticket_id == ticket_id]
+
+    async def overdue_tickets(self, now: datetime) -> list[Ticket]:
+        return [
+            t
+            for t in self._tickets.values()
+            if t.status in (TicketStatus.OPEN, TicketStatus.CLAIMED)
+            and not t.sla_breached
+            and t.sla_due_at is not None
+            and t.sla_due_at <= now
+        ]
+
+    async def mark_sla_breached(self, ticket_id: str) -> None:
+        t = self._tickets.get(ticket_id)
+        if t is not None:
+            t.sla_breached = True
+            t.updated_at = datetime.now(UTC)
+
+    async def ticket_stats(self, tenant_id: str | None = None) -> TicketStats:
+        tickets = await self.list_tickets(tenant_id, limit=10_000)
+        ids = {t.id for t in tickets}
+        return compute_ticket_stats(tickets, [e for e in self._ticket_events if e.ticket_id in ids])

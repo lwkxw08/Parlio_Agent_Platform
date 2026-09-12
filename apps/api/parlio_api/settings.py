@@ -28,6 +28,10 @@ class Settings(BaseSettings):
     openai_api_key: str | None = None
     openai_model: str = "gpt-4o-mini"
 
+    # Ticket alerts: Slack-incoming-webhook-compatible URL; unset = log only.
+    notify_webhook_url: str | None = None
+    sla_check_interval_s: float = 30.0
+
 
 @lru_cache
 def get_settings() -> Settings:

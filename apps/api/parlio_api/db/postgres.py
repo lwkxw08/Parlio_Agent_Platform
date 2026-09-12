@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 from uuid import uuid4
 
@@ -21,9 +21,20 @@ from parlio_api.store import (
     CallRecord,
     PostCallResult,
     RequiredField,
+    Ticket,
+    TicketEvent,
+    TicketStats,
+    TicketStatus,
+    TicketUpdate,
+    TransferRecord,
+    TransferStats,
+    apply_ticket_update,
+    compute_ticket_stats,
+    compute_transfer_stats,
     fold_event,
     hash_key,
     new_worker_key,
+    transfer_from_event,
 )
 from parlio_voice.models import AssistantConfig, CallEvent, CallEventType
 
@@ -32,8 +43,63 @@ log = logging.getLogger("parlio.api.store.pg")
 _CALL_COLS = """
     id, organization_id, company_id, assistant_id, caller, dialed, direction, status,
     started_at, answered_at, ended_at, answer_latency_s, duration_s, latency, recordings,
-    end_reason, summary, extracted, missed_fields, caller_type, contact_id
+    end_reason, summary, extracted, missed_fields, caller_type, contact_id,
+    escalated, escalation_keyword
 """
+
+_TICKET_COLS = """
+    id, organization_id, company_id, call_id, contact_id, status, priority, category, department,
+    caller_name, caller_number, reason, callback_window, source, sla_due_at, sla_breached,
+    assigned_to, created_at, updated_at, resolved_at
+"""
+
+_TRANSFER_COLS = """
+    id, organization_id, call_id, destination, destination_id, department, mode, outcome, reason,
+    started_at, ended_at
+"""
+
+
+def _row_to_ticket(r: Row[Any]) -> Ticket:
+    m = r._mapping
+    return Ticket(
+        id=m["id"],
+        tenant_id=m["organization_id"],
+        company_id=m["company_id"],
+        call_id=m["call_id"],
+        contact_id=m["contact_id"],
+        status=m["status"],
+        priority=m["priority"],
+        category=m["category"],
+        department=m["department"],
+        caller_name=m["caller_name"],
+        caller_number=m["caller_number"],
+        reason=m["reason"] or "",
+        callback_window=m["callback_window"],
+        source=m["source"],
+        sla_due_at=m["sla_due_at"],
+        sla_breached=m["sla_breached"],
+        assigned_to=m["assigned_to"],
+        created_at=m["created_at"],
+        updated_at=m["updated_at"],
+        resolved_at=m["resolved_at"],
+    )
+
+
+def _row_to_transfer(r: Row[Any]) -> TransferRecord:
+    m = r._mapping
+    return TransferRecord(
+        id=m["id"],
+        tenant_id=m["organization_id"],
+        call_id=m["call_id"],
+        destination=m["destination"],
+        destination_id=m["destination_id"],
+        department=m["department"],
+        mode=m["mode"],
+        outcome=m["outcome"] or "no_answer",
+        reason=m["reason"],
+        started_at=m["started_at"],
+        ended_at=m["ended_at"],
+    )
 
 
 def _jsonb(v: Any) -> str:
@@ -65,6 +131,8 @@ def _row_to_call(r: Row[Any], transcript: list[dict[str, Any]]) -> CallRecord:
         missed_fields=m["missed_fields"] or [],
         caller_type=m["caller_type"],
         contact_id=m["contact_id"],
+        escalated=bool(m["escalated"]),
+        escalation_keyword=m["escalation_keyword"],
     )
 
 
@@ -290,7 +358,8 @@ class PostgresStore:
                         status = :status, answered_at = :answered_at, ended_at = :ended_at,
                         answer_latency_s = :als, duration_s = :dur,
                         latency = CAST(:latency AS jsonb), recordings = CAST(:recordings AS jsonb),
-                        end_reason = :end_reason
+                        end_reason = :end_reason, escalated = :escalated,
+                        escalation_keyword = :esc_kw
                     WHERE id = :cid
                     """
                 ),
@@ -307,8 +376,37 @@ class PostgresStore:
                     "latency": _jsonb(call.latency),
                     "recordings": _jsonb(call.recordings),
                     "end_reason": call.end_reason,
+                    "escalated": call.escalated,
+                    "esc_kw": call.escalation_keyword,
                 },
             )
+
+            tr = transfer_from_event(ev)
+            if tr is not None:
+                await conn.execute(
+                    text(
+                        f"""
+                        INSERT INTO transfers ({_TRANSFER_COLS})
+                        VALUES (:id, :oid, :cid, :dest, :dest_id, :dept, :mode, :outcome, :reason,
+                                :started, :ended)
+                        ON CONFLICT (id) DO UPDATE SET outcome = EXCLUDED.outcome,
+                            ended_at = EXCLUDED.ended_at, reason = EXCLUDED.reason
+                        """
+                    ),
+                    {
+                        "id": tr.id,
+                        "oid": tr.tenant_id,
+                        "cid": tr.call_id,
+                        "dest": tr.destination,
+                        "dest_id": tr.destination_id,
+                        "dept": tr.department,
+                        "mode": tr.mode,
+                        "outcome": tr.outcome,
+                        "reason": tr.reason,
+                        "started": tr.started_at,
+                        "ended": tr.ended_at,
+                    },
+                )
 
             if ev.type == CallEventType.TRANSCRIPT_ITEM:
                 await conn.execute(
@@ -472,6 +570,231 @@ class PostgresStore:
                 )
             ).first()
         return found is not None
+
+    # -- transfers ----------------------------------------------------------------------------
+    async def list_transfers(
+        self, tenant_id: str | None = None, limit: int = 100
+    ) -> list[TransferRecord]:
+        async with tenant_tx(self._engine, tenant_id) as conn:
+            rows = await conn.execute(
+                text(
+                    f"""
+                    SELECT {_TRANSFER_COLS} FROM transfers
+                    WHERE (CAST(:tid AS text) IS NULL OR organization_id = :tid)
+                    ORDER BY started_at DESC LIMIT :lim
+                    """
+                ),
+                {"tid": tenant_id, "lim": limit},
+            )
+            return [_row_to_transfer(r) for r in rows]
+
+    async def transfer_stats(self, tenant_id: str | None = None) -> TransferStats:
+        return compute_transfer_stats(await self.list_transfers(tenant_id, limit=100_000))
+
+    # -- tickets ------------------------------------------------------------------------------
+    async def create_ticket(self, ticket: Ticket) -> Ticket:
+        async with tenant_tx(self._engine, None) as conn:
+            await conn.execute(
+                text(
+                    f"""
+                    INSERT INTO tickets ({_TICKET_COLS})
+                    VALUES (:id, :oid, :co, :call_id, :contact_id, :status, :priority, :category,
+                            :department, :caller_name, :caller_number, :reason, :callback_window,
+                            :source, :sla_due_at, :sla_breached, :assigned_to, :created_at,
+                            :updated_at, :resolved_at)
+                    """
+                ),
+                self._ticket_params(ticket),
+            )
+            await self._insert_ticket_event(
+                conn,
+                ticket.tenant_id,
+                TicketEvent(
+                    ticket_id=ticket.id, type="created", note=ticket.source, at=ticket.created_at
+                ),
+            )
+        return ticket
+
+    @staticmethod
+    def _ticket_params(t: Ticket) -> dict[str, Any]:
+        return {
+            "id": t.id,
+            "oid": t.tenant_id,
+            "co": t.company_id,
+            "call_id": t.call_id,
+            "contact_id": t.contact_id,
+            "status": t.status.value,
+            "priority": t.priority.value,
+            "category": t.category,
+            "department": t.department,
+            "caller_name": t.caller_name,
+            "caller_number": t.caller_number,
+            "reason": t.reason,
+            "callback_window": t.callback_window,
+            "source": t.source,
+            "sla_due_at": t.sla_due_at,
+            "sla_breached": t.sla_breached,
+            "assigned_to": t.assigned_to,
+            "created_at": t.created_at,
+            "updated_at": t.updated_at,
+            "resolved_at": t.resolved_at,
+        }
+
+    @staticmethod
+    async def _insert_ticket_event(conn: AsyncConnection, tenant_id: str, ev: TicketEvent) -> None:
+        await conn.execute(
+            text(
+                """
+                INSERT INTO ticket_events
+                    (organization_id, ticket_id, type, actor, note, created_at)
+                VALUES (:oid, :tid, :type, :actor, :note, :at)
+                """
+            ),
+            {
+                "oid": tenant_id,
+                "tid": ev.ticket_id,
+                "type": ev.type,
+                "actor": ev.actor,
+                "note": ev.note,
+                "at": ev.at,
+            },
+        )
+
+    async def get_ticket(self, ticket_id: str) -> Ticket | None:
+        async with tenant_tx(self._engine, None) as conn:
+            row = (
+                await conn.execute(
+                    text(f"SELECT {_TICKET_COLS} FROM tickets WHERE id = :id"), {"id": ticket_id}
+                )
+            ).first()
+            return _row_to_ticket(row) if row else None
+
+    async def list_tickets(
+        self,
+        tenant_id: str | None = None,
+        status: TicketStatus | None = None,
+        limit: int = 100,
+    ) -> list[Ticket]:
+        async with tenant_tx(self._engine, tenant_id) as conn:
+            rows = await conn.execute(
+                text(
+                    f"""
+                    SELECT {_TICKET_COLS} FROM tickets
+                    WHERE (CAST(:tid AS text) IS NULL OR organization_id = :tid)
+                      AND (CAST(:st AS text) IS NULL OR status = :st)
+                    ORDER BY created_at DESC LIMIT :lim
+                    """
+                ),
+                {"tid": tenant_id, "st": status.value if status else None, "lim": limit},
+            )
+            return [_row_to_ticket(r) for r in rows]
+
+    async def update_ticket(self, ticket_id: str, upd: TicketUpdate) -> Ticket | None:
+        async with tenant_tx(self._engine, None) as conn:
+            row = (
+                await conn.execute(
+                    text(f"SELECT {_TICKET_COLS} FROM tickets WHERE id = :id FOR UPDATE"),
+                    {"id": ticket_id},
+                )
+            ).first()
+            if row is None:
+                return None
+            t = _row_to_ticket(row)
+            events = apply_ticket_update(t, upd, datetime.now(UTC))
+            await conn.execute(
+                text(
+                    """
+                    UPDATE tickets SET status = :status, priority = :priority,
+                        assigned_to = :assigned_to, updated_at = :updated_at,
+                        resolved_at = :resolved_at
+                    WHERE id = :id
+                    """
+                ),
+                self._ticket_params(t),
+            )
+            for ev in events:
+                await self._insert_ticket_event(conn, t.tenant_id, ev)
+            return t
+
+    async def add_ticket_event(self, ev: TicketEvent) -> None:
+        async with tenant_tx(self._engine, None) as conn:
+            oid = (
+                await conn.execute(
+                    text("SELECT organization_id FROM tickets WHERE id = :id"), {"id": ev.ticket_id}
+                )
+            ).scalar_one_or_none()
+            if oid is None:
+                return
+            await self._insert_ticket_event(conn, oid, ev)
+
+    async def ticket_events(self, ticket_id: str) -> list[TicketEvent]:
+        async with tenant_tx(self._engine, None) as conn:
+            rows = await conn.execute(
+                text(
+                    """
+                    SELECT ticket_id, type, actor, note, created_at FROM ticket_events
+                    WHERE ticket_id = :id ORDER BY id
+                    """
+                ),
+                {"id": ticket_id},
+            )
+            return [
+                TicketEvent(
+                    ticket_id=r._mapping["ticket_id"],
+                    type=r._mapping["type"],
+                    actor=r._mapping["actor"],
+                    note=r._mapping["note"],
+                    at=r._mapping["created_at"],
+                )
+                for r in rows
+            ]
+
+    async def overdue_tickets(self, now: datetime) -> list[Ticket]:
+        async with tenant_tx(self._engine, None) as conn:
+            rows = await conn.execute(
+                text(
+                    f"""
+                    SELECT {_TICKET_COLS} FROM tickets
+                    WHERE status IN ('open', 'claimed') AND sla_breached = false
+                      AND sla_due_at IS NOT NULL AND sla_due_at <= :now
+                    """
+                ),
+                {"now": now},
+            )
+            return [_row_to_ticket(r) for r in rows]
+
+    async def mark_sla_breached(self, ticket_id: str) -> None:
+        async with tenant_tx(self._engine, None) as conn:
+            await conn.execute(
+                text("UPDATE tickets SET sla_breached = true, updated_at = now() WHERE id = :id"),
+                {"id": ticket_id},
+            )
+
+    async def ticket_stats(self, tenant_id: str | None = None) -> TicketStats:
+        tickets = await self.list_tickets(tenant_id, limit=100_000)
+        async with tenant_tx(self._engine, tenant_id) as conn:
+            rows = await conn.execute(
+                text(
+                    """
+                    SELECT ticket_id, type, actor, note, created_at FROM ticket_events
+                    WHERE type = 'claimed'
+                      AND (CAST(:tid AS text) IS NULL OR organization_id = :tid)
+                    ORDER BY id
+                    """
+                ),
+                {"tid": tenant_id},
+            )
+            events = [
+                TicketEvent(
+                    ticket_id=r._mapping["ticket_id"],
+                    type=r._mapping["type"],
+                    actor=r._mapping["actor"],
+                    note=r._mapping["note"],
+                    at=r._mapping["created_at"],
+                )
+                for r in rows
+            ]
+        return compute_ticket_stats(tickets, events)
 
     async def ensure_partitions(self) -> None:
         async with tenant_tx(self._engine, None) as conn:
