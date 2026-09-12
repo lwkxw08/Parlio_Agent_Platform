@@ -2,7 +2,11 @@ import pytest
 
 from parlio_voice.models import (
     AssistantConfig,
+    BusinessInfo,
+    BusinessRule,
+    Faq,
     LLMProvider,
+    Persona,
     ProviderChain,
     RegionProfile,
     STTProvider,
@@ -59,3 +63,30 @@ def test_standard_profile_keeps_full_chain() -> None:
 def test_config_round_trips_json() -> None:
     cfg = _cfg(region_profile=RegionProfile.SOVEREIGN_UK)
     assert AssistantConfig.model_validate_json(cfg.model_dump_json()) == cfg
+
+
+def test_studio_fields_render_into_prompt() -> None:
+    cfg = _cfg(
+        persona=Persona(tone="warm", formality="formal", pace="slower"),
+        business=BusinessInfo(description="Plumbers in Leeds", services=["Boilers", "Leaks"]),
+        rules=[
+            BusinessRule(name="prices", instruction="Never quote prices."),
+            BusinessRule(name="off", instruction="Disabled rule.", enabled=False),
+        ],
+        faqs=[
+            Faq(question="Parking?", answer="Free on site."),
+            Faq(question="x", answer="y", enabled=False),
+        ],
+        languages=["en", "pl"],
+    )
+    text = cfg.rendered_instructions()
+    assert "warm" in text and "Plumbers in Leeds" in text and "Boilers" in text
+    assert "Never quote prices." in text and "Disabled rule." not in text
+    assert "Parking?" in text and "Free on site." in text and "\ny" not in text
+    assert "pl" in text.lower()
+
+
+def test_blocked_numbers_ignore_plus_prefix() -> None:
+    cfg = _cfg(blocked_numbers=["+447700900999"])
+    assert cfg.is_blocked("447700900999") and cfg.is_blocked("+447700900999")
+    assert not cfg.is_blocked("+447700900000") and not cfg.is_blocked(None)

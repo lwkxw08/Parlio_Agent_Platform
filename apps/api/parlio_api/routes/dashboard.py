@@ -1,15 +1,26 @@
-"""Dashboard-facing endpoints. Tenant auth (Supabase JWT -> tenant_id) lands in Phase 3; until
-then `tenant_id` is an explicit query parameter and is applied via RLS on the Postgres store."""
+"""Dashboard-facing endpoints.
+
+Every route requires a dashboard principal (see `parlio_api.auth`: dev mode = seeded demo owner,
+supabase mode = bearer JWT). `tenant_id` is still an explicit query parameter; callers may only
+name organisations they belong to, and the Postgres store applies RLS on top.
+"""
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from typing import Annotated
 
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
 
-from parlio_api.deps import StoreDep, TicketsDep
+from parlio_api.analytics import OverviewAnalytics, compute_overview
+from parlio_api.auth import UserDep, current_user
+from parlio_api.deps import SettingsDep, StoreDep, TicketsDep
+from parlio_api.onboarding import suggest_faqs
 from parlio_api.store import (
+    AssistantVersion,
+    CallFeedback,
+    CallFilter,
     CallRecord,
     RequiredField,
     Ticket,
@@ -20,9 +31,38 @@ from parlio_api.store import (
     TransferRecord,
     TransferStats,
 )
-from parlio_voice.models import AssistantConfig, Destination, TicketIntake, TransferConfig
+from parlio_voice.models import AssistantConfig, Destination, Faq, TicketIntake, TransferConfig
 
-router = APIRouter(prefix="/v1", tags=["dashboard"])
+router = APIRouter(prefix="/v1", tags=["dashboard"], dependencies=[Depends(current_user)])
+
+
+class VersionSummary(BaseModel):
+    version: int
+    created_at: datetime
+    created_by: str | None = None
+    note: str | None = None
+    name: str
+    greeting: str
+    faq_count: int
+    rule_count: int
+
+    @classmethod
+    def of(cls, v: AssistantVersion) -> VersionSummary:
+        return cls(
+            version=v.version,
+            created_at=v.created_at,
+            created_by=v.created_by,
+            note=v.note,
+            name=v.config.name,
+            greeting=v.config.greeting,
+            faq_count=len(v.config.faqs),
+            rule_count=len(v.config.rules),
+        )
+
+
+class ShareLink(BaseModel):
+    token: str
+    url: str
 
 
 class AssistantUpsert(BaseModel):
@@ -56,6 +96,38 @@ async def upsert_assistant(
     return body.config
 
 
+@router.get("/assistants/{assistant_id}/versions", response_model=list[VersionSummary])
+async def list_versions(assistant_id: str, store: StoreDep) -> list[VersionSummary]:
+    return [VersionSummary.of(v) for v in await store.list_assistant_versions(assistant_id)]
+
+
+@router.get("/assistants/{assistant_id}/versions/{version}", response_model=AssistantConfig)
+async def get_version(assistant_id: str, version: int, store: StoreDep) -> AssistantConfig:
+    cfg = await store.get_assistant_version(assistant_id, version)
+    if cfg is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "version not found")
+    return cfg
+
+
+@router.post("/assistants/{assistant_id}/rollback/{version}", response_model=AssistantConfig)
+async def rollback_version(assistant_id: str, version: int, store: StoreDep) -> AssistantConfig:
+    """Re-publish an earlier version as a new version (history is never rewritten)."""
+    cfg = await store.get_assistant_version(assistant_id, version)
+    if cfg is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "version not found")
+    await store.upsert_assistant(cfg, [])
+    return cfg
+
+
+@router.get("/assistants/{assistant_id}/faqs/suggest", response_model=list[Faq])
+async def suggest_assistant_faqs(assistant_id: str, store: StoreDep) -> list[Faq]:
+    cfg = await store.get_assistant(assistant_id)
+    if cfg is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "assistant not found")
+    calls = await store.list_calls(cfg.tenant_id, limit=200)
+    return suggest_faqs(calls, cfg.faqs)
+
+
 @router.get("/assistants/{assistant_id}/required-fields", response_model=list[RequiredField])
 async def get_required_fields(assistant_id: str, store: StoreDep) -> list[RequiredField]:
     return await store.required_fields(assistant_id)
@@ -73,9 +145,22 @@ async def put_required_fields(
 
 @router.get("/calls", response_model=list[CallRecord])
 async def list_calls(
-    store: StoreDep, tenant_id: str | None = None, limit: int = 50
+    store: StoreDep,
+    tenant_id: str | None = None,
+    limit: int = 50,
+    kind: str | None = None,
+    since: datetime | None = None,
+    until: datetime | None = None,
+    hour: Annotated[int | None, Query(ge=0, le=23)] = None,
+    q: str | None = None,
 ) -> list[CallRecord]:
-    return await store.list_calls(tenant_id, limit)
+    if kind is None and since is None and until is None and hour is None and q is None:
+        return await store.list_calls(tenant_id, limit)
+    return await store.filter_calls(
+        CallFilter(
+            tenant_id=tenant_id, kind=kind, since=since, until=until, hour=hour, q=q, limit=limit
+        )
+    )
 
 
 @router.get("/calls/{call_id}", response_model=CallRecord)
@@ -84,6 +169,56 @@ async def get_call(call_id: str, store: StoreDep) -> CallRecord:
     if call is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "call not found")
     return call
+
+
+@router.post("/calls/{call_id}/read", response_model=CallRecord)
+async def mark_read(call_id: str, store: StoreDep, read: bool = True) -> CallRecord:
+    call = await store.mark_call_read(call_id, read)
+    if call is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "call not found")
+    return call
+
+
+@router.post("/calls/{call_id}/feedback", response_model=CallRecord)
+async def call_feedback(
+    call_id: str, body: CallFeedback, store: StoreDep, user: UserDep
+) -> CallRecord:
+    body.actor = body.actor or user.email
+    call = await store.add_call_feedback(call_id, body)
+    if call is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "call not found")
+    return call
+
+
+@router.post("/calls/{call_id}/share", response_model=ShareLink)
+async def share_call(call_id: str, store: StoreDep, settings: SettingsDep) -> ShareLink:
+    token = await store.ensure_share_token(call_id)
+    if token is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "call not found")
+    return ShareLink(token=token, url=f"{settings.dashboard_url.rstrip('/')}/share/{token}")
+
+
+# -- analytics ---------------------------------------------------------------------------------
+
+
+@router.get("/analytics/overview", response_model=OverviewAnalytics)
+async def overview_analytics(
+    store: StoreDep,
+    tenant_id: str | None = None,
+    days: Annotated[int, Query(ge=1, le=365)] = 30,
+    timezone: str = "Europe/London",
+) -> OverviewAnalytics:
+    calls = await store.filter_calls(CallFilter(tenant_id=tenant_id, limit=5000))
+    contacts = await store.list_contacts(tenant_id, limit=5000)
+    return compute_overview(
+        calls,
+        contacts,
+        await store.transfer_stats(tenant_id),
+        await store.ticket_stats(tenant_id),
+        days=days,
+        timezone=timezone,
+        now=datetime.now(UTC),
+    )
 
 
 # -- transfers ---------------------------------------------------------------------------------

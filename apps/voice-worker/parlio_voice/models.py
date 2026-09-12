@@ -192,6 +192,60 @@ class TransferConfig(BaseModel):
         return next((k for k in self.urgent_keywords if k in low), None)
 
 
+class Faq(BaseModel):
+    id: str = Field(default_factory=lambda: uuid4().hex[:8])
+    category: str = "general"
+    question: str
+    answer: str
+    enabled: bool = True
+    source: str = "manual"  # manual | website | suggested
+
+
+class BusinessRule(BaseModel):
+    """Plain-English rule injected into the system prompt, e.g. 'Never quote prices'."""
+
+    id: str = Field(default_factory=lambda: uuid4().hex[:8])
+    name: str
+    instruction: str
+    enabled: bool = True
+
+
+class SmsTrigger(StrEnum):
+    AFTER_CALL = "after_call"
+    MISSED_CALL = "missed_call"
+    BOOKING_LINK = "booking_link"
+    ADDRESS = "address"
+    PAYMENT_LINK = "payment_link"
+    TICKET_CONFIRMATION = "ticket_confirmation"
+    CUSTOM = "custom"
+
+
+class SmsScenario(BaseModel):
+    """Text the AI may send mid/after call (delivery arrives with the SMS provider in Phase 5)."""
+
+    id: str = Field(default_factory=lambda: uuid4().hex[:8])
+    trigger: SmsTrigger = SmsTrigger.CUSTOM
+    name: str
+    template: str  # may use {business_name}, {caller_name}, {ticket_id}
+    enabled: bool = True
+
+
+class Persona(BaseModel):
+    tone: str = "friendly and professional"
+    formality: str = "conversational"  # conversational | formal | casual
+    pace: str = "normal"  # slower | normal | brisk
+    extra: str = ""
+
+
+class BusinessInfo(BaseModel):
+    description: str = ""
+    website: str | None = None
+    address: str | None = None
+    phone: str | None = None
+    email: str | None = None
+    services: list[str] = Field(default_factory=list)
+
+
 class AssistantConfig(BaseModel):
     tenant_id: str
     company_id: str
@@ -200,6 +254,14 @@ class AssistantConfig(BaseModel):
     name: str = "Parlio"
     business_name: str = "the business"
     language: str = "en"
+    languages: list[str] = Field(default_factory=lambda: ["en"])
+    business: BusinessInfo = Field(default_factory=BusinessInfo)
+    hours: Schedule = Field(default_factory=Schedule)
+    persona: Persona = Field(default_factory=Persona)
+    rules: list[BusinessRule] = Field(default_factory=list)
+    faqs: list[Faq] = Field(default_factory=list)
+    sms_scenarios: list[SmsScenario] = Field(default_factory=list)
+    blocked_numbers: list[str] = Field(default_factory=list)
     greeting: str = "Hi, thanks for calling {business_name}. How can I help you today?"
     instructions: str = (
         "You are {name}, the friendly and efficient phone receptionist for {business_name}. "
@@ -218,7 +280,59 @@ class AssistantConfig(BaseModel):
         return self.greeting.format(name=self.name, business_name=self.business_name)
 
     def rendered_instructions(self) -> str:
-        return self.instructions.format(name=self.name, business_name=self.business_name)
+        base = self.instructions.format(name=self.name, business_name=self.business_name)
+        return "\n\n".join([base, *self.knowledge_sections()])
+
+    def knowledge_sections(self) -> list[str]:
+        """Studio-managed prompt sections: persona, business, hours, rules, FAQs, languages."""
+        out: list[str] = []
+        p = self.persona
+        out.append(
+            f"Tone: {p.tone}; style: {p.formality}; pace: {p.pace}."
+            + (f" {p.extra}" if p.extra else "")
+        )
+        b = self.business
+        facts = [
+            f"About {self.business_name}: {b.description}" if b.description else "",
+            f"Address: {b.address}" if b.address else "",
+            f"Website: {b.website}" if b.website else "",
+            f"Email: {b.email}" if b.email else "",
+            f"Services: {', '.join(b.services)}" if b.services else "",
+        ]
+        if any(facts):
+            out.append("\n".join(f for f in facts if f))
+        if self.hours.always:
+            out.append("Opening hours: open 24 hours.")
+        else:
+            days = ", ".join(
+                f"{d.title()} {h.open:%H:%M}-{h.close:%H:%M}"
+                for d, h in self.hours.hours.items()
+                if h.open < h.close
+            )
+            out.append(f"Opening hours ({self.hours.timezone}): {days or 'not set'}.")
+        rules = [r.instruction for r in self.rules if r.enabled]
+        if rules:
+            out.append("Business rules you must follow:\n" + "\n".join(f"- {r}" for r in rules))
+        faqs = [f for f in self.faqs if f.enabled]
+        if faqs:
+            out.append(
+                "Frequently asked questions (answer from these when relevant):\n"
+                + "\n".join(f"Q: {f.question}\nA: {f.answer}" for f in faqs)
+            )
+        if len(self.languages) > 1:
+            out.append(
+                f"You can speak {', '.join(self.languages)}; reply in the caller's language."
+            )
+        return out
+
+    def is_blocked(self, number: str | None) -> bool:
+        if not number:
+            return False
+        digits = number.lstrip("+")
+        return any(digits == b.lstrip("+") for b in self.blocked_numbers)
+
+    def is_open(self, now: datetime | None = None) -> bool:
+        return self.hours.is_open(now)
 
     def consent_text(self) -> str | None:
         if not self.recording.enabled:
