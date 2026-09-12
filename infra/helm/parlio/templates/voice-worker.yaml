@@ -1,0 +1,49 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-voice-worker
+  labels: {{- include "parlio.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.voiceWorker.replicas }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate: { maxSurge: 1, maxUnavailable: 0 }
+  selector:
+    matchLabels: { app: voice-worker, release: {{ .Release.Name }} }
+  template:
+    metadata:
+      labels: { app: voice-worker, release: {{ .Release.Name }} }
+    spec:
+      terminationGracePeriodSeconds: {{ .Values.voiceWorker.terminationGracePeriodSeconds }}
+      containers:
+        - name: voice-worker
+          image: "{{ .Values.image.registry }}/voice-worker:{{ .Values.image.tag }}"
+          args: ["start"]
+          envFrom:
+            - secretRef: { name: {{ .Values.voiceWorker.envFrom.secretRef } }
+          env:
+            - { name: PARLIO_ENV, value: {{ .Values.env | quote }} }
+            - { name: PARLIO_REGION, value: {{ .Values.region | quote }} }
+            - { name: PARLIO_API_URL, value: "http://{{ .Release.Name }}-api:8000" }
+            - { name: PARLIO_REDIS_URL, value: "redis://{{ .Release.Name }}-redis-master:6379/0" }
+            - { name: PARLIO_DEMO_MODE, value: "false" }
+          ports:
+            - { name: health, containerPort: 8081 }
+          livenessProbe:
+            httpGet: { path: /, port: health }
+            initialDelaySeconds: 20
+          resources: {{- toYaml .Values.voiceWorker.resources | nindent 12 }}
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ .Release.Name }}-voice-worker
+spec:
+  scaleTargetRef: { apiVersion: apps/v1, kind: Deployment, name: {{ .Release.Name }}-voice-worker }
+  minReplicas: {{ .Values.voiceWorker.minReplicas }}
+  maxReplicas: {{ .Values.voiceWorker.maxReplicas }}
+  metrics:
+    - type: Pods
+      pods:
+        metric: { name: livekit_agents_active_jobs }
+        target: { type: AverageValue, averageValue: {{ .Values.voiceWorker.targetActiveCallsPerReplica | quote }} }

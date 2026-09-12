@@ -1,0 +1,19 @@
+# Local LiveKit server. Cluster mode (multi-node) only needs `redis` set - same file shape in Helm.
+port: 7880
+rtc:
+  tcp_port: 7881
+  port_range_start: 50000
+  port_range_end: 50100
+  use_external_ip: false
+redis:
+  address: redis:6379
+keys:
+  devkey: devsecret_devsecret_devsecret_dev
+logging:
+  level: info
+room:
+  auto_create: true
+  empty_timeout: 60
+sip:
+  # inbound SIP participants are placed in rooms matching the dispatch rule (see sip.yaml)
+  enabled: true

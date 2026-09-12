@@ -1,0 +1,57 @@
+# Sizing knobs are the enterprise-scale path: bump replicas/HPA maxima, keep everything else.
+image:
+  registry: ghcr.io/lwkxw08/parlio_agent_platform
+  tag: latest
+
+env: dev
+region: uk
+
+voiceWorker:
+  replicas: 2
+  minReplicas: 2
+  maxReplicas: 20
+  targetActiveCallsPerReplica: 15   # ~10-20 calls per vCPU; scaled on the worker's job-count metric
+  resources:
+    requests: { cpu: "1", memory: "1Gi" }
+    limits:   { cpu: "2", memory: "2Gi" }
+  terminationGracePeriodSeconds: 1800  # drain in-flight calls on rollout
+  envFrom:
+    secretRef: parlio-voice-secrets    # LIVEKIT_*, DEEPGRAM_API_KEY, OPENAI_API_KEY, CARTESIA_API_KEY ...
+
+api:
+  replicas: 2
+  resources:
+    requests: { cpu: "250m", memory: "256Mi" }
+    limits:   { cpu: "1", memory: "512Mi" }
+  envFrom:
+    secretRef: parlio-api-secrets      # PARLIO_WORKER_API_KEY, DATABASE_URL, TELNYX_API_KEY ...
+  ingress:
+    enabled: true
+    host: api.dev.parlio.example
+    className: nginx
+
+sip:
+  enabled: true
+  image: livekit/sip:latest
+  replicas: 1                          # 2+ behind DNS SRV for blue/green (Phase 6)
+  hostNetwork: true
+  sipPort: 5060
+  rtpPortRange: "10000-20000"
+  envFrom:
+    secretRef: parlio-sip-secrets      # LIVEKIT_API_KEY/SECRET
+
+livekit:
+  enabled: true
+  livekit:
+    redis:
+      address: parlio-redis-master:6379
+    rtc:
+      use_external_ip: true
+      port_range_start: 50000
+      port_range_end: 60000
+
+redis:
+  enabled: true
+  architecture: standalone
+  auth:
+    enabled: false
