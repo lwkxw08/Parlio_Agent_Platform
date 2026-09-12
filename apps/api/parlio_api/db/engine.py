@@ -4,11 +4,10 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from sqlalchemy import Connection, text
-from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, create_async_engine
-
 from alembic import command
 from alembic.config import Config
+from sqlalchemy import Connection, text
+from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, create_async_engine
 
 ALEMBIC_INI = Path(__file__).resolve().parents[2] / "alembic.ini"
 

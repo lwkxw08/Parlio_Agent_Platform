@@ -3,10 +3,9 @@ from __future__ import annotations
 import asyncio
 import os
 
+from alembic import context
 from sqlalchemy import Connection
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
-
-from alembic import context
 
 config = context.config
 url = os.environ.get("PARLIO_DATABASE_URL") or config.get_main_option("sqlalchemy.url")

@@ -32,6 +32,10 @@ src = ["apps/voice-worker", "apps/api", "tools/latency-harness"]
 select = ["E", "F", "I", "B", "UP", "ASYNC", "SIM", "RUF"]
 ignore = ["RUF012"]
 
+[tool.ruff.lint.isort]
+# apps/api/alembic/ (migrations dir) would otherwise make the alembic package look first-party
+known-third-party = ["alembic"]
+
 [tool.mypy]
 python_version = "3.12"
 strict = true
