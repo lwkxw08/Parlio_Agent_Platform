@@ -33,3 +33,11 @@ connection's username/password supplied via env substitution at apply time.
 Create a second inbound trunk (e.g. Twilio BYOC) with the same numbers; the same dispatch rule
 matches both. Number routing is switched at the carrier through the `TelephonyProvider`
 abstraction in `apps/api/parlio_api/telephony/`.
+
+## Dev environment (as deployed)
+
+Telnyx FQDN connection `parlio-dev-livekit-sip` (UDP, London anchorsite, Europe SIP region,
+G.722/G.711/Opus) points at the dev VM's public IP:5060; the UK test DID is assigned to it.
+On LiveKit, `infra/vps/lk_setup.py` creates the `telnyx-uk-inbound` trunk + `parlio-inbound`
+dispatch rule. Inbound calls are matched on the DID only (no source-IP allowlist) in dev;
+add Telnyx's signalling ranges to `allowed_addresses` for staging/production.

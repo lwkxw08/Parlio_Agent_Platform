@@ -1,0 +1,115 @@
+
+# Single-VM deployment (dev/staging test number). Provider-agnostic: any Ubuntu box with Docker.
+# Render config first: ./deploy.sh (reads .env, writes config/ from *.tmpl), then
+#   docker compose --env-file .env up -d --build
+name: parlio
+
+services:
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    network_mode: host
+    volumes:
+      - ./config/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports: ["127.0.0.1:6379:6379"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: parlio
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: parlio
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./config/postgres-init.sql:/docker-entrypoint-initdb.d/10-app-role.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U parlio"]
+      interval: 5s
+
+  minio:
+    image: quay.io/minio/minio:latest
+    restart: unless-stopped
+    command: server /data
+    environment:
+      MINIO_ROOT_USER: parlio
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    volumes: ["minio:/data"]
+
+  minio-init:
+    image: quay.io/minio/mc:latest
+    depends_on: [minio]
+    entrypoint: >
+      /bin/sh -c "sleep 3 && mc alias set local http://minio:9000 parlio ${MINIO_ROOT_PASSWORD} &&
+      mc mb -p local/parlio-recordings || true"
+
+  # LiveKit + SIP use the host network so SDP/ICE advertise the real public IP.
+  livekit:
+    image: livekit/livekit-server:latest
+    restart: unless-stopped
+    command: --config /etc/livekit.yaml
+    network_mode: host
+    volumes: ["./config/livekit.yaml:/etc/livekit.yaml:ro"]
+    depends_on:
+      redis: { condition: service_healthy }
+
+  livekit-sip:
+    image: livekit/sip:latest
+    restart: unless-stopped
+    command: --config /etc/sip.yaml
+    network_mode: host
+    volumes: ["./config/sip.yaml:/etc/sip.yaml:ro"]
+    depends_on: [livekit]
+
+  api:
+    build:
+      context: ../..
+      dockerfile: apps/api/Dockerfile
+    restart: unless-stopped
+    ports: ["127.0.0.1:8000:8000"]
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      PARLIO_REDIS_URL: redis://redis:6379/0
+      PARLIO_STORE_BACKEND: postgres
+      PARLIO_DATABASE_URL: postgresql+asyncpg://parlio_app:${POSTGRES_APP_PASSWORD}@postgres:5432/parlio
+      PARLIO_DASHBOARD_URL: ${DASHBOARD_URL}
+      PARLIO_CORS_ORIGINS: '["${DASHBOARD_URL}"]'
+    depends_on:
+      redis: { condition: service_healthy }
+      postgres: { condition: service_healthy }
+
+  voice-worker:
+    build:
+      context: ../..
+      dockerfile: apps/voice-worker/Dockerfile
+    restart: unless-stopped
+    env_file:
+      - path: .env
+        required: false
+    extra_hosts: ["host.docker.internal:host-gateway"]
+    environment:
+      LIVEKIT_URL: ws://host.docker.internal:7880
+      PARLIO_API_URL: http://api:8000
+      PARLIO_REDIS_URL: redis://redis:6379/0
+      PARLIO_RECORDING_S3_ENDPOINT: http://minio:9000
+      PARLIO_RECORDING_BUCKET: parlio-recordings
+      PARLIO_RECORDING_S3_ACCESS_KEY: parlio
+      PARLIO_RECORDING_S3_SECRET_KEY: ${MINIO_ROOT_PASSWORD}
+    depends_on: [livekit, api]
+
+volumes:
+  pgdata:
+  minio:
+  caddy_data:
+  caddy_config:
