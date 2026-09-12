@@ -83,6 +83,12 @@ jobs:
       - run: npm run pages:build
         env:
           NEXT_PUBLIC_API_URL: ${{ vars.NEXT_PUBLIC_API_URL || 'http://localhost:8000' }}
+      - name: Preview alias (lowercase alphanumerics and dashes, max 63 chars)
+        id: alias
+        run: |
+          alias=$(echo "${{ github.head_ref || github.ref_name }}" \
+            | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9]+/-/g; s/^-+|-+$//g' | cut -c1-63)
+          echo "alias=$alias" >> "$GITHUB_OUTPUT"
       - name: Deploy
         if: env.HAS_CF == 'true'
         uses: cloudflare/wrangler-action@v3
@@ -93,7 +99,7 @@ jobs:
           command: >-
             ${{ github.ref == 'refs/heads/main'
                 && 'deploy'
-                || format('versions upload --preview-alias {0}', github.head_ref || github.ref_name) }}
+                || format('versions upload --preview-alias {0}', steps.alias.outputs.alias) }}
       - if: env.HAS_CF != 'true'
         run: echo "CLOUDFLARE_API_TOKEN not set - skipping deploy"
 
