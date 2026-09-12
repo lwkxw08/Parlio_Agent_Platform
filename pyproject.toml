@@ -20,6 +20,7 @@ dev = [
     "pytest-asyncio>=0.25",
     "httpx>=0.28",
     "pre-commit>=4.0",
+    "asyncpg-stubs>=0.30",
 ]
 
 [tool.ruff]
