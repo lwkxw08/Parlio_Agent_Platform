@@ -6,10 +6,12 @@ import time
 from typing import Any
 
 import pytest
+from fastapi import FastAPI
 from httpx import AsyncClient
 
 from parlio_api.auth import DEV_TENANT, DEV_USER_EMAIL, encode_supabase_jwt
 from parlio_api.onboarding import analyse_html, suggest_faqs
+from parlio_api.postcall import PostCallProcessor
 from parlio_api.settings import get_settings
 from parlio_api.store import CallRecord
 from parlio_voice.models import AssistantConfig, BusinessRule, CallEvent, CallEventType, Faq
@@ -338,10 +340,12 @@ async def test_member_invites_roles_and_removal(client: AsyncClient) -> None:
 # -- analytics ---------------------------------------------------------------------------------
 
 
-async def test_analytics_overview(client: AsyncClient) -> None:
+async def test_analytics_overview(client: AsyncClient, app: FastAPI) -> None:
     await _call(client, "a1", "+447700900001", duration=60)
     await _call(client, "a2", "+447700900001", duration=120)
     await _call(client, "m1", "+447700900002", answered=False, reason="no_answer", duration=0)
+    proc: PostCallProcessor = app.state.postcall
+    await proc.drain()
     r = await client.get("/v1/analytics/overview", params={"tenant_id": "demo", "days": 7})
     assert r.status_code == 200, r.text
     a = r.json()
@@ -356,3 +360,28 @@ async def test_analytics_overview(client: AsyncClient) -> None:
     assert a["prospects"]["contacts"] == 2 and a["prospects"]["returning_callers"] == 1
     assert a["previous"]["total_calls"] == 0 and a["change"]["total_calls"] is None
     assert (await client.get("/v1/analytics/overview", params={"days": 0})).status_code == 422
+
+
+async def test_analytics_query_and_ask_ai(client: AsyncClient, app: FastAPI) -> None:
+    await _call(client, "q1", "+447700900001", duration=60)
+    await _call(client, "q2", "+447700900001", duration=120)
+    await _call(client, "q3", "+447700900002", answered=False, reason="no_answer", duration=0)
+    proc: PostCallProcessor = app.state.postcall
+    await proc.drain()
+
+    r = await client.post("/v1/analytics/query", json={"question": "last 7 days vs last month"})
+    assert r.status_code == 200, r.text
+    a = r.json()
+    assert a["question"]["source"] == "rules" and a["compare"] is not None
+    assert a["current"]["summary"]["total_calls"] == 3
+    assert a["current"]["first_time_callers"] == 2 and a["current"]["returning_callers"] == 1
+    assert a["current"]["business_hours_calls"] + a["current"]["after_hours_calls"] == 3
+    assert sum(a["current"]["by_weekday"]) == 3 and len(a["current"]["daily"]) == 7
+    assert "total_calls" in a["change"]
+
+    r = await client.post("/v1/analytics/query", json={"question": "after hours this week"})
+    assert r.status_code == 200
+    assert r.json()["question"]["period"]["hours"] == "after"
+    assert r.json()["compare"] is None
+
+    assert (await client.post("/v1/analytics/query", json={})).status_code == 422
