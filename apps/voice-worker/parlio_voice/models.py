@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, time
 from enum import StrEnum
 from typing import Any
 from uuid import uuid4
+from zoneinfo import ZoneInfo
 
 from pydantic import BaseModel, Field
 
@@ -64,6 +65,133 @@ class RecordingConfig(BaseModel):
     )
 
 
+class DayHours(BaseModel):
+    """Opening window for one weekday, local time. `open >= close` means closed."""
+
+    open: time = time(9, 0)
+    close: time = time(17, 30)
+
+    def contains(self, t: time) -> bool:
+        return self.open <= t < self.close
+
+
+WEEKDAYS = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
+
+
+class Schedule(BaseModel):
+    """Weekly availability, keyed by weekday. Missing day = unavailable. Empty = always."""
+
+    timezone: str = "Europe/London"
+    hours: dict[str, DayHours] = Field(
+        default_factory=lambda: {d: DayHours() for d in WEEKDAYS[:5]}
+    )
+    always: bool = False
+
+    def is_open(self, now: datetime | None = None) -> bool:
+        if self.always:
+            return True
+        local = (now or datetime.now(UTC)).astimezone(ZoneInfo(self.timezone))
+        day = self.hours.get(WEEKDAYS[local.weekday()])
+        return day is not None and day.contains(local.time().replace(tzinfo=None))
+
+
+class DestinationKind(StrEnum):
+    PSTN = "pstn"  # dial out via carrier, e.g. tel:+447700900000
+    SIP = "sip"  # full SIP URI on the customer's PBX/trunk
+    EXTENSION = "extension"  # extension on the customer's BYO trunk (Phase 5b)
+
+
+class Destination(BaseModel):
+    """A human (or hunt group) the assistant can hand a caller to."""
+
+    id: str
+    name: str
+    department: str = "general"
+    kind: DestinationKind = DestinationKind.PSTN
+    address: str  # E.164 number, sip:user@host, or extension digits
+    priority: int = 0  # lower first within a department
+    schedule: Schedule = Field(default_factory=Schedule)
+    fallback_id: str | None = None
+    on_call: bool = False  # eligible for urgent/emergency escalation
+
+    def is_available(self, now: datetime | None = None) -> bool:
+        return self.schedule.is_open(now)
+
+
+class TransferMode(StrEnum):
+    WARM = "warm"  # AI briefs the human, then bridges
+    COLD = "cold"  # blind SIP REFER
+
+
+class AfterHoursBehaviour(StrEnum):
+    TICKET = "ticket"
+    VOICEMAIL = "voicemail"
+    BOTH = "both"
+
+
+class IntakeField(BaseModel):
+    name: str
+    prompt: str
+    required: bool = True
+
+
+DEFAULT_INTAKE = [
+    IntakeField(name="caller_name", prompt="the caller's full name"),
+    IntakeField(name="callback_number", prompt="the best number to call back on"),
+    IntakeField(name="reason", prompt="a one-sentence reason for the call"),
+    IntakeField(name="urgency", prompt="how urgent it is: low, normal, high or urgent"),
+    IntakeField(name="callback_window", prompt="when they would like a callback", required=False),
+]
+
+
+class TransferConfig(BaseModel):
+    enabled: bool = True
+    mode: TransferMode = TransferMode.WARM
+    ring_timeout_s: int = 25
+    destinations: list[Destination] = Field(default_factory=list)
+    urgent_keywords: list[str] = Field(
+        default_factory=lambda: [
+            "emergency",
+            "gas leak",
+            "flooding",
+            "fire",
+            "chest pain",
+            "not breathing",
+            "burst pipe",
+        ]
+    )
+    after_hours: AfterHoursBehaviour = AfterHoursBehaviour.TICKET
+    intake: list[IntakeField] = Field(default_factory=lambda: list(DEFAULT_INTAKE))
+    sla_minutes: dict[str, int] = Field(
+        default_factory=lambda: {"urgent": 15, "high": 60, "normal": 240, "low": 1440}
+    )
+
+    def departments(self) -> list[str]:
+        seen: dict[str, None] = {}
+        for d in self.destinations:
+            seen.setdefault(d.department, None)
+        return list(seen)
+
+    def candidates(
+        self, department: str | None = None, now: datetime | None = None, urgent: bool = False
+    ) -> list[Destination]:
+        """Available destinations in ring order; urgent calls may go to on-call staff 24/7."""
+        pool = [
+            d
+            for d in self.destinations
+            if department is None or d.department.lower() == department.lower()
+        ]
+        avail = [d for d in pool if d.is_available(now) or (urgent and d.on_call)]
+        return sorted(avail, key=lambda d: (not (urgent and d.on_call), d.priority))
+
+    def by_id(self, dest_id: str) -> Destination | None:
+        return next((d for d in self.destinations if d.id == dest_id), None)
+
+    def matches_urgent(self, text: str) -> str | None:
+        low = text.lower()
+        return next((k for k in self.urgent_keywords if k in low), None)
+
+
 class AssistantConfig(BaseModel):
     tenant_id: str
     company_id: str
@@ -84,6 +212,7 @@ class AssistantConfig(BaseModel):
     voice: VoiceConfig = Field(default_factory=VoiceConfig)
     turn: TurnTuning = Field(default_factory=TurnTuning)
     recording: RecordingConfig = Field(default_factory=RecordingConfig)
+    transfer: TransferConfig = Field(default_factory=TransferConfig)
 
     def rendered_greeting(self) -> str:
         return self.greeting.format(name=self.name, business_name=self.business_name)
@@ -111,6 +240,40 @@ class CallEventType(StrEnum):
     RECORDING_STARTED = "call.recording_started"
     CALL_ENDED = "call.ended"
     CALL_FAILED = "call.failed"
+    TRANSFER_STARTED = "call.transfer_started"
+    TRANSFER_COMPLETED = "call.transfer_completed"
+    TICKET_CREATED = "call.ticket_created"
+    ESCALATION = "call.escalation"
+
+
+class TransferOutcome(StrEnum):
+    ANSWERED = "answered"
+    NO_ANSWER = "no_answer"
+    VOICEMAIL = "voicemail"
+    REJECTED = "rejected"
+    TICKETED = "ticketed"
+    UNAVAILABLE = "unavailable"
+
+
+class TicketPriority(StrEnum):
+    LOW = "low"
+    NORMAL = "normal"
+    HIGH = "high"
+    URGENT = "urgent"
+
+
+class TicketIntake(BaseModel):
+    """What the assistant collects before raising a ticket (worker -> API)."""
+
+    call_id: str | None = None
+    caller_name: str | None = None
+    caller_number: str | None = None
+    reason: str
+    priority: TicketPriority = TicketPriority.NORMAL
+    category: str | None = None
+    department: str | None = None
+    callback_window: str | None = None
+    source: str = "ai_intake"  # ai_intake | no_answer | after_hours | escalation | manual
 
 
 class CallEvent(BaseModel):

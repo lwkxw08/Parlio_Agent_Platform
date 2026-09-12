@@ -19,6 +19,13 @@ from parlio_api.postcall import Analyser, HeuristicAnalyser, OpenAIAnalyser, Pos
 from parlio_api.routes import dashboard, worker
 from parlio_api.settings import Settings, get_settings
 from parlio_api.store import CallStore, MemoryStore
+from parlio_api.tickets import (
+    LogNotifier,
+    Notifier,
+    SlaMonitor,
+    TicketService,
+    WebhookNotifier,
+)
 from parlio_voice.config_client import DEMO_CONFIG
 from parlio_voice.models import CallEvent, CallEventType
 
@@ -32,6 +39,7 @@ async def consume_events(
     group: str,
     stop: asyncio.Event,
     postcall: PostCallProcessor | None = None,
+    tickets: TicketService | None = None,
 ) -> None:
     """Redis Streams consumer: folds worker call events into the store.
 
@@ -60,9 +68,17 @@ async def consume_events(
                         applied = await store.apply_event(ev)
                         if applied and postcall and ev.type == CallEventType.CALL_ENDED:
                             postcall.enqueue(ev.call_id)
+                        if applied and tickets and ev.type == CallEventType.TICKET_CREATED:
+                            await tickets.rebuild_from_event(ev)
                     except Exception:
                         log.exception("bad event %s", msg_id)
                 await redis.xack(stream, group, msg_id)
+
+
+def build_notifier(settings: Settings) -> Notifier:
+    if settings.notify_webhook_url:
+        return WebhookNotifier(settings.notify_webhook_url)
+    return LogNotifier()
 
 
 def build_analyser(settings: Settings) -> Analyser:
@@ -104,13 +120,24 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     postcall = PostCallProcessor(store, build_analyser(settings), settings.postcall_concurrency)
     app.state.postcall = postcall
+    notifier = build_notifier(settings)
+    tickets = TicketService(store, notifier)
+    app.state.tickets = tickets
+    sla = SlaMonitor(tickets, settings.sla_check_interval_s)
+    sla.start()
 
     stop = asyncio.Event()
     consumer: asyncio.Task[None] | None = None
     if redis is not None:
         consumer = asyncio.create_task(
             consume_events(
-                redis, store, settings.events_stream, settings.events_consumer_group, stop, postcall
+                redis,
+                store,
+                settings.events_stream,
+                settings.events_consumer_group,
+                stop,
+                postcall,
+                tickets,
             )
         )
     try:
@@ -122,6 +149,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             with suppress(asyncio.CancelledError):
                 await consumer
         await postcall.close()
+        await sla.aclose()
+        if isinstance(notifier, WebhookNotifier):
+            await notifier.aclose()
         if redis is not None:
             await redis.aclose()
         if engine is not None:

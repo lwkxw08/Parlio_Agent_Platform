@@ -7,7 +7,7 @@ import logging
 import httpx
 from redis.asyncio import Redis
 
-from parlio_voice.models import AssistantConfig
+from parlio_voice.models import AssistantConfig, Destination, Schedule, TransferConfig
 from parlio_voice.settings import Settings
 
 log = logging.getLogger("parlio.config")
@@ -24,6 +24,25 @@ DEMO_CONFIG = AssistantConfig(
         "sentences. Take the caller's name, phone number and the problem, and say a plumber "
         "will call back within the hour. Never quote prices."
     ),
+    transfer=TransferConfig(
+        destinations=[
+            Destination(
+                id="office",
+                name="the office",
+                department="general",
+                address="+441614960000",
+                fallback_id="oncall",
+            ),
+            Destination(
+                id="oncall",
+                name="the on-call plumber",
+                department="emergencies",
+                address="+447700900000",
+                on_call=True,
+                schedule=Schedule(always=True),
+            ),
+        ]
+    ),
 )
 
 
@@ -36,6 +55,10 @@ class ConfigClient:
             headers={"X-Worker-Key": settings.worker_api_key},
             timeout=httpx.Timeout(2.0, connect=1.0),
         )
+
+    @property
+    def http(self) -> httpx.AsyncClient:
+        return self._http
 
     async def aclose(self) -> None:
         await self._http.aclose()

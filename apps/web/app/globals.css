@@ -23,3 +23,19 @@ a { color: var(--accent); }
 .msg.user { background: #1b2733; align-self: flex-start; }
 .msg.assistant { background: #1c2a4a; align-self: flex-end; }
 .muted { color: var(--muted); }
+.pill.warn { background: #4a3a12; color: #ffd166; }
+.pill.urgent { background: #47171c; color: #ff7b86; }
+.pill.high { background: #4a3a12; color: #ffd166; }
+.small { font-size: 0.8rem; }
+.row { display: flex; flex-wrap: wrap; gap: 0.4rem; align-items: center; }
+.row.between { justify-content: space-between; padding: 0.2rem 0; }
+.inline { background: var(--panel); color: var(--fg); border: 1px solid var(--line); border-radius: 6px; padding: 0.2rem 0.5rem; width: 10rem; }
+.board { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1rem; }
+.column h2 { font-size: 1rem; margin: 0 0 0.6rem; }
+.ticket { background: var(--panel); border: 1px solid var(--line); border-left: 3px solid var(--line); border-radius: 10px; padding: 0.8rem; margin-bottom: 0.7rem; display: flex; flex-direction: column; gap: 0.4rem; }
+.ticket.urgent { border-left-color: #ff7b86; }
+.ticket.high { border-left-color: #ffd166; }
+.ticket .reason { color: var(--fg); text-decoration: none; font-weight: 500; }
+.ticket .reason:hover { color: var(--accent); }
+.actions button { background: var(--line); color: var(--fg); border: 0; border-radius: 6px; padding: 0.3rem 0.7rem; cursor: pointer; font-size: 0.8rem; }
+.actions button:hover { background: var(--accent); }

@@ -23,6 +23,11 @@ class Settings(BaseSettings):
         description="Answer with a built-in demo assistant when the Core API has no config.",
     )
 
+    outbound_sip_trunk_id: str | None = Field(
+        default=None,
+        description="LiveKit outbound SIP trunk used to dial humans for warm transfers.",
+    )
+
     recording_bucket: str | None = None
     recording_s3_endpoint: str | None = None
     recording_s3_region: str = "auto"

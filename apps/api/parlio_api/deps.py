@@ -8,6 +8,7 @@ from fastapi import Depends, Header, HTTPException, Request, status
 from parlio_api.postcall import PostCallProcessor
 from parlio_api.settings import Settings, get_settings
 from parlio_api.store import CallStore
+from parlio_api.tickets import TicketService
 
 
 def get_store(request: Request) -> CallStore:
@@ -20,7 +21,13 @@ def get_postcall(request: Request) -> PostCallProcessor:
     return proc
 
 
+def get_tickets(request: Request) -> TicketService:
+    svc: TicketService = request.app.state.tickets
+    return svc
+
+
 StoreDep = Annotated[CallStore, Depends(get_store)]
+TicketsDep = Annotated[TicketService, Depends(get_tickets)]
 PostCallDep = Annotated[PostCallProcessor, Depends(get_postcall)]
 SettingsDep = Annotated[Settings, Depends(get_settings)]
 

@@ -28,7 +28,7 @@ from livekit.agents import (
     WorkerOptions,
     cli,
 )
-from livekit.agents.voice.events import ConversationItemAddedEvent
+from livekit.agents.voice.events import ConversationItemAddedEvent, UserInputTranscribedEvent
 from livekit.plugins.turn_detector.multilingual import MultilingualModel
 from redis.asyncio import Redis
 
@@ -39,6 +39,13 @@ from parlio_voice.latency import LatencyTracker
 from parlio_voice.models import AssistantConfig, CallEventType, TurnLatency
 from parlio_voice.recording import CallRecorder
 from parlio_voice.settings import get_settings
+from parlio_voice.tools import (
+    ReceptionistTools,
+    TicketClient,
+    after_hours_instruction,
+    build_tools,
+)
+from parlio_voice.transfer import LiveKitSipBridge, TransferEngine
 
 load_dotenv()
 log = logging.getLogger("parlio.agent")
@@ -54,8 +61,14 @@ def prewarm(proc: JobProcess) -> None:
 
 
 class Receptionist(Agent):
-    def __init__(self, cfg: AssistantConfig) -> None:
-        super().__init__(instructions=cfg.rendered_instructions())
+    def __init__(self, cfg: AssistantConfig, tools: ReceptionistTools | None = None) -> None:
+        instructions = cfg.rendered_instructions()
+        fn_tools = []
+        if tools is not None and cfg.transfer.enabled:
+            avail = tools.availability()
+            instructions += after_hours_instruction(cfg, avail["someone_available"])
+            fn_tools = build_tools(tools)
+        super().__init__(instructions=instructions, tools=fn_tools)
         self.cfg = cfg
 
 
@@ -132,6 +145,35 @@ async def entrypoint(ctx: JobContext) -> None:
     lk = api.LiveKitAPI()
     recorder = CallRecorder(settings, lk, ctx.room)
 
+    def _emit(kind: CallEventType, payload: dict[str, object]) -> None:
+        events.emit(cfg, call_id, kind, payload)
+
+    async def _leave_after_bridge() -> None:
+        # Human and caller stay in the room; the agent drops out so they talk directly.
+        ctx.shutdown(reason="transferred")
+
+    bridge = LiveKitSipBridge(
+        lk,
+        ctx.room.name,
+        participant.identity,
+        settings.outbound_sip_trunk_id,
+        on_leave=_leave_after_bridge,
+    )
+    tools = ReceptionistTools(
+        cfg,
+        call_id,
+        caller,
+        TransferEngine(cfg.transfer, bridge),
+        TicketClient(config_client.http),
+        _emit,
+        lambda text: session.say(text, allow_interruptions=False).wait_for_playout(),
+    )
+
+    @session.on("user_input_transcribed")
+    def _on_user_text(ev: UserInputTranscribedEvent) -> None:
+        if ev.is_final:
+            tools.observe_user_text(ev.transcript)
+
     async def _record_caller_track() -> None:
         for pub in participant.track_publications.values():
             if pub.kind == rtc.TrackKind.KIND_AUDIO and pub.sid:
@@ -145,6 +187,8 @@ async def entrypoint(ctx: JobContext) -> None:
                 return
 
     async def _on_shutdown(reason: str) -> None:
+        if tools.transferred and reason != "transferred":
+            reason = "transferred"
         await recorder.stop()
         history = [
             {"role": item.role, "text": item.text_content}
@@ -173,7 +217,7 @@ async def entrypoint(ctx: JobContext) -> None:
     ctx.add_shutdown_callback(_on_shutdown)
 
     await session.start(
-        agent=Receptionist(cfg),
+        agent=Receptionist(cfg, tools),
         room=ctx.room,
         room_input_options=RoomInputOptions(participant_identity=participant.identity),
         room_output_options=RoomOutputOptions(transcription_enabled=True),
