@@ -360,7 +360,7 @@ def build_tools(t: ReceptionistTools) -> list[Any]:
         )
         return {"ticket_id": ticket.get("id"), "status": ticket.get("status")}
 
-    tools = [check_availability, transfer_to_human, create_ticket] if cfg.enabled else []
+    tools = [check_availability, transfer_to_human, create_ticket]
     triggers = t.sms_triggers()
     if triggers:
 

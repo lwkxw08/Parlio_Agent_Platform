@@ -327,6 +327,113 @@ async function authHeaders(): Promise<Record<string, string>> {
   return token ? { authorization: `Bearer ${decodeURIComponent(token)}` } : {};
 }
 
+export type Message = {
+  id: string;
+  tenant_id: string;
+  call_id: string | null;
+  to: string;
+  sender: string | null;
+  body: string;
+  trigger: string;
+  status: "sent" | "failed" | "skipped";
+  provider: string | null;
+  error: string | null;
+  created_at: string;
+};
+
+export type NotifyChannel = "email" | "sms" | "slack" | "webhook";
+export type NotificationRule = {
+  id: string;
+  tenant_id: string;
+  name: string;
+  channel: NotifyChannel;
+  target: string;
+  events: string[];
+  enabled: boolean;
+  qualified_only: boolean;
+  departments: string[];
+  created_at: string;
+};
+export type Notification = {
+  id: string;
+  rule_id: string | null;
+  channel: NotifyChannel;
+  target: string;
+  event: string;
+  title: string;
+  body: string;
+  status: string;
+  error: string | null;
+  created_at: string;
+};
+
+export type CalendarProvider = "google" | "microsoft" | "booking_link" | "simulated";
+export type CalendarConnection = {
+  id: string;
+  provider: CalendarProvider;
+  name: string;
+  status: "pending" | "connected" | "error";
+  calendar_id: string;
+  account_email: string | null;
+  booking_url: string | null;
+  booking_vendor: string | null;
+  slot_minutes: number;
+  buffer_minutes: number;
+  has_token: boolean;
+  bookable: boolean;
+  created_at: string;
+};
+export type Booking = {
+  id: string;
+  connection_id: string;
+  call_id: string | null;
+  start: string;
+  end: string;
+  name: string;
+  phone: string | null;
+  notes: string | null;
+  status: string;
+  created_at: string;
+};
+export type SyncLogEntry = { id: string; connection_id: string; action: string; ok: boolean; detail: string | null; at: string };
+
+export type TrunkMode = "forward" | "pbx" | "byo_register";
+export type DdiRoute = { id?: string; e164: string; assistant_id: string; department: string | null; when: "always" | "out_of_hours" | "no_answer"; label: string | null };
+export type SipTrunk = {
+  id: string;
+  tenant_id: string;
+  name: string;
+  mode: TrunkMode;
+  status: string;
+  enabled: boolean;
+  provider_preset: string | null;
+  sip_domain: string | null;
+  sip_username: string | null;
+  allowed_ips: string[];
+  pbx_address: string | null;
+  registrar: string | null;
+  username: string | null;
+  auth_username: string | null;
+  outbound_proxy: string | null;
+  register_expires_s: number;
+  transport: "udp" | "tcp" | "tls";
+  codecs: string[];
+  dtmf: string;
+  srtp: boolean;
+  ddis: DdiRoute[];
+  max_concurrent_calls: number;
+  lk_inbound_trunk_id: string | null;
+  lk_outbound_trunk_id: string | null;
+  registration: { state: string; detail: string | null; last_seen_at: string | null; expires_at: string | null };
+  last_error: string | null;
+  has_password: boolean;
+  created_at: string;
+};
+export type IssuedCredentials = { sip_domain: string; username: string; password: string; transport: string; codecs: string[]; dtmf: string };
+export type TrunkView = { trunk: SipTrunk; credentials: IssuedCredentials | null };
+export type TestCallResult = { ok: boolean; outcome: string; detail: string | null; simulated: boolean; at: string };
+export type ProviderGuide = { id: string; name: string; mode: TrunkMode; summary: string; steps: string[]; quirks: string[]; defaults: Record<string, unknown> };
+
 export type ApiResult<T> = { ok: true; data: T } | { ok: false; status: number; error: string };
 
 export async function request<T>(path: string, init: RequestInit = {}): Promise<ApiResult<T>> {
@@ -407,6 +514,14 @@ export const fetchContacts = (params: { tenant_id?: string; q?: string } = {}) =
 export const fetchContact = (id: string) => get<Contact>(`/v1/contacts/${id}`);
 export const fetchMembers = (tenant_id: string) => get<Member[]>(`/v1/organisations/${tenant_id}/members`);
 export const fetchShared = (token: string) => get<SharedCall>(`/v1/public/share/${token}`);
+export const fetchMessages = (tenant_id: string) => get<Message[]>(`/v1/messages${qs({ tenant_id })}`);
+export const fetchRules = (tenant_id: string) => get<NotificationRule[]>(`/v1/notifications/rules${qs({ tenant_id })}`);
+export const fetchNotificationLog = (tenant_id: string) => get<Notification[]>(`/v1/notifications/log${qs({ tenant_id })}`);
+export const fetchConnections = (tenant_id: string) => get<CalendarConnection[]>(`/v1/calendar/connections${qs({ tenant_id })}`);
+export const fetchBookings = (tenant_id: string) => get<Booking[]>(`/v1/calendar/bookings${qs({ tenant_id })}`);
+export const fetchSyncLog = (tenant_id: string) => get<SyncLogEntry[]>(`/v1/calendar/sync-log${qs({ tenant_id })}`);
+export const fetchTrunks = (tenant_id: string) => get<SipTrunk[]>(`/v1/telephony/trunks${qs({ tenant_id })}`);
+export const fetchGuides = () => get<ProviderGuide[]>("/v1/telephony/guides");
 
 export const secs = (s: number | null | undefined) => {
   if (s == null) return "—";
