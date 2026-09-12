@@ -5,10 +5,13 @@ from typing import Annotated
 
 from fastapi import Depends, Header, HTTPException, Request, status
 
+from parlio_api.billing import BillingService
 from parlio_api.calendar import CalendarService
+from parlio_api.compliance import ComplianceService
 from parlio_api.integrations import IntegrationHub
 from parlio_api.messaging import MessageService
 from parlio_api.notifications import NotificationService
+from parlio_api.observability import AuditLog, Telemetry
 from parlio_api.postcall import PostCallProcessor
 from parlio_api.settings import Settings, get_settings
 from parlio_api.sip import SipService
@@ -56,7 +59,31 @@ def get_hub(request: Request) -> IntegrationHub:
     return hub
 
 
+def get_billing(request: Request) -> BillingService:
+    svc: BillingService = request.app.state.billing
+    return svc
+
+
+def get_telemetry(request: Request) -> Telemetry:
+    t: Telemetry = request.app.state.telemetry
+    return t
+
+
+def get_audit(request: Request) -> AuditLog:
+    a: AuditLog = request.app.state.audit
+    return a
+
+
+def get_compliance(request: Request) -> ComplianceService:
+    c: ComplianceService = request.app.state.compliance
+    return c
+
+
 StoreDep = Annotated[CallStore, Depends(get_store)]
+BillingDep = Annotated[BillingService, Depends(get_billing)]
+TelemetryDep = Annotated[Telemetry, Depends(get_telemetry)]
+AuditDep = Annotated[AuditLog, Depends(get_audit)]
+ComplianceDep = Annotated[ComplianceService, Depends(get_compliance)]
 SmsDep = Annotated[MessageService, Depends(get_sms)]
 NotificationsDep = Annotated[NotificationService, Depends(get_notifications)]
 CalendarDep = Annotated[CalendarService, Depends(get_calendar)]

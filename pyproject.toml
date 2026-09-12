@@ -5,12 +5,13 @@ description = "Parlio - proprietary low-latency AI phone assistant platform"
 requires-python = ">=3.12"
 
 [tool.uv.workspace]
-members = ["apps/voice-worker", "apps/api", "tools/latency-harness"]
+members = ["apps/voice-worker", "apps/api", "tools/latency-harness", "tools/load-test"]
 
 [tool.uv.sources]
 parlio-voice = { workspace = true }
 parlio-api = { workspace = true }
 parlio-latency-harness = { workspace = true }
+parlio-load-test = { workspace = true }
 
 [dependency-groups]
 dev = [

@@ -13,6 +13,7 @@ members = [
     "parlio",
     "parlio-api",
     "parlio-latency-harness",
+    "parlio-load-test",
     "parlio-voice",
 ]
 
@@ -2191,7 +2192,10 @@ dependencies = [
     { name = "fastapi" },
     { name = "httpx" },
     { name = "livekit-api" },
+    { name = "opentelemetry-exporter-otlp-proto-http" },
+    { name = "opentelemetry-sdk" },
     { name = "parlio-voice" },
+    { name = "prometheus-client" },
     { name = "pydantic" },
     { name = "pydantic-settings" },
     { name = "redis" },
@@ -2207,7 +2211,10 @@ requires-dist = [
     { name = "fastapi", specifier = ">=0.115" },
     { name = "httpx", specifier = ">=0.28" },
     { name = "livekit-api", specifier = ">=1.0" },
+    { name = "opentelemetry-exporter-otlp-proto-http", specifier = ">=1.27" },
+    { name = "opentelemetry-sdk", specifier = ">=1.27" },
     { name = "parlio-voice", editable = "apps/voice-worker" },
+    { name = "prometheus-client", specifier = ">=0.21" },
     { name = "pydantic", specifier = ">=2.10" },
     { name = "pydantic-settings", specifier = ">=2.7" },
     { name = "redis", specifier = ">=5.2" },
@@ -2231,6 +2238,17 @@ requires-dist = [
     { name = "parlio-voice", editable = "apps/voice-worker" },
     { name = "rich", specifier = ">=13.9" },
 ]
+
+[[package]]
+name = "parlio-load-test"
+version = "0.1.0"
+source = { editable = "tools/load-test" }
+dependencies = [
+    { name = "httpx" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "httpx", specifier = ">=0.28" }]
 
 [[package]]
 name = "parlio-voice"

@@ -55,6 +55,20 @@ class Settings(BaseSettings):
     microsoft_client_id: str | None = None
     microsoft_client_secret: str | None = None
 
+    # Phase 6: billing, observability, compliance
+    billing_provider: Literal["simulated", "stripe"] = "simulated"
+    stripe_secret_key: str | None = None
+    stripe_webhook_secret: str | None = None
+    number_provider: Literal["simulated", "telnyx"] = "simulated"
+    telnyx_sip_uri: str | None = None
+    telnyx_connection_id: str | None = None
+    trial_days: int = 14
+    otlp_endpoint: str | None = None
+    metrics_token: str | None = None
+    target_turn_latency_s: float = 1.5
+    rate_limit_per_minute: int = 600
+    retention_sweep_interval_s: float = 3600.0
+
     # Phase 5b BYO SIP. "simulated" keeps trunks fully testable without a SIP edge.
     sip_provisioner: Literal["simulated", "livekit"] = "simulated"
     sip_domain: str = "sip.parlio.local"
