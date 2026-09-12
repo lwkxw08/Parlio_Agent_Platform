@@ -20,6 +20,7 @@ dev = [
     "pytest-asyncio>=0.25",
     "httpx>=0.28",
     "pre-commit>=4.0",
+    "asyncpg-stubs>=0.30",
 ]
 
 [tool.ruff]
@@ -30,6 +31,10 @@ src = ["apps/voice-worker", "apps/api", "tools/latency-harness"]
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP", "ASYNC", "SIM", "RUF"]
 ignore = ["RUF012"]
+
+[tool.ruff.lint.isort]
+# apps/api/alembic/ (migrations dir) would otherwise make the alembic package look first-party
+known-third-party = ["alembic"]
 
 [tool.mypy]
 python_version = "3.12"

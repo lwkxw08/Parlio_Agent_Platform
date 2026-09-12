@@ -18,7 +18,9 @@ services:
       POSTGRES_PASSWORD: parlio
       POSTGRES_DB: parlio
     ports: ["5432:5432"]
-    volumes: ["pgdata:/var/lib/postgresql/data"]
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./postgres-init.sql:/docker-entrypoint-initdb.d/10-app-role.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U parlio"]
       interval: 5s
@@ -63,9 +65,12 @@ services:
     environment:
       PARLIO_REDIS_URL: redis://redis:6379/0
       PARLIO_WORKER_API_KEY: ${PARLIO_WORKER_API_KEY:-dev-worker-key}
+      PARLIO_STORE_BACKEND: postgres
+      PARLIO_DATABASE_URL: postgresql+asyncpg://parlio_app:parlio_app@postgres:5432/parlio
     ports: ["8000:8000"]
     depends_on:
       redis: { condition: service_healthy }
+      postgres: { condition: service_healthy }
 
   voice-worker:
     build:

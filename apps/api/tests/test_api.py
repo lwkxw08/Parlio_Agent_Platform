@@ -1,24 +1,28 @@
-import pytest
-from httpx import ASGITransport, AsyncClient
+from typing import Any
 
-from parlio_api.main import create_app
-from parlio_api.settings import get_settings
+import pytest
+from fastapi import FastAPI
+from httpx import AsyncClient
+from sqlalchemy import text
+
+from parlio_api.db.postgres import PostgresStore
+from parlio_api.postcall import PostCallProcessor
 from parlio_voice.models import AssistantConfig, CallEvent, CallEventType
 
 HEADERS = {"X-Worker-Key": "dev-worker-key"}
 
 
-@pytest.fixture
-async def client(monkeypatch: pytest.MonkeyPatch):  # type: ignore[no-untyped-def]
-    monkeypatch.setenv("PARLIO_REDIS_URL", "")
-    get_settings.cache_clear()
-    app = create_app()
-    async with (
-        app.router.lifespan_context(app),
-        AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c,
-    ):
-        yield c
-    get_settings.cache_clear()
+def ev(
+    t: CallEventType, call_id: str, payload: dict[str, Any], tenant: str = "demo"
+) -> dict[str, Any]:
+    return CallEvent(
+        type=t,
+        call_id=call_id,
+        tenant_id=tenant,
+        company_id=tenant,
+        assistant_id="demo",
+        payload=payload,
+    ).model_dump(mode="json")
 
 
 async def test_health(client: AsyncClient) -> None:
@@ -63,22 +67,14 @@ async def test_upsert_assistant_and_resolve(client: AsyncClient) -> None:
 
 
 async def test_call_lifecycle_events_build_call_record(client: AsyncClient) -> None:
-    def ev(t: CallEventType, payload: dict) -> dict:  # type: ignore[type-arg]
-        return CallEvent(
-            type=t,
-            call_id="call-1",
-            tenant_id="demo",
-            company_id="demo",
-            assistant_id="demo",
-            payload=payload,
-        ).model_dump(mode="json")
-
+    c = "call-1"
     for e in [
-        ev(CallEventType.CALL_STARTED, {"caller": "+447700900000", "dialed": "+440000000000"}),
-        ev(CallEventType.CALL_ANSWERED, {"answer_latency_s": 0.41}),
-        ev(CallEventType.TRANSCRIPT_ITEM, {"role": "assistant", "text": "Hello"}),
+        ev(CallEventType.CALL_STARTED, c, {"caller": "+447700900000", "dialed": "+440000000000"}),
+        ev(CallEventType.CALL_ANSWERED, c, {"answer_latency_s": 0.41}),
+        ev(CallEventType.TRANSCRIPT_ITEM, c, {"role": "assistant", "text": "Hello"}),
         ev(
             CallEventType.CALL_ENDED,
+            c,
             {"reason": "hangup", "duration_s": 42.0, "latency": {"p50_s": 0.45}},
         ),
     ]:
@@ -110,3 +106,111 @@ async def test_events_are_idempotent(client: AsyncClient) -> None:
     r2 = await client.post("/v1/worker/events", json=e, headers=HEADERS)
     assert r1.json()["applied"] is True
     assert r2.json()["applied"] is False
+
+
+async def test_postcall_pipeline_enriches_call(client: AsyncClient, app: FastAPI) -> None:
+    r = await client.put(
+        "/v1/assistants/demo/required-fields",
+        json=[{"name": "name"}, {"name": "email"}, {"name": "postcode"}],
+    )
+    assert r.status_code == 200, r.text
+
+    async def run_call(call_id: str) -> dict[str, Any]:
+        for e in [
+            ev(CallEventType.CALL_STARTED, call_id, {"caller": "+447700900123"}),
+            ev(CallEventType.CALL_ANSWERED, call_id, {}),
+            ev(
+                CallEventType.CALL_ENDED,
+                call_id,
+                {
+                    "reason": "hangup",
+                    "transcript": [
+                        {"role": "assistant", "text": "Hello, how can I help?"},
+                        {
+                            "role": "user",
+                            "text": "Hi, my name is Jane Smith, email jane@example.com",
+                        },
+                    ],
+                },
+            ),
+        ]:
+            assert (
+                await client.post("/v1/worker/events", json=e, headers=HEADERS)
+            ).status_code == 202
+        proc: PostCallProcessor = app.state.postcall
+        await proc.drain()
+        return dict((await client.get(f"/v1/calls/{call_id}")).json())
+
+    first = await run_call("pc-1")
+    assert first["caller_type"] == "new"
+    assert first["extracted"] == {"name": "Jane Smith", "email": "jane@example.com"}
+    assert first["missed_fields"] == ["postcode"]
+    assert "Jane Smith" in first["summary"]
+    assert first["contact_id"]
+
+    second = await run_call("pc-2")
+    assert second["caller_type"] == "returning"
+    assert second["contact_id"] == first["contact_id"]
+
+
+async def test_issued_worker_key_is_accepted(client: AsyncClient) -> None:
+    r = await client.post("/v1/worker-keys", json={"tenant_id": "demo", "name": "vps-1"})
+    assert r.status_code == 201
+    key = r.json()["key"]
+    assert key.startswith("pk_")
+    ok = await client.get(
+        "/v1/worker/assistants/resolve",
+        params={"number": "+440000000000"},
+        headers={"X-Worker-Key": key},
+    )
+    assert ok.status_code == 200
+    bad = await client.get(
+        "/v1/worker/assistants/resolve",
+        params={"number": "+440000000000"},
+        headers={"X-Worker-Key": "pk_nope"},
+    )
+    assert bad.status_code == 401
+
+
+async def test_calls_are_tenant_scoped(client: AsyncClient) -> None:
+    for tenant, cid in (("t-a", "a-1"), ("t-b", "b-1")):
+        e = ev(CallEventType.CALL_STARTED, cid, {"caller": "+447700900001"}, tenant=tenant)
+        await client.post("/v1/worker/events", json=e, headers=HEADERS)
+    r = await client.get("/v1/calls", params={"tenant_id": "t-a"})
+    assert [c["call_id"] for c in r.json()] == ["a-1"]
+    r = await client.get("/v1/calls")
+    assert {c["call_id"] for c in r.json()} == {"a-1", "b-1"}
+
+
+async def test_rls_blocks_cross_tenant_rows(
+    client: AsyncClient, app: FastAPI, backend: str
+) -> None:
+    """Even a query with no WHERE clause only sees the tenant set on the session."""
+    if backend != "postgres":
+        pytest.skip("RLS is a Postgres feature")
+    for tenant, cid in (("t-a", "a-1"), ("t-b", "b-1")):
+        e = ev(CallEventType.CALL_STARTED, cid, {}, tenant=tenant)
+        await client.post("/v1/worker/events", json=e, headers=HEADERS)
+    store: PostgresStore = app.state.store
+    engine = store._engine
+    async with engine.begin() as conn:
+        await conn.execute(text("SELECT set_config('app.tenant_id', 't-b', true)"))
+        ids = (await conn.execute(text("SELECT id FROM calls"))).scalars().all()
+        assert ids == ["b-1"]
+        # writes for another tenant are rejected by the WITH CHECK clause
+        with pytest.raises(Exception, match="row-level security"):
+            await conn.execute(
+                text(
+                    "INSERT INTO contacts (id, organization_id, company_id, e164)"
+                    " VALUES ('x', 't-a', 't-a', '+44')"
+                )
+            )
+    async with engine.begin() as conn:
+        rows = (await conn.execute(text("SELECT calls FROM analytics_calls_daily"))).all()
+        assert len(rows) == 2
+        parts = (
+            await conn.execute(
+                text("SELECT count(*) FROM pg_inherits WHERE inhparent = 'calls'::regclass")
+            )
+        ).scalar_one()
+        assert parts >= 5
