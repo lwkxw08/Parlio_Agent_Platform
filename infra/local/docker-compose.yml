@@ -1,0 +1,91 @@
+# Local Parlio stack: LiveKit (SFU + SIP), Redis, Postgres, MinIO (recordings), Core API, voice worker.
+#   cp .env.example .env   # add vendor keys
+#   docker compose -f infra/local/docker-compose.yml up --build
+name: parlio
+
+services:
+  redis:
+    image: redis:7-alpine
+    ports: ["6379:6379"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: parlio
+      POSTGRES_PASSWORD: parlio
+      POSTGRES_DB: parlio
+    ports: ["5432:5432"]
+    volumes: ["pgdata:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U parlio"]
+      interval: 5s
+
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: parlio
+      MINIO_ROOT_PASSWORD: parlio-dev-secret
+    ports: ["9000:9000", "9001:9001"]
+    volumes: ["minio:/data"]
+
+  minio-init:
+    image: minio/mc:latest
+    depends_on: [minio]
+    entrypoint: >
+      /bin/sh -c "sleep 3 && mc alias set local http://minio:9000 parlio parlio-dev-secret &&
+      mc mb -p local/parlio-recordings || true"
+
+  livekit:
+    image: livekit/livekit-server:latest
+    command: --config /etc/livekit.yaml
+    volumes: ["./livekit.yaml:/etc/livekit.yaml:ro"]
+    ports:
+      - "7880:7880"          # ws/http
+      - "7881:7881"          # rtc tcp
+      - "50000-50100:50000-50100/udp"
+    depends_on: [redis]
+
+  livekit-sip:
+    image: livekit/sip:latest
+    command: --config /etc/sip.yaml
+    volumes: ["./sip.yaml:/etc/sip.yaml:ro"]
+    network_mode: host      # SIP/RTP need real ports; host networking avoids NAT in dev
+    depends_on: [livekit, redis]
+
+  api:
+    build:
+      context: ../..
+      dockerfile: apps/api/Dockerfile
+    environment:
+      PARLIO_REDIS_URL: redis://redis:6379/0
+      PARLIO_WORKER_API_KEY: ${PARLIO_WORKER_API_KEY:-dev-worker-key}
+    ports: ["8000:8000"]
+    depends_on:
+      redis: { condition: service_healthy }
+
+  voice-worker:
+    build:
+      context: ../..
+      dockerfile: apps/voice-worker/Dockerfile
+    env_file:
+      - path: ../../.env
+        required: false
+    environment:
+      LIVEKIT_URL: ws://livekit:7880
+      LIVEKIT_API_KEY: devkey
+      LIVEKIT_API_SECRET: devsecret_devsecret_devsecret_dev
+      PARLIO_API_URL: http://api:8000
+      PARLIO_REDIS_URL: redis://redis:6379/0
+      PARLIO_RECORDING_S3_ENDPOINT: http://minio:9000
+      PARLIO_RECORDING_BUCKET: parlio-recordings
+      PARLIO_RECORDING_S3_ACCESS_KEY: parlio
+      PARLIO_RECORDING_S3_SECRET_KEY: parlio-dev-secret
+    depends_on: [livekit, api]
+
+volumes:
+  pgdata:
+  minio:

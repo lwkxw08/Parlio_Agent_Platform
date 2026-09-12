@@ -1,0 +1,53 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-api
+  labels: {{- include "parlio.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.api.replicas }}
+  selector:
+    matchLabels: { app: api, release: {{ .Release.Name }} }
+  template:
+    metadata:
+      labels: { app: api, release: {{ .Release.Name }} }
+    spec:
+      containers:
+        - name: api
+          image: "{{ .Values.image.registry }}/api:{{ .Values.image.tag }}"
+          envFrom:
+            - secretRef: { name: {{ .Values.api.envFrom.secretRef } }
+          env:
+            - { name: PARLIO_ENV, value: {{ .Values.env | quote }} }
+            - { name: PARLIO_REDIS_URL, value: "redis://{{ .Release.Name }}-redis-master:6379/0" }
+            - { name: PARLIO_SEED_DEMO_ASSISTANT, value: {{ ternary "true" "false" (eq .Values.env "dev") | quote }} }
+          ports:
+            - { name: http, containerPort: 8000 }
+          readinessProbe:
+            httpGet: { path: /healthz, port: http }
+          resources: {{- toYaml .Values.api.resources | nindent 12 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-api
+spec:
+  selector: { app: api, release: {{ .Release.Name }} }
+  ports:
+    - { port: 8000, targetPort: http }
+{{- if .Values.api.ingress.enabled }}
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ .Release.Name }}-api
+spec:
+  ingressClassName: {{ .Values.api.ingress.className }}
+  rules:
+    - host: {{ .Values.api.ingress.host }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service: { name: {{ .Release.Name }}-api, port: { number: 8000 } }
+{{- end }}

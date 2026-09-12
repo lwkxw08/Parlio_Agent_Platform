@@ -1,0 +1,48 @@
+[project]
+name = "parlio"
+version = "0.1.0"
+description = "Parlio - proprietary low-latency AI phone assistant platform"
+requires-python = ">=3.12"
+
+[tool.uv.workspace]
+members = ["apps/voice-worker", "apps/api", "tools/latency-harness"]
+
+[tool.uv.sources]
+parlio-voice = { workspace = true }
+parlio-api = { workspace = true }
+parlio-latency-harness = { workspace = true }
+
+[dependency-groups]
+dev = [
+    "ruff>=0.9",
+    "mypy>=1.14",
+    "pytest>=8.3",
+    "pytest-asyncio>=0.25",
+    "httpx>=0.28",
+    "pre-commit>=4.0",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["apps/voice-worker", "apps/api", "tools/latency-harness"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "ASYNC", "SIM", "RUF"]
+ignore = ["RUF012"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+ignore_missing_imports = true
+plugins = ["pydantic.mypy"]
+disallow_any_generics = false
+
+[[tool.mypy.overrides]]
+module = ["parlio_api.tests.*", "tests.*"]
+ignore_errors = true
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+addopts = "--import-mode=importlib"
+testpaths = ["apps/voice-worker/tests", "apps/api/tests", "tools/latency-harness/tests"]

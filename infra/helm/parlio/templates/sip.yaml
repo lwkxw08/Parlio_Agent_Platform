@@ -1,0 +1,26 @@
+{{- if .Values.sip.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-sip
+  labels: {{- include "parlio.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.sip.replicas }}
+  selector:
+    matchLabels: { app: sip, release: {{ .Release.Name }} }
+  template:
+    metadata:
+      labels: { app: sip, release: {{ .Release.Name }} }
+    spec:
+      hostNetwork: {{ .Values.sip.hostNetwork }}
+      containers:
+        - name: sip
+          image: {{ .Values.sip.image }}
+          envFrom:
+            - secretRef: { name: {{ .Values.sip.envFrom.secretRef } }
+          env:
+            - { name: LIVEKIT_URL, value: "ws://{{ .Release.Name }}-livekit-server:80" }
+            - { name: REDIS_ADDRESS, value: "{{ .Release.Name }}-redis-master:6379" }
+            - { name: SIP_PORT, value: {{ .Values.sip.sipPort | quote }} }
+            - { name: RTP_PORT, value: {{ .Values.sip.rtpPortRange | quote }} }
+{{- end }}

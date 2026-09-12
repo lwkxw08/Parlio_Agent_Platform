@@ -1,0 +1,12 @@
+{
+  "trunk": {
+    "name": "telnyx-uk-inbound",
+    "numbers": [
+      "+44XXXXXXXXXX"
+    ],
+    "allowed_addresses": [
+      "<TELNYX_SIP_SIGNALING_CIDR_FROM_PORTAL>"
+    ],
+    "krisp_enabled": true
+  }
+}
