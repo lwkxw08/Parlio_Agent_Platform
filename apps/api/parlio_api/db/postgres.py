@@ -23,6 +23,7 @@ from parlio_api.store import (
     CallFeedback,
     CallFilter,
     CallRecord,
+    CallRedaction,
     Contact,
     ContactUpdate,
     Member,
@@ -1149,6 +1150,88 @@ class PostgresStore:
                 {"k": kind, "id": doc_id},
             )
         return bool(res.rowcount)
+
+    # -- compliance ---------------------------------------------------------------------------
+    async def redact_call(self, call_id: str, r: CallRedaction) -> CallRecord | None:
+        async with tenant_tx(self._engine, None) as conn:
+            call = await self._get_call(conn, "id = :cid", {"cid": call_id})
+            if call is None:
+                return None
+            fields = r.model_dump(exclude_none=True)
+            transcript = fields.pop("transcript", None)
+            if fields:
+                sets = []
+                params: dict[str, Any] = {"cid": call_id}
+                for k, v in fields.items():
+                    if k in ("extracted", "recordings"):
+                        sets.append(f"{k} = CAST(:{k} AS jsonb)")
+                        params[k] = _jsonb(v)
+                    else:
+                        sets.append(f"{k} = :{k}")
+                        params[k] = v
+                await conn.execute(
+                    text(f"UPDATE calls SET {', '.join(sets)} WHERE id = :cid"), params
+                )
+            if transcript is not None:
+                await self._replace_transcript(conn, call, transcript)
+            return await self._get_call(conn, "id = :cid", {"cid": call_id})
+
+    async def purge_calls(
+        self, tenant_id: str, before: datetime | None = None, call_ids: list[str] | None = None
+    ) -> int:
+        where = (
+            "organization_id = :tid"
+            " AND (CAST(:before AS timestamptz) IS NULL OR started_at < :before)"
+        )
+        params: dict[str, Any] = {"tid": tenant_id, "before": before}
+        if call_ids is not None:
+            if not call_ids:
+                return 0
+            where += " AND id = ANY(:ids)"
+            params["ids"] = list(call_ids)
+        async with tenant_tx(self._engine, tenant_id) as conn:
+            ids = [
+                r.id
+                for r in (
+                    await conn.execute(text(f"SELECT id FROM calls WHERE {where}"), params)
+                ).all()
+            ]
+            if not ids:
+                return 0
+            for tbl in ("transcripts", "recordings", "transfers"):
+                await conn.execute(
+                    text(f"DELETE FROM {tbl} WHERE call_id = ANY(:ids)"), {"ids": ids}
+                )
+            await conn.execute(
+                text("UPDATE tickets SET call_id = NULL WHERE call_id = ANY(:ids)"), {"ids": ids}
+            )
+            res = await conn.execute(text("DELETE FROM calls WHERE id = ANY(:ids)"), {"ids": ids})
+        return int(res.rowcount or 0)
+
+    async def delete_contact(self, tenant_id: str, contact_id: str) -> bool:
+        async with tenant_tx(self._engine, tenant_id) as conn:
+            await conn.execute(
+                text("UPDATE calls SET contact_id = NULL WHERE contact_id = :cid"),
+                {"cid": contact_id},
+            )
+            res = await conn.execute(
+                text("DELETE FROM contacts WHERE id = :cid AND organization_id = :tid"),
+                {"cid": contact_id, "tid": tenant_id},
+            )
+        return bool(res.rowcount)
+
+    async def anonymise_tickets(self, tenant_id: str, ticket_ids: list[str]) -> int:
+        if not ticket_ids:
+            return 0
+        async with tenant_tx(self._engine, tenant_id) as conn:
+            res = await conn.execute(
+                text(
+                    "UPDATE tickets SET caller_name = '[erased]', caller_number = NULL,"
+                    " contact_id = NULL WHERE organization_id = :tid AND id = ANY(:ids)"
+                ),
+                {"tid": tenant_id, "ids": list(ticket_ids)},
+            )
+        return int(res.rowcount or 0)
 
     async def assign_number(
         self, tenant_id: str, company_id: str, e164: str, assistant_id: str

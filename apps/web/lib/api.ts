@@ -434,6 +434,51 @@ export type TrunkView = { trunk: SipTrunk; credentials: IssuedCredentials | null
 export type TestCallResult = { ok: boolean; outcome: string; detail: string | null; simulated: boolean; at: string };
 export type ProviderGuide = { id: string; name: string; mode: TrunkMode; summary: string; steps: string[]; quirks: string[]; defaults: Record<string, unknown> };
 
+export type Plan = {
+  id: string; name: string; monthly_pence: number; included_minutes: number; overage_pence_per_minute: number;
+  included_numbers: number; included_sms: number; sms_overage_pence: number; max_assistants: number; max_concurrent_calls: number;
+  features: string[]; enterprise: boolean;
+};
+export type SubscriptionStatus = "trialing" | "active" | "past_due" | "cancelled";
+export type Subscription = {
+  tenant_id: string; plan_id: string; status: SubscriptionStatus; period_start: string; period_end: string;
+  coupon: string | null; coupon_months_left: number | null; provider: string; customer_ref: string | null; subscription_ref: string | null;
+};
+export type Coupon = { code: string; percent_off: number | null; amount_off_pence: number | null; months: number | null; plans: string[] };
+export type CallCost = { call_id: string; minutes: number; vendor_pence: number; billable_pence: number };
+export type UsageSummary = {
+  tenant_id: string; plan: Plan; status: SubscriptionStatus; period_start: string; period_end: string;
+  calls: number; minutes_used: number; minutes_included: number; minutes_overage: number; overage_pence: number;
+  sms_used: number; sms_included: number; sms_overage_pence: number; numbers_used: number; numbers_included: number;
+  base_pence: number; discount_pence: number; estimated_total_pence: number; vendor_cost_pence: number; gross_margin_pct: number | null;
+  per_day_minutes: Record<string, number>; top_calls: CallCost[];
+};
+export type CheckoutSession = { url: string; provider: string; session_ref: string };
+export type TenantNumber = {
+  id: string; tenant_id: string; e164: string; country: string; provider: string; provider_ref: string | null;
+  assistant_id: string; label: string | null; monthly_pence: number; created_at: string;
+};
+export type AvailableNumber = { provider: string; e164: string; country: string; provider_ref: string | null };
+export type LatencyBucket = {
+  calls: number; answered: number; answer_p50_s: number | null; answer_p95_s: number | null; turn_p50_s: number | null; turn_p95_s: number | null;
+  eou_avg_s: number | null; llm_ttft_avg_s: number | null; tts_ttfb_avg_s: number | null; slow_calls: number;
+};
+export type LatencyReport = {
+  tenant_id: string | null; since: string; until: string; target_turn_s: number; overall: LatencyBucket;
+  per_day: Record<string, LatencyBucket>; per_assistant: Record<string, LatencyBucket>;
+};
+export type AuditEntry = {
+  id: string; tenant_id: string; actor: string; action: string; target: string | null; method: string | null; path: string | null;
+  status: number | null; ip: string | null; meta: Record<string, unknown>; at: string;
+};
+export type RetentionPolicy = {
+  tenant_id: string; transcript_days: number; recording_days: number; call_days: number; redact_on_write: boolean; redact_caller_number: boolean; updated_at: string;
+};
+export type RetentionRun = { tenant_id: string; transcripts_redacted: number; recordings_dropped: number; calls_purged: number; ran_at: string };
+export type RetentionView = { policy: RetentionPolicy; last_run: RetentionRun | null };
+export type SubjectExport = { tenant_id: string; subject_e164: string; generated_at: string; contact: Contact | null; calls: CallRecord[]; tickets: Ticket[]; messages: Record<string, unknown>[] };
+export type ErasureResult = { tenant_id: string; subject_e164: string; calls_purged: number; tickets_anonymised: number; messages_deleted: number; contact_deleted: boolean };
+
 export type ApiResult<T> = { ok: true; data: T } | { ok: false; status: number; error: string };
 
 export async function request<T>(path: string, init: RequestInit = {}): Promise<ApiResult<T>> {
@@ -522,6 +567,14 @@ export const fetchBookings = (tenant_id: string) => get<Booking[]>(`/v1/calendar
 export const fetchSyncLog = (tenant_id: string) => get<SyncLogEntry[]>(`/v1/calendar/sync-log${qs({ tenant_id })}`);
 export const fetchTrunks = (tenant_id: string) => get<SipTrunk[]>(`/v1/telephony/trunks${qs({ tenant_id })}`);
 export const fetchGuides = () => get<ProviderGuide[]>("/v1/telephony/guides");
+export const fetchPlans = () => get<Plan[]>("/v1/billing/plans");
+export const fetchSubscription = (tenant_id: string) => get<Subscription>(`/v1/billing/subscription${qs({ tenant_id })}`);
+export const fetchUsage = (tenant_id: string) => get<UsageSummary>(`/v1/billing/usage${qs({ tenant_id })}`);
+export const fetchNumbers = (tenant_id: string) => get<TenantNumber[]>(`/v1/numbers${qs({ tenant_id })}`);
+export const fetchLatency = (tenant_id: string, days = 7) => get<LatencyReport>(`/v1/observability/latency${qs({ tenant_id, days })}`);
+export const fetchAudit = (tenant_id: string) => get<AuditEntry[]>(`/v1/audit${qs({ tenant_id })}`);
+export const fetchRetention = (tenant_id: string) => get<RetentionView>(`/v1/compliance/retention${qs({ tenant_id })}`);
+export const gbp = (pence: number) => `£${(pence / 100).toLocaleString("en-GB", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 export const secs = (s: number | null | undefined) => {
   if (s == null) return "—";

@@ -9,6 +9,9 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
   python:
     name: Python (lint, types, tests)
@@ -38,6 +41,39 @@ jobs:
       - run: uv run pytest -q
       - name: Offline latency harness (simulated call)
         run: uv run parlio-latency --turns 5
+      - name: Control-plane load test (reduced profile, Postgres store)
+        env:
+          PARLIO_STORE_BACKEND: postgres
+          PARLIO_DATABASE_URL: postgresql+asyncpg://parlio:parlio@localhost:5432/parlio
+        run: |
+          uv run uvicorn parlio_api.main:app --port 8765 --log-level warning &
+          api=$!
+          for i in $(seq 1 30); do curl -fs localhost:8765/healthz && break; sleep 1; done
+          uv run parlio-load --base-url http://localhost:8765 --concurrency 20 --calls 100 --tenants 5 --hold 0.5 --settle 5
+          kill "$api"
+
+  security:
+    name: Security (dependency audit)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - name: pip-audit (locked runtime dependencies)
+        run: |
+          uv export --frozen --no-dev --all-packages --no-emit-workspace -o /tmp/requirements.txt
+          uvx pip-audit -r /tmp/requirements.txt --disable-pip --progress-spinner off
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+      - name: npm audit (production dependencies)
+        working-directory: apps/web
+        run: npm audit --omit=dev --audit-level=high
+      - name: Secret scan
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
 
   web:
     name: Web (typecheck, build)
@@ -119,14 +155,23 @@ jobs:
           context: .
           file: apps/${{ matrix.app }}/Dockerfile
           push: false
+          load: true
+          tags: parlio-${{ matrix.app }}:ci
           cache-from: type=gha
           cache-to: type=gha,mode=max
+      - name: Image vulnerability scan (Trivy)
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: parlio-${{ matrix.app }}:ci
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          exit-code: "1"
 
   # API + voice worker: redeploy the single-VM stack on every push to main.
   # Requires repo secrets VPS_HOST (IP or hostname) and VPS_SSH_KEY (private key for root).
   deploy-vps:
     name: Deploy API/worker (VPS)
-    needs: [python, docker]
+    needs: [python, docker, security]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     env:

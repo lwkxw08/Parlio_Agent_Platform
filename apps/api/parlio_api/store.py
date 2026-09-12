@@ -139,6 +139,16 @@ class ContactUpdate(BaseModel):
     status: str | None = None
 
 
+class CallRedaction(BaseModel):
+    """Fields overwritten in place by retention / PII redaction; None = leave unchanged."""
+
+    caller: str | None = None
+    transcript: list[dict[str, Any]] | None = None
+    summary: str | None = None
+    extracted: dict[str, Any] | None = None
+    recordings: list[str] | None = None
+
+
 class Member(BaseModel):
     tenant_id: str
     user_id: str
@@ -342,6 +352,20 @@ class CallStore(Protocol):
         self, kind: str, tenant_id: str | None = None, limit: int = 200
     ) -> list[TenantDoc]: ...
     async def delete_doc(self, kind: str, doc_id: str) -> bool: ...
+
+    # -- compliance (Phase 6) ---
+    async def redact_call(self, call_id: str, r: CallRedaction) -> CallRecord | None: ...
+    async def purge_calls(
+        self, tenant_id: str, before: datetime | None = None, call_ids: list[str] | None = None
+    ) -> int:
+        """Delete calls (+ transcripts/recordings refs) for a tenant; returns rows removed."""
+        ...
+
+    async def delete_contact(self, tenant_id: str, contact_id: str) -> bool: ...
+    async def anonymise_tickets(self, tenant_id: str, ticket_ids: list[str]) -> int:
+        """Blank caller name/number on the given tickets (GDPR erasure); returns rows touched."""
+        ...
+
     async def assign_number(
         self, tenant_id: str, company_id: str, e164: str, assistant_id: str
     ) -> None:
@@ -854,6 +878,49 @@ class MemoryStore:
 
     async def delete_doc(self, kind: str, doc_id: str) -> bool:
         return self._docs.pop((kind, doc_id), None) is not None
+
+    async def redact_call(self, call_id: str, r: CallRedaction) -> CallRecord | None:
+        call = self._calls.get(call_id)
+        if call is None:
+            return None
+        updated = call.model_copy(update=r.model_dump(exclude_none=True))
+        self._calls[call_id] = updated
+        return updated
+
+    async def purge_calls(
+        self, tenant_id: str, before: datetime | None = None, call_ids: list[str] | None = None
+    ) -> int:
+        victims = [
+            cid
+            for cid, c in self._calls.items()
+            if c.tenant_id == tenant_id
+            and (before is None or c.started_at < before)
+            and (call_ids is None or cid in call_ids)
+        ]
+        for cid in victims:
+            del self._calls[cid]
+        return len(victims)
+
+    async def delete_contact(self, tenant_id: str, contact_id: str) -> bool:
+        c = self._contacts.get(contact_id)
+        if c is None or c.tenant_id != tenant_id:
+            return False
+        del self._contacts[contact_id]
+        for call in self._calls.values():
+            if call.contact_id == contact_id:
+                self._calls[call.call_id] = call.model_copy(update={"contact_id": None})
+        return True
+
+    async def anonymise_tickets(self, tenant_id: str, ticket_ids: list[str]) -> int:
+        n = 0
+        for tid in ticket_ids:
+            t = self._tickets.get(tid)
+            if t is not None and t.tenant_id == tenant_id:
+                self._tickets[tid] = t.model_copy(
+                    update={"caller_name": "[erased]", "caller_number": None, "contact_id": None}
+                )
+                n += 1
+        return n
 
     async def assign_number(
         self, tenant_id: str, company_id: str, e164: str, assistant_id: str

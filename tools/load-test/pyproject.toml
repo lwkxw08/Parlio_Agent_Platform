@@ -1,0 +1,16 @@
+[project]
+name = "parlio-load-test"
+version = "0.1.0"
+description = "Control-plane load test: drives concurrent simulated calls through the Core API and asserts SLOs"
+requires-python = ">=3.12"
+dependencies = ["httpx>=0.28"]
+
+[project.scripts]
+parlio-load = "load_test.run:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["load_test"]

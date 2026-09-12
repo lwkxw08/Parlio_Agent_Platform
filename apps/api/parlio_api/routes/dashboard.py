@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from typing import Annotated
+from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
@@ -243,7 +244,7 @@ class AnalyticsQuery(BaseModel):
 async def query_analytics(
     body: AnalyticsQuery, store: StoreDep, settings: SettingsDep
 ) -> ComparisonAnalytics:
-    today = datetime.now(UTC).date()
+    today = datetime.now(ZoneInfo(body.timezone)).date()
     if body.period is not None:
         q = Question(period=body.period, compare=body.compare)
         q.interpretation = q.period.describe() + (

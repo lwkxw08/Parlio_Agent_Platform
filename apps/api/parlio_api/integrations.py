@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 
+from parlio_api.compliance import ComplianceService
 from parlio_api.messaging import MessageService
 from parlio_api.notifications import (
     NotificationEvent,
@@ -17,6 +18,7 @@ from parlio_api.notifications import (
     call_completed_event,
     is_qualified_lead,
 )
+from parlio_api.observability import Telemetry
 from parlio_api.sip import SipService
 from parlio_api.store import CallRecord, CallStore, Ticket
 from parlio_voice.models import CallEvent, CallEventType
@@ -31,16 +33,27 @@ class IntegrationHub:
         sms: MessageService,
         notifications: NotificationService,
         sip: SipService,
+        telemetry: Telemetry | None = None,
+        compliance: ComplianceService | None = None,
     ) -> None:
         self.store = store
         self.sms = sms
         self.notifications = notifications
         self.sip = sip
+        self.telemetry = telemetry
+        self.compliance = compliance
 
     async def on_event(self, ev: CallEvent) -> None:
+        if self.telemetry is not None:
+            self.telemetry.on_event(ev)
         if ev.type not in (CallEventType.CALL_ENDED, CallEventType.CALL_FAILED):
             return
         self.sip.release(ev.call_id)
+        if self.compliance is not None:
+            try:
+                await self.compliance.redact_call_on_close(ev.tenant_id, ev.call_id)
+            except Exception:
+                log.warning("redact-on-write failed for %s", ev.call_id, exc_info=True)
         try:
             call = await self.store.get_call(ev.call_id)
             cfg = await self.store.get_assistant(ev.assistant_id)
@@ -60,6 +73,11 @@ class IntegrationHub:
                 )
         except Exception:
             log.warning("post-call notifications failed for %s", call.call_id, exc_info=True)
+        if self.compliance is not None:
+            try:
+                await self.compliance.redact_call_on_close(call.tenant_id, call.call_id)
+            except Exception:
+                log.warning("redact-on-write failed for %s", call.call_id, exc_info=True)
 
     async def on_ticket(self, ticket: Ticket) -> None:
         try:

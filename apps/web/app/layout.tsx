@@ -20,6 +20,8 @@ const NAV = [
   ["/assistant", "Assistant"],
   ["/integrations", "Integrations"],
   ["/telephony", "Telephony"],
+  ["/billing", "Billing"],
+  ["/compliance", "Compliance"],
   ["/team", "Team"],
   ["/launch", "Launch"],
 ] as const;

@@ -2,19 +2,27 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager, suppress
 from typing import cast
 
 import uvicorn
-from fastapi import FastAPI
+from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from livekit import api
 from redis.asyncio import Redis
 from redis.exceptions import ResponseError
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from parlio_api import __version__
+from parlio_api.billing import (
+    BillingProvider,
+    BillingService,
+    SimulatedBilling,
+    SimulatedNumbers,
+    StripeBilling,
+)
 from parlio_api.calendar import (
     CalendarBackend,
     CalendarProvider,
@@ -23,6 +31,7 @@ from parlio_api.calendar import (
     MicrosoftCalendarBackend,
     SimulatedBackend,
 )
+from parlio_api.compliance import ComplianceService
 from parlio_api.db.engine import make_engine, migrate
 from parlio_api.db.postgres import PostgresStore
 from parlio_api.integrations import IntegrationHub
@@ -34,12 +43,14 @@ from parlio_api.notifications import (
     ResendEmailSender,
     RuleNotifier,
 )
+from parlio_api.observability import AuditLog, RateLimiter, Telemetry, build_tracer
 from parlio_api.postcall import Analyser, HeuristicAnalyser, OpenAIAnalyser, PostCallProcessor
-from parlio_api.routes import account, dashboard, integrations, worker
+from parlio_api.routes import account, dashboard, integrations, platform, worker
 from parlio_api.settings import Settings, get_settings
 from parlio_api.sip import SimulatedProvisioner, SimulatedRegistrar, SipProvisioner, SipService
 from parlio_api.sip_livekit import LiveKitProvisioner
 from parlio_api.store import CallStore, MemoryStore
+from parlio_api.telephony.base import TelephonyProvider
 from parlio_api.telephony.telnyx import TelnyxProvider
 from parlio_api.tickets import Notifier, SlaMonitor, TicketService
 from parlio_api.vault import LocalVault
@@ -93,6 +104,24 @@ async def consume_events(
                     except Exception:
                         log.exception("bad event %s", msg_id)
                 await redis.xack(stream, group, msg_id)
+
+
+def build_billing_provider(settings: Settings) -> BillingProvider:
+    if settings.billing_provider == "stripe" and settings.stripe_secret_key:
+        return StripeBilling(settings.stripe_secret_key, settings.stripe_webhook_secret)
+    if settings.billing_provider == "stripe":
+        log.warning("PARLIO_BILLING_PROVIDER=stripe but no secret key; using simulated billing")
+    return SimulatedBilling()
+
+
+def build_number_provider(settings: Settings) -> TelephonyProvider:
+    if settings.number_provider == "telnyx" and settings.telnyx_api_key:
+        return TelnyxProvider(
+            settings.telnyx_api_key,
+            connection_id=settings.telnyx_connection_id,
+            messaging_profile_id=settings.telnyx_messaging_profile_id,
+        )
+    return SimulatedNumbers()
 
 
 def build_sms_provider(settings: Settings) -> SmsProvider:
@@ -196,7 +225,26 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         sip_domain=settings.sip_domain,
     )
     app.state.sip = sip
-    hub = IntegrationHub(store, sms, notifications, sip)
+    telemetry = Telemetry(
+        build_tracer("parlio-api", settings.env, settings.otlp_endpoint),
+        target_turn_s=settings.target_turn_latency_s,
+    )
+    app.state.telemetry = telemetry
+    app.state.rate_limiter = RateLimiter(settings.rate_limit_per_minute, telemetry)
+    app.state.audit = AuditLog(store)
+    compliance = ComplianceService(store, settings.retention_sweep_interval_s)
+    app.state.compliance = compliance
+    compliance.start()
+    billing = BillingService(
+        store,
+        sms,
+        build_billing_provider(settings),
+        build_number_provider(settings),
+        sip_uri=settings.telnyx_sip_uri or f"sip:{settings.sip_domain}",
+        trial_days=settings.trial_days,
+    )
+    app.state.billing = billing
+    hub = IntegrationHub(store, sms, notifications, sip, telemetry, compliance)
     app.state.hub = hub
 
     postcall = PostCallProcessor(
@@ -234,6 +282,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                 await consumer
         await postcall.close()
         await sla.aclose()
+        await compliance.stop()
         await notifications.aclose()
         if redis is not None:
             await redis.aclose()
@@ -258,6 +307,32 @@ def create_app() -> FastAPI:
     app.include_router(integrations.router)
     app.include_router(integrations.public)
     app.include_router(integrations.worker)
+    app.include_router(platform.router)
+    app.include_router(platform.public)
+    app.include_router(platform.ops)
+
+    @app.middleware("http")
+    async def tenant_rate_limit(
+        request: Request, call_next: Callable[[Request], Awaitable[Response]]
+    ) -> Response:
+        path = request.url.path
+        if not path.startswith("/v1") or path.startswith(("/v1/worker", "/v1/public")):
+            return await call_next(request)
+        limiter: RateLimiter = request.app.state.rate_limiter
+        tenant = request.query_params.get("tenant_id")
+        key = (
+            f"tenant:{tenant}" if tenant else f"ip:{request.client.host if request.client else '?'}"
+        )
+        allowed, remaining = limiter.check(key)
+        if not allowed:
+            return JSONResponse(
+                {"detail": "rate limit exceeded; retry shortly"},
+                status_code=429,
+                headers={"Retry-After": "60", "X-RateLimit-Remaining": "0"},
+            )
+        resp = await call_next(request)
+        resp.headers["X-RateLimit-Remaining"] = str(remaining)
+        return resp
 
     @app.get("/healthz", tags=["ops"])
     async def healthz() -> dict[str, str]:
