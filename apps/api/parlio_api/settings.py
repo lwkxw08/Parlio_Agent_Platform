@@ -35,6 +35,7 @@ class Settings(BaseSettings):
     # Onboarding enrichment (optional; heuristics run without them)
     google_places_api_key: str | None = None
     dashboard_url: str = "http://localhost:3000"
+    cors_origins: list[str] = ["http://localhost:3000"]
 
     # Ticket alerts: Slack-incoming-webhook-compatible URL; unset = log only.
     notify_webhook_url: str | None = None

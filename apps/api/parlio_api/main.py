@@ -8,6 +8,7 @@ from typing import cast
 
 import uvicorn
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from redis.asyncio import Redis
 from redis.exceptions import ResponseError
 from sqlalchemy.ext.asyncio import AsyncEngine
@@ -160,6 +161,14 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 def create_app() -> FastAPI:
     app = FastAPI(title="Parlio Core API", version=__version__, lifespan=lifespan)
+    s = get_settings()
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=sorted({*s.cors_origins, s.dashboard_url}),
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
     app.include_router(worker.router)
     app.include_router(dashboard.router)
     app.include_router(account.router)

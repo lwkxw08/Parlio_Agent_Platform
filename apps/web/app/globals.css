@@ -39,3 +39,47 @@ a { color: var(--accent); }
 .ticket .reason:hover { color: var(--accent); }
 .actions button { background: var(--line); color: var(--fg); border: 0; border-radius: 6px; padding: 0.3rem 0.7rem; cursor: pointer; font-size: 0.8rem; }
 .actions button:hover { background: var(--accent); }
+.account { margin-left: auto; font-size: 0.9rem; }
+.account a { color: var(--fg); text-decoration: none; }
+.tabs { display: flex; gap: 0.3rem; border-bottom: 1px solid var(--line); margin-bottom: 1rem; flex-wrap: wrap; }
+.tabs a, .tabs button { background: none; border: 0; border-bottom: 2px solid transparent; color: var(--muted); padding: 0.5rem 0.8rem; cursor: pointer; text-decoration: none; font-size: 0.9rem; }
+.tabs a.active, .tabs button.active { color: var(--fg); border-bottom-color: var(--accent); }
+.form { display: flex; flex-direction: column; gap: 0.8rem; max-width: 720px; }
+.form label { display: flex; flex-direction: column; gap: 0.3rem; font-size: 0.85rem; color: var(--muted); }
+.form input, .form textarea, .form select, .filters input, .filters select { background: var(--panel); color: var(--fg); border: 1px solid var(--line); border-radius: 6px; padding: 0.45rem 0.6rem; font: inherit; }
+.form textarea { min-height: 5rem; resize: vertical; }
+.form .two { display: grid; grid-template-columns: 1fr 1fr; gap: 0.8rem; }
+button.primary, .btn { background: var(--accent); color: #fff; border: 0; border-radius: 6px; padding: 0.5rem 1rem; cursor: pointer; font: inherit; text-decoration: none; display: inline-block; }
+button.primary:disabled { opacity: 0.5; cursor: default; }
+button.ghost { background: var(--line); color: var(--fg); border: 0; border-radius: 6px; padding: 0.35rem 0.7rem; cursor: pointer; font: inherit; }
+button.ghost:hover { background: var(--accent); }
+button.danger { background: #47171c; color: #ff7b86; border: 0; border-radius: 6px; padding: 0.35rem 0.7rem; cursor: pointer; font: inherit; }
+.filters { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 1rem; align-items: center; }
+.chips a { display: inline-block; padding: 0.25rem 0.7rem; border-radius: 999px; background: var(--line); color: var(--muted); text-decoration: none; font-size: 0.8rem; margin-right: 0.3rem; }
+.chips a.active { background: var(--accent); color: #fff; }
+tr.unread td { font-weight: 600; }
+.bars { display: flex; align-items: flex-end; gap: 3px; height: 120px; padding: 0.5rem 0; }
+.bars .bar { flex: 1; background: var(--accent); border-radius: 3px 3px 0 0; min-height: 2px; position: relative; }
+.bars .bar span { position: absolute; bottom: -1.2rem; left: 0; right: 0; text-align: center; font-size: 0.6rem; color: var(--muted); }
+.bars.tall { height: 160px; }
+.delta { font-size: 0.8rem; margin-left: 0.4rem; }
+.delta.up { color: #5fe0a1; }
+.delta.down { color: #ff7b86; }
+.card h2 { font-size: 0.95rem; margin: 0 0 0.6rem; }
+.card ul { margin: 0; padding-left: 1.1rem; }
+.section { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 1.2rem; margin-bottom: 1.2rem; }
+.section h2 { font-size: 1.05rem; margin: 0 0 0.3rem; }
+.section .hint { color: var(--muted); font-size: 0.85rem; margin: 0 0 0.9rem; }
+.list-row { display: grid; grid-template-columns: 1fr 2fr auto; gap: 0.6rem; align-items: start; padding: 0.5rem 0; border-top: 1px solid var(--line); }
+.list-row input, .list-row textarea, .list-row select { width: 100%; background: var(--bg); color: var(--fg); border: 1px solid var(--line); border-radius: 6px; padding: 0.35rem 0.5rem; font: inherit; }
+.toast { position: fixed; bottom: 1.5rem; right: 1.5rem; background: var(--panel); border: 1px solid var(--line); padding: 0.7rem 1rem; border-radius: 8px; }
+code.block, pre.block { display: block; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 0.6rem 0.8rem; white-space: pre-wrap; font-size: 0.85rem; }
+.steps { display: flex; gap: 0.5rem; margin-bottom: 1rem; flex-wrap: wrap; }
+.steps span { padding: 0.25rem 0.7rem; border-radius: 999px; background: var(--line); color: var(--muted); font-size: 0.8rem; }
+.steps span.active { background: var(--accent); color: #fff; }
+.steps span.done { color: #5fe0a1; }
+.share { max-width: 720px; margin: 0 auto; }
+.kv { display: grid; grid-template-columns: max-content 1fr; gap: 0.3rem 1rem; font-size: 0.9rem; }
+.kv dt { color: var(--muted); }
+.kv dd { margin: 0; }
+.hours-grid { display: grid; grid-template-columns: 4rem 1fr 1fr auto; gap: 0.4rem; align-items: center; }
