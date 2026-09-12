@@ -57,6 +57,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: astral-sh/setup-uv@v5
       - name: pip-audit (locked runtime dependencies)
         run: |
@@ -160,7 +162,7 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
       - name: Image vulnerability scan (Trivy)
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@v0.33.1
         with:
           image-ref: parlio-${{ matrix.app }}:ci
           severity: CRITICAL,HIGH
