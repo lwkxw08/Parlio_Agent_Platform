@@ -48,7 +48,7 @@ trunk and dispatch rule in `infra/local/sip/` with `lk` (see that README).
 ## Environments & releases
 
 `dev` (always-on test number + Pages previews per branch) -> `staging` (prod replica, staging
-numbers) -> `production`. CI (`.github/ci.yml.pending` -> move to `.github/workflows/ci.yml`) runs lint/types/tests/simulated
+numbers) -> `production`. CI runs lint/types/tests/simulated
 call/docker builds on every PR and deploys the dashboard preview to Cloudflare. Voice workers roll with a 30-min drain so in-flight
 calls finish on the old version. See `docs/BUILD_PLAN.md` for canary/feature-flag/prompt-versioning.
 
