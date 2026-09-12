@@ -147,3 +147,107 @@ async def test_urgent_keyword_escalates_and_forces_urgent_ticket() -> None:
 )
 def test_urgent_keyword_matching(text: str, hit: str | None) -> None:
     assert TransferConfig().matches_urgent(text) == hit
+
+
+class FakeApi:
+    """Stands in for CoreApiClient; records calls and returns canned API responses."""
+
+    def __init__(self, fail_booking: bool = False) -> None:
+        self.sms: list[dict[str, Any]] = []
+        self.bookings: list[dict[str, Any]] = []
+        self.fail_booking = fail_booking
+
+    async def create(self, cfg: AssistantConfig, intake: Any) -> dict[str, Any]:
+        return {"id": "tk-1", "status": "open"}
+
+    async def send_sms(
+        self,
+        cfg: AssistantConfig,
+        to: str,
+        call_id: str,
+        trigger: Any,
+        context: dict[str, Any],
+        body: str | None = None,
+    ) -> dict[str, Any] | None:
+        self.sms.append({"to": to, "trigger": trigger, "context": context})
+        if trigger == "payment_link":
+            return None
+        return {"status": "sent"}
+
+    async def availability(self, cfg: AssistantConfig, days: int = 7) -> dict[str, Any]:
+        return {"slots": [{"start": "2026-09-14T09:00:00Z"}, {"start": "2026-09-14T09:30:00Z"}]}
+
+    async def book(self, cfg: AssistantConfig, req: dict[str, Any]) -> dict[str, Any]:
+        if self.fail_booking:
+            raise RuntimeError("down")
+        self.bookings.append(req)
+        return {"id": "bk-1", "start": req["start"]}
+
+    async def admit(self, number: str, call_id: str) -> dict[str, Any]:
+        return {"allowed": True}
+
+    async def release(self, call_id: str) -> None:
+        return None
+
+
+def sms_cfg() -> AssistantConfig:
+    from parlio_voice.models import SmsScenario, SmsTrigger
+
+    c = cfg([office()])
+    c.sms_scenarios = [
+        SmsScenario(trigger=SmsTrigger.BOOKING_LINK, name="Link", template="x"),
+        SmsScenario(trigger=SmsTrigger.AFTER_CALL, name="Thanks", template="y"),
+        SmsScenario(trigger=SmsTrigger.ADDRESS, name="Addr", template="z", enabled=False),
+    ]
+    return c
+
+
+async def test_send_sms_tool_uses_caller_and_reports_skips() -> None:
+    from parlio_voice.tools import build_tools
+
+    api = FakeApi()
+    rec = Recorder()
+    c = sms_cfg()
+    tools = ReceptionistTools(
+        c,
+        "call-1",
+        "+447700900000",
+        TransferEngine(c.transfer, SimulatedBridge({})),
+        api,
+        rec.emit,
+        rec.say,
+    )
+    assert tools.sms_triggers() == ["booking_link"]  # after_call is automatic, address disabled
+    assert {t.info.name for t in build_tools(tools)} >= {
+        "send_sms",
+        "check_calendar",
+        "book_appointment",
+    }
+
+    res = await tools.send_sms("booking_link", caller_name="Sam")
+    assert res["status"] == "sent" and api.sms[-1]["to"] == "+447700900000"
+    assert tools.sms_sent == ["booking_link"]
+    assert (await tools.send_sms("payment_link"))["status"] == "skipped"
+    assert (await tools.send_sms("nonsense"))["status"] == "failed"
+    tools.caller = "anonymous"
+    assert (await tools.send_sms("booking_link"))["status"] == "failed"
+
+
+async def test_calendar_tools_book_and_degrade_gracefully() -> None:
+    api = FakeApi()
+    rec = Recorder()
+    c = cfg([office()])
+    engine = TransferEngine(c.transfer, SimulatedBridge({}))
+    tools = ReceptionistTools(c, "call-1", "+447700900000", engine, api, rec.emit, rec.say)
+    avail = await tools.calendar_availability()
+    assert avail["slots"] == ["2026-09-14T09:00:00Z", "2026-09-14T09:30:00Z"]
+    res = await tools.book_appointment("2026-09-14T09:00:00Z", "Sam")
+    assert res["status"] == "booked" and tools.booking_id == "bk-1"
+    assert api.bookings[0]["phone"] == "+447700900000" and api.bookings[0]["call_id"] == "call-1"
+
+    broken = ReceptionistTools(
+        c, "call-2", None, engine, FakeApi(fail_booking=True), rec.emit, rec.say
+    )
+    assert (await broken.book_appointment("2026-09-14T09:00:00Z", "Sam"))["status"] == "failed"
+    offline = ReceptionistTools(c, "call-3", None, engine, None, rec.emit, rec.say)
+    assert (await offline.calendar_availability())["slots"] == []

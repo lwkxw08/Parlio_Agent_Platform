@@ -18,6 +18,7 @@ from parlio_voice.models import (
     AfterHoursBehaviour,
     AssistantConfig,
     CallEventType,
+    SmsTrigger,
     TicketIntake,
     TicketPriority,
     TransferMode,
@@ -31,8 +32,8 @@ Emit = Callable[[CallEventType, dict[str, Any]], None]
 Say = Callable[[str], Awaitable[None]]
 
 
-class TicketClient:
-    """Thin client for the Core API ticket intake endpoint."""
+class CoreApiClient:
+    """Thin client for the Core API worker endpoints (tickets, SMS, calendar, SIP admission)."""
 
     def __init__(self, http: httpx.AsyncClient) -> None:
         self._http = http
@@ -46,6 +47,56 @@ class TicketClient:
         r.raise_for_status()
         return dict(r.json())
 
+    async def send_sms(
+        self,
+        cfg: AssistantConfig,
+        to: str,
+        call_id: str,
+        trigger: SmsTrigger,
+        context: dict[str, Any],
+        body: str | None = None,
+    ) -> dict[str, Any] | None:
+        r = await self._http.post(
+            "/v1/worker/sms",
+            json={
+                "assistant_id": cfg.assistant_id,
+                "to": to,
+                "call_id": call_id,
+                "trigger": trigger,
+                "body": body,
+                "context": context,
+            },
+        )
+        r.raise_for_status()
+        data = r.json()
+        return dict(data) if data else None
+
+    async def availability(self, cfg: AssistantConfig, days: int = 7) -> dict[str, Any]:
+        r = await self._http.get(
+            "/v1/worker/calendar/availability",
+            params={"tenant_id": cfg.tenant_id, "days": days},
+        )
+        r.raise_for_status()
+        return dict(r.json())
+
+    async def book(self, cfg: AssistantConfig, req: dict[str, Any]) -> dict[str, Any]:
+        r = await self._http.post(
+            "/v1/worker/calendar/bookings", params={"tenant_id": cfg.tenant_id}, json=req
+        )
+        r.raise_for_status()
+        return dict(r.json())
+
+    async def admit(self, number: str, call_id: str) -> dict[str, Any]:
+        r = await self._http.post(
+            "/v1/worker/telephony/admit", params={"number": number, "call_id": call_id}
+        )
+        r.raise_for_status()
+        return dict(r.json())
+
+    async def release(self, call_id: str) -> None:
+        r = await self._http.post("/v1/worker/telephony/release", params={"call_id": call_id})
+        r.raise_for_status()
+
 
 class ReceptionistTools:
     def __init__(
@@ -54,7 +105,7 @@ class ReceptionistTools:
         call_id: str,
         caller: str | None,
         engine: TransferEngine,
-        tickets: TicketClient | None,
+        api: CoreApiClient | None,
         emit: Emit,
         say: Say,
     ) -> None:
@@ -62,12 +113,21 @@ class ReceptionistTools:
         self.call_id = call_id
         self.caller = caller
         self.engine = engine
-        self.tickets = tickets
+        self.api = api
         self.emit = emit
         self.say = say
         self.urgent_hit: str | None = None
         self.transferred = False
         self.ticket_id: str | None = None
+        self.booking_id: str | None = None
+        self.sms_sent: list[str] = []
+
+    def sms_triggers(self) -> list[SmsTrigger]:
+        """Scenarios the LLM may fire mid-call (post-call ones are sent by the API)."""
+        auto = {SmsTrigger.AFTER_CALL, SmsTrigger.MISSED_CALL, SmsTrigger.TICKET_CONFIRMATION}
+        return sorted(
+            {s.trigger for s in self.cfg.sms_scenarios if s.enabled and s.trigger not in auto}
+        )
 
     # -- urgent keyword detection (called from transcript hook) -----------------------------
     def observe_user_text(self, text: str) -> str | None:
@@ -169,9 +229,9 @@ class ReceptionistTools:
             source=source,
         )
         ticket: dict[str, Any] = {"id": None, "status": "unsent"}
-        if self.tickets is not None:
+        if self.api is not None:
             try:
-                ticket = await self.tickets.create(self.cfg, intake)
+                ticket = await self.api.create(self.cfg, intake)
             except Exception:
                 log.exception("ticket API failed; ticket will be rebuilt from the event stream")
         self.ticket_id = ticket.get("id")
@@ -180,6 +240,70 @@ class ReceptionistTools:
             {"ticket_id": self.ticket_id, "intake": intake.model_dump(mode="json")},
         )
         return ticket
+
+    # -- SMS ----------------------------------------------------------------------------------
+    async def send_sms(
+        self, trigger: str, to: str | None = None, caller_name: str | None = None
+    ) -> dict[str, Any]:
+        try:
+            trig = SmsTrigger(trigger)
+        except ValueError:
+            return {"status": "failed", "error": f"unknown trigger {trigger}"}
+        dest = to or self.caller
+        if not dest or dest.startswith("anonymous") or dest == "unknown":
+            return {"status": "failed", "error": "no mobile number for the caller"}
+        if self.api is None:
+            return {"status": "unsent"}
+        ctx: dict[str, Any] = {"caller_name": caller_name, "ticket_id": self.ticket_id}
+        try:
+            msg = await self.api.send_sms(self.cfg, dest, self.call_id, trig, ctx)
+        except Exception as e:
+            log.warning("sms send failed: %s", e)
+            return {"status": "failed", "error": "messaging unavailable"}
+        if msg is None:
+            return {"status": "skipped", "error": "no enabled scenario for this trigger"}
+        if msg.get("status") == "sent":
+            self.sms_sent.append(trig)
+        return {"status": msg.get("status"), "error": msg.get("error")}
+
+    # -- calendar -----------------------------------------------------------------------------
+    async def calendar_availability(self, days: int = 7) -> dict[str, Any]:
+        if self.api is None:
+            return {"slots": [], "error": "calendar unavailable"}
+        try:
+            res = await self.api.availability(self.cfg, days)
+        except Exception as e:
+            log.warning("availability failed: %s", e)
+            return {"slots": [], "error": "calendar unavailable"}
+        slots = [s["start"] for s in res.get("slots", [])][:8]
+        return {
+            "slots": slots,
+            "booking_url": res.get("booking_url"),
+            "error": res.get("error"),
+        }
+
+    async def book_appointment(
+        self, start: str, name: str, phone: str | None = None, notes: str | None = None
+    ) -> dict[str, Any]:
+        if self.api is None:
+            return {"status": "unsent"}
+        req = {
+            "start": start,
+            "name": name,
+            "phone": phone or self.caller,
+            "notes": notes,
+            "call_id": self.call_id,
+        }
+        try:
+            booking = await self.api.book(self.cfg, req)
+        except httpx.HTTPStatusError as e:
+            detail = e.response.json().get("detail") if e.response.content else None
+            return {"status": "failed", "error": detail or "slot unavailable"}
+        except Exception as e:
+            log.warning("booking failed: %s", e)
+            return {"status": "failed", "error": "calendar unavailable"}
+        self.booking_id = booking.get("id")
+        return {"status": "booked", "booking_id": self.booking_id, "start": booking.get("start")}
 
 
 def build_tools(t: ReceptionistTools) -> list[Any]:
@@ -236,7 +360,53 @@ def build_tools(t: ReceptionistTools) -> list[Any]:
         )
         return {"ticket_id": ticket.get("id"), "status": ticket.get("status")}
 
-    return [check_availability, transfer_to_human, create_ticket]
+    tools = [check_availability, transfer_to_human, create_ticket] if cfg.enabled else []
+    triggers = t.sms_triggers()
+    if triggers:
+
+        @function_tool(
+            name="send_sms",
+            description=(
+                "Text the caller a pre-approved message. Triggers: "
+                f"{', '.join(triggers)}. Only after the caller agrees to receive a text; "
+                "confirm the mobile number if the caller ID is withheld."
+            ),
+        )
+        async def send_sms(
+            trigger: str, to: str | None = None, caller_name: str | None = None
+        ) -> dict[str, Any]:
+            return await t.send_sms(trigger, to, caller_name)
+
+        tools.append(send_sms)
+
+    if t.api is not None:
+
+        @function_tool(
+            name="check_calendar",
+            description=(
+                "Get the next free appointment slots (ISO timestamps, local business hours). "
+                "Offer the caller two or three options. If a booking_url is returned instead, "
+                "offer to text the link with send_sms(trigger='booking_link')."
+            ),
+        )
+        async def check_calendar(days: int = 7) -> dict[str, Any]:
+            return await t.calendar_availability(days)
+
+        @function_tool(
+            name="book_appointment",
+            description=(
+                "Book one of the slots from check_calendar. Confirm the time, name and phone "
+                "number back to the caller first. start must be one of the returned slots."
+            ),
+        )
+        async def book_appointment(
+            start: str, name: str, phone: str | None = None, notes: str | None = None
+        ) -> dict[str, Any]:
+            return await t.book_appointment(start, name, phone, notes)
+
+        tools.extend([check_calendar, book_appointment])
+
+    return tools
 
 
 def after_hours_instruction(cfg: AssistantConfig, someone_available: bool) -> str:
