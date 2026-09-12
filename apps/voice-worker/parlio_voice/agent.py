@@ -40,8 +40,8 @@ from parlio_voice.models import AssistantConfig, CallEventType, TurnLatency
 from parlio_voice.recording import CallRecorder
 from parlio_voice.settings import get_settings
 from parlio_voice.tools import (
+    CoreApiClient,
     ReceptionistTools,
-    TicketClient,
     after_hours_instruction,
     build_tools,
 )
@@ -63,9 +63,10 @@ class Receptionist(Agent):
     def __init__(self, cfg: AssistantConfig, tools: ReceptionistTools | None = None) -> None:
         instructions = cfg.rendered_instructions()
         fn_tools = []
-        if tools is not None and cfg.transfer.enabled:
-            avail = tools.availability()
-            instructions += after_hours_instruction(cfg, avail["someone_available"])
+        if tools is not None:
+            if cfg.transfer.enabled:
+                avail = tools.availability()
+                instructions += after_hours_instruction(cfg, avail["someone_available"])
             fn_tools = build_tools(tools)
         super().__init__(instructions=instructions, tools=fn_tools)
         self.cfg = cfg
@@ -76,6 +77,15 @@ def _redis(url: str) -> Redis | None:
         return Redis.from_url(url, decode_responses=True, socket_connect_timeout=1)
     except Exception:
         log.warning("redis unavailable; running without cache/bus")
+        return None
+
+
+async def _admit(api: CoreApiClient, dialed: str, call_id: str) -> dict[str, object] | None:
+    """Ask the API whether a BYO-trunk DDI should be answered now (fail-open if unreachable)."""
+    try:
+        return await api.admit(dialed, call_id)
+    except Exception:
+        log.warning("trunk admission check failed; answering anyway", exc_info=True)
         return None
 
 
@@ -95,7 +105,22 @@ async def entrypoint(ctx: JobContext) -> None:
     ctx.log_context_fields.update({"call_id": call_id, "dialed": dialed})
 
     cfg = await config_client.resolve(dialed)
+    core_api = CoreApiClient(config_client.http)
     log.info("call %s from %s -> %s (tenant=%s)", call_id, caller, dialed, cfg.tenant_id)
+    admitted = await _admit(core_api, dialed, call_id)
+    if admitted is not None and not admitted.get("allowed", True):
+        reason = str(admitted.get("reason") or "not admitted")
+        log.info("call %s declined by trunk routing: %s", call_id, reason)
+        events.emit(
+            cfg,
+            call_id,
+            CallEventType.CALL_ENDED,
+            {"reason": "declined", "detail": reason, "duration_s": 0},
+        )
+        ctx.shutdown(reason="declined")
+        return
+    if admitted is not None and admitted.get("department"):
+        ctx.log_context_fields["department"] = str(admitted["department"])
     events.emit(
         cfg,
         call_id,
@@ -168,7 +193,7 @@ async def entrypoint(ctx: JobContext) -> None:
         call_id,
         caller,
         TransferEngine(cfg.transfer, bridge),
-        TicketClient(config_client.http),
+        core_api,
         _emit,
         lambda text: session.say(text, allow_interruptions=False).wait_for_playout(),
     )
@@ -194,6 +219,10 @@ async def entrypoint(ctx: JobContext) -> None:
         if tools.transferred and reason != "transferred":
             reason = "transferred"
         await recorder.stop()
+        try:
+            await core_api.release(call_id)
+        except Exception:
+            log.debug("trunk release failed for %s", call_id, exc_info=True)
         history = [
             {"role": item.role, "text": item.text_content}
             for item in session.history.items

@@ -121,3 +121,27 @@ jobs:
           push: false
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+  # API + voice worker: redeploy the single-VM stack on every push to main.
+  # Requires repo secrets VPS_HOST (IP or hostname) and VPS_SSH_KEY (private key for root).
+  deploy-vps:
+    name: Deploy API/worker (VPS)
+    needs: [python, docker]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    env:
+      HAS_VPS: ${{ secrets.VPS_SSH_KEY != '' && secrets.VPS_HOST != '' }}
+    steps:
+      - name: Deploy over SSH
+        if: env.HAS_VPS == 'true'
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "$VPS_SSH_KEY" > ~/.ssh/vps
+          chmod 600 ~/.ssh/vps
+          ssh -i ~/.ssh/vps -o StrictHostKeyChecking=accept-new "root@$VPS_HOST" \
+            "set -e; cd /opt/parlio && git fetch --quiet origin main && git checkout --quiet ${{ github.sha }} && ./infra/vps/deploy.sh"
+      - if: env.HAS_VPS != 'true'
+        run: echo "VPS_SSH_KEY/VPS_HOST not set - skipping VPS deploy"

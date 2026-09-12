@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
-from parlio_api.deps import PostCallDep, StoreDep, TicketsDep, require_worker_key
+from parlio_api.deps import HubDep, PostCallDep, StoreDep, TicketsDep, require_worker_key
 from parlio_api.store import Ticket
 from parlio_voice.models import AssistantConfig, CallEvent, CallEventType, TicketIntake
 
@@ -21,13 +21,15 @@ async def resolve_assistant(store: StoreDep, number: str = Query(min_length=3)) 
 
 @router.post("/events", status_code=status.HTTP_202_ACCEPTED)
 async def ingest_event(
-    ev: CallEvent, store: StoreDep, postcall: PostCallDep, tickets: TicketsDep
+    ev: CallEvent, store: StoreDep, postcall: PostCallDep, tickets: TicketsDep, hub: HubDep
 ) -> dict[str, bool]:
     applied = await store.apply_event(ev)
     if applied and ev.type == CallEventType.CALL_ENDED:
         postcall.enqueue(ev.call_id)
     if applied and ev.type == CallEventType.TICKET_CREATED:
         await tickets.rebuild_from_event(ev)
+    if applied:
+        await hub.on_event(ev)
     return {"applied": applied}
 
 

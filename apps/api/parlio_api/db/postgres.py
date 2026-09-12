@@ -28,6 +28,7 @@ from parlio_api.store import (
     Member,
     PostCallResult,
     RequiredField,
+    TenantDoc,
     Ticket,
     TicketEvent,
     TicketStats,
@@ -160,6 +161,17 @@ def _row_to_member(r: Row[Any]) -> Member:
         role=r.role,
         status=r.status,
         invited_at=r.invited_at,
+    )
+
+
+def _row_to_doc(r: Row[Any]) -> TenantDoc:
+    return TenantDoc(
+        kind=r.kind,
+        id=r.id,
+        tenant_id=r.organization_id,
+        data=r.data if isinstance(r.data, dict) else json.loads(r.data),
+        created_at=r.created_at,
+        updated_at=r.updated_at,
     )
 
 
@@ -1077,6 +1089,103 @@ class PostgresStore:
                 for r in rows
             ]
         return compute_ticket_stats(tickets, events)
+
+    # -- tenant documents ---------------------------------------------------------------------
+    async def put_doc(self, doc: TenantDoc) -> TenantDoc:
+        async with tenant_tx(self._engine, doc.tenant_id) as conn:
+            row = (
+                await conn.execute(
+                    text(
+                        """
+                        INSERT INTO tenant_documents (kind, id, organization_id, data)
+                        VALUES (:kind, :id, :tid, CAST(:data AS jsonb))
+                        ON CONFLICT (kind, id) DO UPDATE SET
+                            data = EXCLUDED.data, updated_at = now()
+                        RETURNING created_at, updated_at
+                        """
+                    ),
+                    {
+                        "kind": doc.kind,
+                        "id": doc.id,
+                        "tid": doc.tenant_id,
+                        "data": json.dumps(doc.data, default=str),
+                    },
+                )
+            ).one()
+        return doc.model_copy(update={"created_at": row.created_at, "updated_at": row.updated_at})
+
+    async def get_doc(self, kind: str, doc_id: str) -> TenantDoc | None:
+        async with tenant_tx(self._engine, None) as conn:
+            r = (
+                await conn.execute(
+                    text(
+                        "SELECT kind, id, organization_id, data, created_at, updated_at"
+                        " FROM tenant_documents WHERE kind = :k AND id = :id"
+                    ),
+                    {"k": kind, "id": doc_id},
+                )
+            ).first()
+        return _row_to_doc(r) if r else None
+
+    async def list_docs(
+        self, kind: str, tenant_id: str | None = None, limit: int = 200
+    ) -> list[TenantDoc]:
+        async with tenant_tx(self._engine, tenant_id) as conn:
+            rows = await conn.execute(
+                text(
+                    "SELECT kind, id, organization_id, data, created_at, updated_at"
+                    " FROM tenant_documents WHERE kind = :k"
+                    " AND (CAST(:tid AS text) IS NULL OR organization_id = :tid)"
+                    " ORDER BY created_at DESC LIMIT :lim"
+                ),
+                {"k": kind, "tid": tenant_id, "lim": limit},
+            )
+            return [_row_to_doc(r) for r in rows]
+
+    async def delete_doc(self, kind: str, doc_id: str) -> bool:
+        async with tenant_tx(self._engine, None) as conn:
+            res = await conn.execute(
+                text("DELETE FROM tenant_documents WHERE kind = :k AND id = :id"),
+                {"k": kind, "id": doc_id},
+            )
+        return bool(res.rowcount)
+
+    async def assign_number(
+        self, tenant_id: str, company_id: str, e164: str, assistant_id: str
+    ) -> None:
+        async with tenant_tx(self._engine, None) as conn:
+            await conn.execute(
+                text(
+                    """
+                    INSERT INTO phone_numbers (e164, organization_id, company_id, assistant_id,
+                        carrier)
+                    VALUES (:n, :oid, :cid, :aid, 'byo_sip')
+                    ON CONFLICT (e164) DO UPDATE SET
+                        assistant_id = EXCLUDED.assistant_id,
+                        organization_id = EXCLUDED.organization_id,
+                        company_id = EXCLUDED.company_id,
+                        carrier = EXCLUDED.carrier
+                    """
+                ),
+                {"n": e164, "oid": tenant_id, "cid": company_id, "aid": assistant_id},
+            )
+        if self._redis is not None:
+            try:
+                await self._redis.delete(f"parlio:assistant_config:{e164}")
+            except Exception:
+                log.warning("redis invalidate failed", exc_info=True)
+
+    async def unassign_number(self, e164: str) -> None:
+        async with tenant_tx(self._engine, None) as conn:
+            await conn.execute(
+                text("DELETE FROM phone_numbers WHERE e164 = :n AND carrier = 'byo_sip'"),
+                {"n": e164},
+            )
+        if self._redis is not None:
+            try:
+                await self._redis.delete(f"parlio:assistant_config:{e164}")
+            except Exception:
+                log.warning("redis invalidate failed", exc_info=True)
 
     async def ensure_partitions(self) -> None:
         async with tenant_tx(self._engine, None) as conn:

@@ -8,7 +8,7 @@ cd "$(dirname "$0")"
 gen() { openssl rand -hex 24; }
 ensure() { grep -q "^$1=.\+" .env || { sed -i "/^$1=/d" .env; echo "$1=$(gen)" >> .env; }; }
 for v in LIVEKIT_API_KEY LIVEKIT_API_SECRET POSTGRES_PASSWORD POSTGRES_APP_PASSWORD \
-         MINIO_ROOT_PASSWORD PARLIO_WORKER_API_KEY; do ensure "$v"; done
+         MINIO_ROOT_PASSWORD PARLIO_WORKER_API_KEY PARLIO_VAULT_KEY; do ensure "$v"; done
 
 set -a; . ./.env; set +a
 mkdir -p config
