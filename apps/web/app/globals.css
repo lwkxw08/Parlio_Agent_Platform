@@ -27,8 +27,8 @@
 * { box-sizing: border-box; }
 html { min-height: 100%; background: var(--page-bg); background-attachment: fixed; }
 body { margin: 0; font-family: ui-sans-serif, system-ui, sans-serif; color: var(--fg); min-height: 100vh; }
-main { padding: 1.5rem 1.5rem 2rem; max-width: 1180px; margin: 0 0 0 var(--side-w); }
-@media (max-width: 720px) { main { padding: 1rem; } }
+main { padding: 1.5rem 2rem 2rem calc(var(--side-w) + 2rem); max-width: calc(1600px + var(--side-w)); margin: 0 auto; }
+@media (max-width: 720px) { main { padding: 1rem 1rem 1rem calc(var(--side-w) + 1rem); } }
 
 /* collapsible icon sidebar */
 .side { position: fixed; z-index: 20; left: 0; top: 0; bottom: 0; width: var(--side-w); display: flex; flex-direction: column; gap: 4px; padding: 12px 10px; overflow: hidden;
@@ -46,7 +46,7 @@ main { padding: 1.5rem 1.5rem 2rem; max-width: 1180px; margin: 0 0 0 var(--side-
 .side .nav-item.active { background: var(--accent-grad); color: #fff; box-shadow: 0 6px 14px rgba(106, 61, 245, .25); }
 .side-foot { display: flex; flex-direction: column; gap: 4px; border-top: 1px solid var(--line); padding-top: 8px; }
 h1 { font-size: 1.4rem; margin: 0 0 1rem; }
-.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 1.5rem; }
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1rem; margin-bottom: 1.5rem; }
 .card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 1rem; box-shadow: var(--shadow); }
 .card .label { color: var(--muted); font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; }
 .card .value { font-size: 1.6rem; font-weight: 600; margin-top: 0.25rem; }
