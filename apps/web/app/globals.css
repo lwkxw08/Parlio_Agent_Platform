@@ -86,9 +86,15 @@ a { color: var(--accent); }
 .form input, .form textarea, .form select, .filters input, .filters select { background: var(--field); color: var(--fg); border: 1px solid var(--line); border-radius: 6px; padding: 0.45rem 0.6rem; font: inherit; }
 .form textarea { min-height: 5rem; resize: vertical; }
 .form .two { display: grid; grid-template-columns: 1fr 1fr; gap: 0.8rem; }
+form.section label { display: flex; flex-direction: column; gap: 0.3rem; font-size: 0.85rem; color: var(--muted); }
+form.section input:not([type=checkbox]):not([type=radio]):not([type=range]), form.section select, form.section textarea { background: var(--field); color: var(--fg); border: 1px solid var(--line); border-radius: 6px; padding: 0.45rem 0.6rem; font: inherit; }
+form.section .grid { margin-bottom: 1rem; }
+form.section label.check, .form label.check { flex-direction: row; flex-wrap: wrap; align-items: center; gap: 0.5rem; color: var(--fg); }
+form.section label.check .small { flex-basis: 100%; }
+form.section input:focus, form.section select:focus, form.section textarea:focus, .form input:focus, .form select:focus, .form textarea:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(59, 123, 255, .18); }
 button.primary, .btn { background: var(--accent-grad); color: #fff; border: 0; border-radius: 6px; padding: 0.5rem 1rem; cursor: pointer; font: inherit; text-decoration: none; display: inline-block; }
 button.primary:disabled { opacity: 0.5; cursor: default; }
-button.ghost { background: var(--line); color: var(--fg); border: 0; border-radius: 6px; padding: 0.35rem 0.7rem; cursor: pointer; font: inherit; }
+button.ghost, form.section button:not(.primary):not(.danger) { background: var(--line); color: var(--fg); border: 0; border-radius: 6px; padding: 0.35rem 0.7rem; cursor: pointer; font: inherit; }
 button.ghost:hover { background: var(--accent); color: #fff; }
 button.danger { background: var(--bad-bg); color: var(--bad-fg); border: 0; border-radius: 6px; padding: 0.35rem 0.7rem; cursor: pointer; font: inherit; }
 .filters { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 1rem; align-items: center; }
