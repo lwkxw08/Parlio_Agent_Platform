@@ -140,7 +140,7 @@ function Notifications({ tenant, canManage, rules: initial, log }: Props) {
               <a key={id} className={events.includes(id) ? "active" : ""} onClick={() => setEvents((ev) => (ev.includes(id) ? ev.filter((x) => x !== id) : [...ev, id]))}>{label}</a>
             ))}
           </div>
-          <label className="small"><input type="checkbox" checked={qualifiedOnly} onChange={(e) => setQualifiedOnly(e.target.checked)} /> Qualified leads only (call events)</label>
+          <label className="small check"><input type="checkbox" checked={qualifiedOnly} onChange={(e) => setQualifiedOnly(e.target.checked)} /> Qualified leads only (call events)</label>
           <div style={{ marginTop: "0.8rem" }}><button type="submit" className="primary" disabled={!events.length}>Save rule</button> {msg && <span className="muted small">{msg}</span>}</div>
         </form>
       )}

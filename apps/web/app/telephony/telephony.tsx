@@ -213,7 +213,7 @@ export default function Telephony({ tenant, canManage, trunks: initial, guides, 
                 <div>
                   <div className="small muted">Codecs</div>
                   <div className="chips">{CODECS.map((c) => <a key={c} className={form.codecs.includes(c) ? "active" : ""} onClick={() => setForm({ ...form, codecs: form.codecs.includes(c) ? form.codecs.filter((x) => x !== c) : [...form.codecs, c] })}>{c}</a>)}</div>
-                  <label className="small"><input type="checkbox" checked={form.srtp} disabled={form.transport !== "tls"} onChange={(e) => setForm({ ...form, srtp: e.target.checked })} /> SRTP (needs TLS)</label>
+                  <label className="small check"><input type="checkbox" checked={form.srtp} disabled={form.transport !== "tls"} onChange={(e) => setForm({ ...form, srtp: e.target.checked })} /> SRTP (needs TLS)</label>
                 </div>
               </>
             )}

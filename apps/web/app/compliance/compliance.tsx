@@ -54,9 +54,9 @@ function Retention({ tenant, canManage, view, setMsg }: { tenant: string; canMan
     setLast(r.data); setMsg(`Sweep done: ${r.data.transcripts_redacted} transcripts redacted, ${r.data.recordings_dropped} recordings dropped, ${r.data.calls_purged} calls purged.`);
   };
   const num = (k: "transcript_days" | "recording_days" | "call_days", label: string, hint: string) => (
-    <label style={{ display: "block", marginBottom: "0.8rem" }}>
+    <label className="check" style={{ marginBottom: "0.8rem" }}>
       {label}
-      <input type="number" min={1} max={3650} value={pol[k]} disabled={!canManage} onChange={(e) => set({ [k]: Number(e.target.value) })} style={{ maxWidth: 120, marginLeft: "0.6rem" }} /> days
+      <input type="number" min={1} max={3650} value={pol[k]} disabled={!canManage} onChange={(e) => set({ [k]: Number(e.target.value) })} style={{ maxWidth: 120 }} /> days
       <div className="muted small">{hint}</div>
     </label>
   );
@@ -70,8 +70,8 @@ function Retention({ tenant, canManage, view, setMsg }: { tenant: string; canMan
         {num("call_days", "Keep call records", "Call metadata (who/when/how long) is purged entirely — this also removes it from analytics.")}
         <h2 style={{ marginTop: "1rem" }}>PII redaction</h2>
         <p className="hint">Card numbers, emails, UK phone numbers, NI numbers, sort codes, postcodes and long spoken digit strings.</p>
-        <label style={{ display: "block" }}><input type="checkbox" checked={pol.redact_on_write} disabled={!canManage} onChange={(e) => set({ redact_on_write: e.target.checked })} /> Redact PII from transcripts as soon as the call ends</label>
-        <label style={{ display: "block", marginTop: "0.4rem" }}><input type="checkbox" checked={pol.redact_caller_number} disabled={!canManage || !pol.redact_on_write} onChange={(e) => set({ redact_caller_number: e.target.checked })} /> Also mask the caller&apos;s number (last six digits) — disables returning-caller recognition</label>
+        <label className="check"><input type="checkbox" checked={pol.redact_on_write} disabled={!canManage} onChange={(e) => set({ redact_on_write: e.target.checked })} /> Redact PII from transcripts as soon as the call ends</label>
+        <label className="check" style={{ marginTop: "0.4rem" }}><input type="checkbox" checked={pol.redact_caller_number} disabled={!canManage || !pol.redact_on_write} onChange={(e) => set({ redact_caller_number: e.target.checked })} /> Also mask the caller&apos;s number (last six digits) — disables returning-caller recognition</label>
         {canManage && <div style={{ marginTop: "1rem", display: "flex", gap: "0.5rem" }}><button className="primary" type="submit">Save policy</button><button type="button" onClick={run}>Run sweep now</button></div>}
       </form>
       <div className="section">
