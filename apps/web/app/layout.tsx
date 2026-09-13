@@ -1,54 +1,33 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { fetchMe } from "@/lib/api";
+import Sidebar, { type Account } from "./sidebar";
 import "./globals.css";
 
 export const metadata: Metadata = {
   title: "Parlio",
   description: "Parlio AI phone assistant dashboard",
+  icons: { icon: "/logo-icon.png" },
 };
 
 export const dynamic = "force-dynamic";
 
-const NAV = [
-  ["/", "Overview"],
-  ["/calls", "Calls"],
-  ["/analytics", "Analytics"],
-  ["/contacts", "Contacts"],
-  ["/tickets", "Tickets"],
-  ["/handoff", "Transfers"],
-  ["/assistant", "Assistant"],
-  ["/integrations", "Integrations"],
-  ["/telephony", "Telephony"],
-  ["/billing", "Billing"],
-  ["/compliance", "Compliance"],
-  ["/team", "Team"],
-  ["/launch", "Launch"],
-] as const;
+// Applies the saved theme before first paint to avoid a light/dark flash.
+const THEME_INIT = `try{var t=localStorage.getItem("parlio-theme");if(t==="dark"||t==="light")document.documentElement.dataset.theme=t}catch(e){}`;
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   const me = await fetchMe();
+  const account: Account = me.ok
+    ? { kind: "user", name: me.data.name ?? me.data.email, email: me.data.email, dev: me.data.mode === "dev" }
+    : me.status === 401
+      ? { kind: "signin" }
+      : { kind: "offline" };
   return (
-    <html lang="en">
+    <html lang="en" data-theme="light" suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: THEME_INIT }} />
+      </head>
       <body>
-        <header>
-          <Link href="/" className="brand">Parlio</Link>
-          <nav>
-            {NAV.map(([href, label]) => <Link key={href} href={href}>{label}</Link>)}
-          </nav>
-          <div className="account">
-            {me.ok ? (
-              <Link href="/account" title={me.data.email}>
-                {me.data.name ?? me.data.email}
-                {me.data.mode === "dev" && <span className="pill warn" style={{ marginLeft: 6 }}>dev</span>}
-              </Link>
-            ) : me.status === 401 ? (
-              <Link href="/login">Sign in</Link>
-            ) : (
-              <span className="muted small">API offline</span>
-            )}
-          </div>
-        </header>
+        <Sidebar account={account} />
         <main>{children}</main>
       </body>
     </html>

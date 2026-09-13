@@ -20,8 +20,8 @@ const PRESETS: { label: string; days: number }[] = [
   { label: "30 days", days: 30 },
   { label: "90 days", days: 90 },
 ];
-const P1 = "#4f8cff";
-const P2 = "#5fe0a1";
+const P1 = "var(--blue)";
+const P2 = "var(--violet)";
 
 type Mode = "overview" | "compare";
 
@@ -216,7 +216,7 @@ export default function AnalyticsView({ overview, initial }: { overview: Overvie
             {data.question.source === "llm" ? " · AI" : ""}
           </p>
         )}
-        {error && <p className="small" style={{ color: "#ff7b86", margin: "6px 0 0" }}>{error}</p>}
+        {error && <p className="small" style={{ color: "var(--bad-fg)", margin: "6px 0 0" }}>{error}</p>}
       </form>
 
       <div className="period card">
