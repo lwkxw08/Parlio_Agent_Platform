@@ -128,12 +128,25 @@ Parlio owns and guarantees AI numbers, carrier, SIP edge and AI pipeline; custom
 
 ### Phase 7 — Adapter framework + generic/SME integrations (1 session)
 - Interfaces: BookingProvider, CRMProvider, TicketSink, HRProvider; per-tenant field mapping UI; credential vault; sync logs & retry; adapter contract tests.
-- Generic sinks: Zapier/Make/webhook, HubSpot CRM. Trades reference adapter (Jobber or ServiceM8) as the template for future verticals.
+- Generic sinks first (cover the long tail cheaply): Zapier, Make, outbound webhooks + inbound API, CSV export, Google Sheets.
+- Calendars: Google Calendar (done in Phase 5), Microsoft 365/Outlook via Graph API (priority — most UK SMBs are on M365), Calendly.
+- CRMs: HubSpot, Salesforce, Pipedrive, Zoho — push caller/contact, log call + summary/recording link, create lead/deal.
+- Team chat: Slack app (upgrade from webhook), Microsoft Teams (alerts + transfers to Teams Phone users).
+- Trades reference adapter (ServiceM8 or Jobber) as the template for future verticals.
 
 ### Phase 8 — Enterprise platforms (2 sessions)
 - monday.com (GraphQL, OAuth app) — tickets <-> board items, status sync back.
 - ServiceNow (Table/Incident/Case APIs, OAuth) — create Incident/Case with transcript link + urgency; bi-directional state; optional Scoped App/Store later.
 - Workday (HR/Absence/Recruiting via Integration System User) — HR-line use cases (leave balance, log absence, identity verification); requires customer tenant or partner access.
+- Helpdesk/ticketing: Zendesk, Freshdesk, Jira Service Management — ticket create + status sync back (same TicketSink interface as monday.com).
+
+### Phase 8b — Vertical & marketing adapters (by customer demand, ~1 session each batch)
+- Trades/field service: ServiceM8, Jobber, simPRO, Tradify.
+- Legal: Clio, LEAP. Property/lettings: Reapit, Alto. Hospitality: OpenTable, ResDiary.
+- Accounting (lightweight, invoice/balance queries): Xero, QuickBooks.
+- Healthcare/dental (Dentally, SystmOne/EMIS) only via approved partner programmes — heavy compliance; keep out of scope until sovereign profile (Phase 15) is live.
+- Marketing/comms: Mailchimp, Klaviyo, Brevo — add caller to list only with explicit consent captured on the call (GDPR); Google Business Profile already used in onboarding.
+- Suggested Part B order: M365/Outlook + Teams -> HubSpot + Salesforce -> Zapier/Make/webhooks -> Zendesk/monday.com -> verticals as customers ask; Mailchimp is a quick add once generic connectors exist.
 
 ---
 
