@@ -10,6 +10,7 @@ from parlio_api.calendar import CalendarService
 from parlio_api.compliance import ComplianceService
 from parlio_api.connectors import ConnectorService, TenantApiKey
 from parlio_api.integrations import IntegrationHub
+from parlio_api.live import ApprovalService, LiveCallHub, SupervisorService
 from parlio_api.messaging import MessageService
 from parlio_api.notifications import NotificationService
 from parlio_api.observability import AuditLog, Telemetry
@@ -91,6 +92,21 @@ def get_outbound(request: Request) -> OutboundService:
     return o
 
 
+def get_live(request: Request) -> LiveCallHub:
+    h: LiveCallHub = request.app.state.live
+    return h
+
+
+def get_supervisor(request: Request) -> SupervisorService:
+    s: SupervisorService = request.app.state.supervisor
+    return s
+
+
+def get_approvals(request: Request) -> ApprovalService:
+    a: ApprovalService = request.app.state.approvals
+    return a
+
+
 StoreDep = Annotated[CallStore, Depends(get_store)]
 BillingDep = Annotated[BillingService, Depends(get_billing)]
 TelemetryDep = Annotated[Telemetry, Depends(get_telemetry)]
@@ -98,6 +114,9 @@ AuditDep = Annotated[AuditLog, Depends(get_audit)]
 ComplianceDep = Annotated[ComplianceService, Depends(get_compliance)]
 ConnectorsDep = Annotated[ConnectorService, Depends(get_connectors)]
 OutboundDep = Annotated[OutboundService, Depends(get_outbound)]
+LiveDep = Annotated[LiveCallHub, Depends(get_live)]
+SupervisorDep = Annotated[SupervisorService, Depends(get_supervisor)]
+ApprovalsDep = Annotated[ApprovalService, Depends(get_approvals)]
 SmsDep = Annotated[MessageService, Depends(get_sms)]
 NotificationsDep = Annotated[NotificationService, Depends(get_notifications)]
 CalendarDep = Annotated[CalendarService, Depends(get_calendar)]

@@ -44,6 +44,7 @@ from parlio_voice.models import AssistantConfig, CallEventType, TurnLatency
 from parlio_voice.outbound import OutboundJob, OutcomeReporter, dial_callee, parse_outbound
 from parlio_voice.recording import CallRecorder
 from parlio_voice.settings import get_settings
+from parlio_voice.supervisor import Supervisor
 from parlio_voice.tools import (
     CoreApiClient,
     ReceptionistTools,
@@ -99,6 +100,29 @@ async def _admit(api: CoreApiClient, dialed: str, call_id: str) -> dict[str, obj
     except Exception:
         log.warning("trunk admission check failed; answering anyway", exc_info=True)
         return None
+
+
+class SessionBridge:
+    """Adapts ``AgentSession`` to the narrow ``SessionControl`` the supervisor drives."""
+
+    def __init__(self, session: AgentSession[None]) -> None:
+        self._session = session
+
+    async def say(self, text: str) -> None:
+        await self._session.say(text, allow_interruptions=True).wait_for_playout()
+
+    async def add_system_note(self, text: str) -> None:
+        agent = self._session.current_agent
+        chat_ctx = agent.chat_ctx.copy()
+        chat_ctx.add_message(role="system", content=text)
+        await agent.update_chat_ctx(chat_ctx)
+
+    def set_audio(self, enabled: bool) -> None:
+        self._session.input.set_audio_enabled(enabled)
+        self._session.output.set_audio_enabled(enabled)
+
+    async def interrupt(self) -> None:
+        await self._session.interrupt(force=True)
 
 
 async def entrypoint(ctx: JobContext) -> None:
@@ -255,6 +279,20 @@ async def entrypoint(ctx: JobContext) -> None:
     def _on_user_text(ev: UserInputTranscribedEvent) -> None:
         if ev.is_final:
             tools.observe_user_text(ev.transcript)
+
+    async def _hangup(reason: str) -> None:
+        try:
+            await lk.room.delete_room(api.DeleteRoomRequest(room=ctx.room.name))
+        finally:
+            ctx.shutdown(reason=reason)
+
+    supervisor = Supervisor(SessionBridge(session), _emit, _hangup)
+
+    @ctx.room.on("data_received")
+    def _on_data(packet: rtc.DataPacket) -> None:
+        supervisor.on_data(
+            packet.data, packet.topic, packet.participant.identity if packet.participant else None
+        )
 
     async def _record_caller_track() -> None:
         for pub in participant.track_publications.values():

@@ -8,6 +8,7 @@ unit-testable without an AgentSession.
 from __future__ import annotations
 
 import logging
+import time
 from collections.abc import Awaitable, Callable
 from typing import Any
 
@@ -98,6 +99,26 @@ class CoreApiClient:
         r = await self._http.post("/v1/worker/telephony/release", params={"call_id": call_id})
         r.raise_for_status()
 
+    async def request_approval(self, cfg: AssistantConfig, req: dict[str, Any]) -> dict[str, Any]:
+        r = await self._http.post(
+            "/v1/worker/approvals",
+            params={"tenant_id": cfg.tenant_id, "company_id": cfg.company_id},
+            json=req,
+        )
+        r.raise_for_status()
+        return dict(r.json())
+
+    async def poll_approval(
+        self, cfg: AssistantConfig, approval_id: str, wait_s: float
+    ) -> dict[str, Any]:
+        r = await self._http.get(
+            f"/v1/worker/approvals/{approval_id}",
+            params={"tenant_id": cfg.tenant_id, "wait_s": wait_s},
+            timeout=wait_s + 10,
+        )
+        r.raise_for_status()
+        return dict(r.json())
+
 
 class ReceptionistTools:
     def __init__(
@@ -124,6 +145,7 @@ class ReceptionistTools:
         self.ticket_id: str | None = None
         self.booking_id: str | None = None
         self.sms_sent: list[str] = []
+        self.approvals: list[dict[str, Any]] = []
 
     def sms_triggers(self) -> list[SmsTrigger]:
         """Scenarios the LLM may fire mid-call (post-call ones are sent by the API)."""
@@ -309,6 +331,55 @@ class ReceptionistTools:
         return {"status": "booked", "booking_id": self.booking_id, "start": booking.get("start")}
 
 
+APPROVAL_WAIT_S = 90.0
+
+
+async def request_owner_approval(
+    t: ReceptionistTools,
+    kind: str,
+    title: str,
+    details: str,
+    amount: float | None,
+    wait_s: float = APPROVAL_WAIT_S,
+) -> dict[str, Any]:
+    """Ask the business owner to approve a quote/booking/refund; waits for a tap (or times out).
+
+    The caller hears a holding line first; the LLM tells the caller the outcome afterwards.
+    """
+    if t.api is None:
+        return {"status": "unavailable", "error": "approvals not configured"}
+    req = {
+        "call_id": t.call_id,
+        "kind": kind if kind in ("quote", "booking", "refund", "discount") else "other",
+        "title": title[:200],
+        "details": details[:2000],
+        "amount": amount,
+        "caller": t.caller,
+        "timeout_s": int(wait_s) + 30,
+    }
+    try:
+        ap = await t.api.request_approval(t.cfg, req)
+    except Exception as e:
+        log.warning("approval request failed: %s", e)
+        return {"status": "unavailable", "error": "could not reach the owner"}
+    t.approvals.append(ap)
+    t.emit(CallEventType.APPROVAL_REQUESTED, {"approval_id": ap.get("id"), "title": title})
+    await t.say("Let me just check that with the team, bear with me a moment.")
+    deadline = time.monotonic() + wait_s
+    status = str(ap.get("status", "pending"))
+    while status == "pending" and time.monotonic() < deadline:
+        chunk = min(20.0, max(1.0, deadline - time.monotonic()))
+        try:
+            ap = await t.api.poll_approval(t.cfg, str(ap["id"]), chunk)
+        except Exception as e:
+            log.warning("approval poll failed: %s", e)
+            break
+        status = str(ap.get("status", "pending"))
+    if status == "pending":
+        status = "timed_out"
+    return {"status": status, "note": ap.get("note"), "approval_id": ap.get("id")}
+
+
 def build_tools(t: ReceptionistTools) -> list[Any]:
     """Wrap `ReceptionistTools` methods as LLM-callable function tools."""
     cfg = t.cfg.transfer
@@ -408,6 +479,25 @@ def build_tools(t: ReceptionistTools) -> list[Any]:
             return await t.book_appointment(start, name, phone, notes)
 
         tools.extend([check_calendar, book_appointment])
+
+    if t.api is not None:
+
+        @function_tool(
+            name="request_owner_approval",
+            description=(
+                "Ask the business owner to approve something you are not allowed to decide "
+                "yourself: a price quote, a discount, a refund, or a booking outside normal "
+                "rules. Tell the caller you are checking first. Waits up to 90 seconds for the "
+                "owner to tap approve/reject; result is approved, rejected or timed_out. If "
+                "timed_out, offer to take a message and call back."
+            ),
+        )
+        async def request_owner_approval_tool(
+            kind: str, title: str, details: str, amount: float | None = None
+        ) -> dict[str, Any]:
+            return await request_owner_approval(t, kind, title, details, amount)
+
+        tools.append(request_owner_approval_tool)
 
     if t.reporter is not None:
         tools.append(outcome_tool(t.reporter))

@@ -37,6 +37,14 @@ from parlio_api.connectors import ConnectorService, RetryLoop, build_backends
 from parlio_api.db.engine import make_engine, migrate
 from parlio_api.db.postgres import PostgresStore
 from parlio_api.integrations import IntegrationHub
+from parlio_api.live import (
+    ApprovalService,
+    LiveCallHub,
+    LiveKitRoomControl,
+    RoomControl,
+    SimulatedRoomControl,
+    SupervisorService,
+)
 from parlio_api.messaging import CarrierSmsProvider, LogSmsProvider, MessageService, SmsProvider
 from parlio_api.notifications import (
     EmailSender,
@@ -61,6 +69,9 @@ from parlio_api.routes import (
     integrations,
     platform,
     worker,
+)
+from parlio_api.routes import (
+    live as live_routes,
 )
 from parlio_api.routes import (
     outbound as outbound_routes,
@@ -109,7 +120,7 @@ async def consume_events(
         typed = cast("list[tuple[str, list[tuple[str, dict[str, str]]]]]", batches or [])
         for _stream, messages in typed:
             for msg_id, fields in messages:
-                raw = fields.get("event")
+                raw = fields.get("body") or fields.get("event")
                 if raw:
                     try:
                         ev = CallEvent.model_validate_json(raw)
@@ -292,8 +303,20 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     outbound_loop = OutboundLoop(outbound, settings.outbound_sweep_interval_s)
     outbound_loop.start()
     app.state.outbound_loop = outbound_loop
+    live = LiveCallHub()
+    app.state.live = live
+    control: RoomControl
+    if settings.livekit_url and settings.livekit_api_key and settings.livekit_api_secret:
+        control = LiveKitRoomControl(
+            settings.livekit_url, settings.livekit_api_key, settings.livekit_api_secret
+        )
+    else:
+        control = SimulatedRoomControl()
+    app.state.room_control = control
+    app.state.supervisor = SupervisorService(live, control)
+    app.state.approvals = ApprovalService(store, live, notifications, settings.dashboard_url)
     hub = IntegrationHub(
-        store, sms, notifications, sip, telemetry, compliance, connectors, outbound
+        store, sms, notifications, sip, telemetry, compliance, connectors, outbound, live
     )
     app.state.hub = hub
     calendar.on_booked = hub.on_booking
@@ -339,6 +362,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         await outbound_loop.stop()
         await connectors_http.aclose()
         await notifications.aclose()
+        if isinstance(control, LiveKitRoomControl):
+            await control.aclose()
         if redis is not None:
             await redis.aclose()
         if engine is not None:
@@ -369,6 +394,10 @@ def create_app() -> FastAPI:
     app.include_router(outbound_routes.public)
     app.include_router(outbound_routes.inbound)
     app.include_router(outbound_routes.worker)
+    app.include_router(live_routes.router)
+    app.include_router(live_routes.approvals)
+    app.include_router(live_routes.worker)
+    app.include_router(live_routes.public)
     app.include_router(platform.router)
     app.include_router(platform.public)
     app.include_router(platform.ops)
