@@ -34,6 +34,9 @@ const EVENTS: [string, string][] = [
   ["lead.qualified", "Qualified lead"],
   ["booking.created", "Booking made"],
   ["sip.registration_changed", "SIP registration changed"],
+  ["approval.requested", "Approval requested"],
+  ["inbox.handoff", "Inbox: human needed"],
+  ["inbox.sla_breached", "Inbox: message unanswered"],
 ];
 const CHANNELS: [NotifyChannel, string, string][] = [
   ["email", "Email", "name@company.co.uk"],

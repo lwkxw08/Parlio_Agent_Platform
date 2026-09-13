@@ -36,6 +36,18 @@ from parlio_api.compliance import ComplianceService
 from parlio_api.connectors import ConnectorService, RetryLoop, build_backends
 from parlio_api.db.engine import make_engine, migrate
 from parlio_api.db.postgres import PostgresStore
+from parlio_api.inbox import (
+    Channel,
+    ChannelSender,
+    InboxService,
+    InboxSlaLoop,
+    OpenAITextAgent,
+    RuleTextAgent,
+    SmsSender,
+    StoreOnlySender,
+    TextAgent,
+    WhatsAppSender,
+)
 from parlio_api.integrations import IntegrationHub
 from parlio_api.live import (
     ApprovalService,
@@ -69,6 +81,9 @@ from parlio_api.routes import (
     integrations,
     platform,
     worker,
+)
+from parlio_api.routes import (
+    inbox as inbox_routes,
 )
 from parlio_api.routes import (
     live as live_routes,
@@ -332,6 +347,33 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     sla = SlaMonitor(tickets, settings.sla_check_interval_s)
     sla.start()
 
+    async def booking_url(tenant_id: str) -> str | None:
+        conn = await calendar.primary(tenant_id)
+        return conn.booking_url if conn else None
+
+    rules = RuleTextAgent(booking_url)
+    text_agent: TextAgent = rules
+    if settings.postcall_analyser == "openai" and settings.openai_api_key:
+        text_agent = OpenAITextAgent(settings.openai_api_key, settings.openai_model, fallback=rules)
+    senders: dict[Channel, ChannelSender] = {
+        Channel.SMS: SmsSender(sms),
+        Channel.WEBCHAT: StoreOnlySender(),
+    }
+    inbox = InboxService(
+        store,
+        text_agent,
+        senders,
+        notifications=notifications,
+        live=live,
+        on_ticket=tickets.create_from_intake,
+        sla_minutes=settings.inbox_sla_minutes,
+    )
+    senders[Channel.WHATSAPP] = WhatsAppSender(inbox.whatsapp)
+    app.state.inbox = inbox
+    hub.inbox = inbox
+    inbox_sla = InboxSlaLoop(inbox, settings.inbox_sweep_interval_s)
+    inbox_sla.start()
+
     stop = asyncio.Event()
     consumer: asyncio.Task[None] | None = None
     if redis is not None:
@@ -357,6 +399,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                 await consumer
         await postcall.close()
         await sla.aclose()
+        await inbox_sla.aclose()
         await compliance.stop()
         await retry_loop.stop()
         await outbound_loop.stop()
@@ -398,6 +441,9 @@ def create_app() -> FastAPI:
     app.include_router(live_routes.approvals)
     app.include_router(live_routes.worker)
     app.include_router(live_routes.public)
+    app.include_router(inbox_routes.router)
+    app.include_router(inbox_routes.inbound)
+    app.include_router(inbox_routes.public)
     app.include_router(platform.router)
     app.include_router(platform.public)
     app.include_router(platform.ops)

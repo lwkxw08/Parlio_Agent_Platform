@@ -25,7 +25,7 @@ from fastapi import Depends, Header, HTTPException, status
 from pydantic import BaseModel, Field
 
 from parlio_api.deps import SettingsDep, StoreDep
-from parlio_api.store import Member
+from parlio_api.store import CallStore, Member
 
 DEV_USER_EMAIL = "owner@demo.parlio.local"
 DEV_TENANT = "demo"
@@ -100,6 +100,16 @@ def encode_supabase_jwt(claims: dict[str, Any], secret: str) -> str:
     return f"{head}.{body}.{base64.urlsafe_b64encode(sig).rstrip(b'=').decode()}"
 
 
+async def _activate_invites(store: CallStore, email: str) -> list[Member]:
+    """Pending invitations become active memberships on the invitee's first sign-in."""
+    out: list[Member] = []
+    for m in await store.memberships_for_email(email):
+        if m.status == "invited":
+            m = await store.upsert_member(m.model_copy(update={"status": "active"}))
+        out.append(m)
+    return out
+
+
 async def current_user(
     store: StoreDep,
     settings: SettingsDep,
@@ -108,7 +118,7 @@ async def current_user(
 ) -> Principal:
     if settings.auth_mode == "dev":
         email = (x_parlio_user or DEV_USER_EMAIL).lower()
-        members = await store.memberships_for_email(email)
+        members = await _activate_invites(store, email)
         if not members and email == DEV_USER_EMAIL:
             members = [
                 await store.upsert_member(
@@ -129,13 +139,7 @@ async def current_user(
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, str(e)) from e
     email = str(claims["email"]).lower()
     meta = claims.get("user_metadata") or {}
-    members = await store.memberships_for_email(email)
-    # accept pending invitations on first sign-in
-    activated: list[Member] = []
-    for m in members:
-        if m.status == "invited":
-            m = await store.upsert_member(m.model_copy(update={"status": "active"}))
-        activated.append(m)
+    activated = await _activate_invites(store, email)
     return Principal(
         user_id=str(claims["sub"]),
         email=email,

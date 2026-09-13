@@ -18,6 +18,7 @@ from parlio_api.connectors import (
     payload_from_call,
     payload_from_ticket,
 )
+from parlio_api.inbox import InboxService
 from parlio_api.live import LiveCallHub
 from parlio_api.messaging import MessageService
 from parlio_api.notifications import (
@@ -58,6 +59,7 @@ class IntegrationHub:
         self.connectors = connectors
         self.outbound = outbound
         self.live = live
+        self.inbox: InboxService | None = None
 
     async def _business_name(self, tenant_id: str, assistant_id: str | None = None) -> str:
         cfg = await self.store.get_assistant(assistant_id) if assistant_id else None
@@ -98,6 +100,11 @@ class IntegrationHub:
             log.warning("post-call SMS failed for %s", ev.call_id, exc_info=True)
 
     async def on_postcall(self, call: CallRecord) -> None:
+        if self.inbox is not None:
+            try:
+                await self.inbox.on_call_ended(call)
+            except Exception:
+                log.warning("inbox call thread failed for %s", call.call_id, exc_info=True)
         try:
             cfg = await self.store.get_assistant(call.assistant_id)
             ev = call_completed_event(call, cfg.business_name if cfg else "")

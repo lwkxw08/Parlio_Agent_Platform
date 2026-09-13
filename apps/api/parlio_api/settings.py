@@ -79,6 +79,13 @@ class Settings(BaseSettings):
     outbound_caller_id: str | None = None  # default E.164 presented on outbound calls
     outbound_sweep_interval_s: float = 5.0
 
+    # Phase 11 inbox. Meta app secret verifies WhatsApp webhook signatures (unset = accept in dev);
+    # inbound_webhook_secret must match ``?secret=`` on carrier SMS webhooks when set.
+    whatsapp_app_secret: str | None = None
+    inbound_webhook_secret: str | None = None
+    inbox_sla_minutes: int = 15
+    inbox_sweep_interval_s: float = 60.0
+
     # Phase 5b BYO SIP. "simulated" keeps trunks fully testable without a SIP edge.
     sip_provisioner: Literal["simulated", "livekit"] = "simulated"
     sip_domain: str = "sip.parlio.local"

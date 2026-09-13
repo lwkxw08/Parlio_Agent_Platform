@@ -68,7 +68,8 @@ a { color: var(--accent); }
 .small { font-size: 0.8rem; }
 .row { display: flex; flex-wrap: wrap; gap: 0.4rem; align-items: center; }
 .row.between { justify-content: space-between; padding: 0.2rem 0; }
-.inline { background: var(--field); color: var(--fg); border: 1px solid var(--line); border-radius: 6px; padding: 0.2rem 0.5rem; width: 10rem; }
+.form input, .form textarea, .form select, .filters input, .filters select, .inline, input.field, select.field { background: var(--field); color: var(--fg); border: 1px solid var(--line); border-radius: 6px; padding: 0.45rem 0.6rem; font: inherit; }
+.inline { padding: 0.25rem 0.55rem; width: 12rem; }
 .board { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1rem; }
 .column h2 { font-size: 1rem; margin: 0 0 0.6rem; }
 .ticket { background: var(--panel); border: 1px solid var(--line); border-left: 3px solid var(--line); border-radius: 12px; box-shadow: var(--shadow); padding: 0.8rem; margin-bottom: 0.7rem; display: flex; flex-direction: column; gap: 0.4rem; }
@@ -83,7 +84,6 @@ a { color: var(--accent); }
 .tabs a.active, .tabs button.active { color: var(--fg); border-bottom-color: var(--accent); }
 .form { display: flex; flex-direction: column; gap: 0.8rem; }
 .form label { display: flex; flex-direction: column; gap: 0.3rem; font-size: 0.85rem; color: var(--muted); }
-.form input, .form textarea, .form select, .filters input, .filters select { background: var(--field); color: var(--fg); border: 1px solid var(--line); border-radius: 6px; padding: 0.45rem 0.6rem; font: inherit; }
 .form textarea { min-height: 5rem; resize: vertical; }
 .form .two { display: grid; grid-template-columns: 1fr 1fr; gap: 0.8rem; }
 form.section label { display: flex; flex-direction: column; gap: 0.3rem; font-size: 0.85rem; color: var(--muted); }
@@ -176,3 +176,37 @@ code.block, pre.block { display: block; background: var(--field); border: 1px so
 .approve-page { max-width: 520px; margin: 3rem auto; }
 .approve-page .big { display: flex; gap: 0.8rem; margin-top: 1.2rem; }
 .approve-page .big button { flex: 1; padding: 0.9rem; font-size: 1.05rem; border-radius: 10px; }
+
+/* Inbox (Phase 11) */
+.two-col { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 1.2rem; align-items: start; }
+.inbox-layout { display: grid; grid-template-columns: minmax(280px, 1fr) minmax(0, 2.2fr); gap: 1.2rem; align-items: start; }
+@media (max-width: 900px) { .inbox-layout { grid-template-columns: 1fr; } }
+.inbox-filters { margin-bottom: 0.6rem; }
+.inbox-filters input[type="text"], .inbox-filters input:not([type]) { flex: 1 1 100%; }
+.inbox-threads { display: flex; flex-direction: column; gap: 0.5rem; max-height: 70vh; overflow-y: auto; }
+.live-row.unread { border-left: 3px solid var(--accent); }
+.pill.accent { background: var(--accent-grad); color: #fff; }
+.card.clickable { cursor: pointer; }
+.card.clickable:hover { border-color: var(--accent); }
+.inbox-head { align-items: flex-start; gap: 0.6rem; }
+.inbox-timeline { max-height: 50vh; min-height: 14rem; }
+.msg.note { background: var(--warn-bg); color: var(--warn-fg); align-self: stretch; max-width: 100%; border-left: 3px solid var(--warn-fg); }
+.inbox-composer { margin-top: 0.8rem; }
+.inbox-composer textarea { min-height: 5rem; resize: vertical; }
+button.linklike { background: none; border: 0; padding: 0; color: var(--accent); cursor: pointer; font: inherit; text-decoration: underline; }
+
+/* Public web chat widget (/chat/[token]) */
+html.embed main { padding: 0; max-width: none; margin: 0; height: 100dvh; }
+html.embed body { background: var(--panel); }
+.chat-embed { display: flex; flex-direction: column; height: 100dvh; max-width: 100%; background: var(--panel); color: var(--fg); }
+.chat-head { display: flex; flex-direction: column; padding: 0.9rem 1rem; background: var(--chat-accent, var(--accent)); color: #fff; }
+.chat-head .small { opacity: 0.85; }
+.chat-body { flex: 1; overflow-y: auto; padding: 0.8rem; display: flex; flex-direction: column; gap: 0.5rem; }
+.chat-body .msg.user { align-self: flex-end; background: var(--chat-accent, var(--accent)); color: #fff; }
+.chat-body .msg.assistant { align-self: flex-start; }
+.chat-compose { display: flex; flex-direction: column; gap: 0.4rem; padding: 0.6rem 0.8rem 0.5rem; border-top: 1px solid var(--line); }
+.chat-compose input { background: var(--field); color: var(--fg); border: 1px solid var(--line); border-radius: 8px; padding: 0.55rem 0.7rem; font: inherit; flex: 1; }
+.chat-row { display: flex; gap: 0.4rem; }
+.chat-compose button.primary { background: var(--chat-accent, var(--accent-grad)); }
+.chat-foot { text-align: center; }
+.form input[type="color"] { padding: 0.15rem; height: 2.4rem; width: 4rem; cursor: pointer; }

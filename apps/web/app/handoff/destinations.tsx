@@ -90,7 +90,7 @@ export default function Destinations({ assistant }: { assistant: Assistant }) {
       ))}
 
       <div className="row" style={{ gap: 8, alignItems: "center", marginTop: "0.5rem" }}>
-        <input placeholder="New department name (e.g. Sales)" value={newDept} onChange={(e) => setNewDept(e.target.value)} style={{ maxWidth: 320 }} />
+        <input placeholder="New department name (e.g. Sales)" value={newDept} onChange={(e) => setNewDept(e.target.value)} className="field" style={{ maxWidth: 320 }} />
         <button type="button" className="secondary" disabled={!newDept.trim()} onClick={() => { setEditing(blank(newDept.trim().toLowerCase())); setNewDept(""); }}>Add department</button>
       </div>
 
