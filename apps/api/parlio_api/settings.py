@@ -72,6 +72,13 @@ class Settings(BaseSettings):
     rate_limit_per_minute: int = 600
     retention_sweep_interval_s: float = 3600.0
 
+    # Phase 9 outbound: "simulated" records dials; "livekit" dispatches the worker to dial via
+    # the platform SIP outbound trunk.
+    outbound_dialer: Literal["simulated", "livekit"] = "simulated"
+    outbound_trunk_id: str | None = None  # LiveKit SIP outbound trunk (platform Telnyx)
+    outbound_caller_id: str | None = None  # default E.164 presented on outbound calls
+    outbound_sweep_interval_s: float = 5.0
+
     # Phase 5b BYO SIP. "simulated" keeps trunks fully testable without a SIP edge.
     sip_provisioner: Literal["simulated", "livekit"] = "simulated"
     sip_domain: str = "sip.parlio.local"

@@ -46,8 +46,25 @@ from parlio_api.notifications import (
     RuleNotifier,
 )
 from parlio_api.observability import AuditLog, RateLimiter, Telemetry, build_tracer
+from parlio_api.outbound import (
+    Dialer,
+    LiveKitDialer,
+    OutboundLoop,
+    OutboundService,
+    SimulatedDialer,
+)
 from parlio_api.postcall import Analyser, HeuristicAnalyser, OpenAIAnalyser, PostCallProcessor
-from parlio_api.routes import account, connectors, dashboard, integrations, platform, worker
+from parlio_api.routes import (
+    account,
+    connectors,
+    dashboard,
+    integrations,
+    platform,
+    worker,
+)
+from parlio_api.routes import (
+    outbound as outbound_routes,
+)
 from parlio_api.settings import Settings, get_settings
 from parlio_api.sip import SimulatedProvisioner, SimulatedRegistrar, SipProvisioner, SipService
 from parlio_api.sip_livekit import LiveKitProvisioner
@@ -135,6 +152,14 @@ def build_sms_provider(settings: Settings) -> SmsProvider:
             )
         )
     return LogSmsProvider()
+
+
+def build_dialer(settings: Settings) -> Dialer:
+    if settings.outbound_dialer == "livekit" and settings.outbound_trunk_id:
+        return LiveKitDialer(settings.outbound_trunk_id)
+    if settings.outbound_dialer == "livekit":
+        log.warning("PARLIO_OUTBOUND_DIALER=livekit but no trunk id; using simulated dialer")
+    return SimulatedDialer()
 
 
 def build_email(settings: Settings) -> EmailSender:
@@ -260,7 +285,16 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.connectors = connectors
     retry_loop = RetryLoop(connectors, settings.connector_retry_interval_s)
     retry_loop.start()
-    hub = IntegrationHub(store, sms, notifications, sip, telemetry, compliance, connectors)
+    outbound = OutboundService(
+        store, build_dialer(settings), default_caller_id=settings.outbound_caller_id
+    )
+    app.state.outbound = outbound
+    outbound_loop = OutboundLoop(outbound, settings.outbound_sweep_interval_s)
+    outbound_loop.start()
+    app.state.outbound_loop = outbound_loop
+    hub = IntegrationHub(
+        store, sms, notifications, sip, telemetry, compliance, connectors, outbound
+    )
     app.state.hub = hub
     calendar.on_booked = hub.on_booking
 
@@ -271,6 +305,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     notifier: Notifier = RuleNotifier(notifications)
     tickets = TicketService(store, notifier, on_created=hub.on_ticket)
     app.state.tickets = tickets
+    outbound.on_ticket = tickets.create_from_intake
     sla = SlaMonitor(tickets, settings.sla_check_interval_s)
     sla.start()
 
@@ -301,6 +336,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         await sla.aclose()
         await compliance.stop()
         await retry_loop.stop()
+        await outbound_loop.stop()
         await connectors_http.aclose()
         await notifications.aclose()
         if redis is not None:
@@ -329,6 +365,10 @@ def create_app() -> FastAPI:
     app.include_router(connectors.router)
     app.include_router(connectors.public)
     app.include_router(connectors.inbound)
+    app.include_router(outbound_routes.router)
+    app.include_router(outbound_routes.public)
+    app.include_router(outbound_routes.inbound)
+    app.include_router(outbound_routes.worker)
     app.include_router(platform.router)
     app.include_router(platform.public)
     app.include_router(platform.ops)

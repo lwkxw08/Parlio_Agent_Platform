@@ -8,6 +8,7 @@ is created. Everything here is best-effort: failures are logged, never raised in
 from __future__ import annotations
 
 import logging
+from contextlib import suppress
 
 from parlio_api.calendar import Booking
 from parlio_api.compliance import ComplianceService
@@ -26,6 +27,7 @@ from parlio_api.notifications import (
     is_qualified_lead,
 )
 from parlio_api.observability import Telemetry
+from parlio_api.outbound import OutboundService
 from parlio_api.sip import SipService
 from parlio_api.store import CallRecord, CallStore, Ticket
 from parlio_voice.models import AssistantConfig, CallEvent, CallEventType
@@ -43,6 +45,7 @@ class IntegrationHub:
         telemetry: Telemetry | None = None,
         compliance: ComplianceService | None = None,
         connectors: ConnectorService | None = None,
+        outbound: OutboundService | None = None,
     ) -> None:
         self.store = store
         self.sms = sms
@@ -51,6 +54,7 @@ class IntegrationHub:
         self.telemetry = telemetry
         self.compliance = compliance
         self.connectors = connectors
+        self.outbound = outbound
 
     async def _business_name(self, tenant_id: str, assistant_id: str | None = None) -> str:
         cfg = await self.store.get_assistant(assistant_id) if assistant_id else None
@@ -62,8 +66,18 @@ class IntegrationHub:
     async def on_event(self, ev: CallEvent) -> None:
         if self.telemetry is not None:
             self.telemetry.on_event(ev)
+        if self.outbound is not None and ev.type == CallEventType.CALL_STARTED:
+            with suppress(Exception):
+                await self.outbound.on_call_started(ev.call_id)
         if ev.type not in (CallEventType.CALL_ENDED, CallEventType.CALL_FAILED):
             return
+        if self.outbound is not None:
+            try:
+                call = await self.store.get_call(ev.call_id)
+                if call is not None and call.direction == "outbound":
+                    await self.outbound.on_call_ended(call)
+            except Exception:
+                log.warning("outbound outcome failed for %s", ev.call_id, exc_info=True)
         self.sip.release(ev.call_id)
         if self.compliance is not None:
             try:
@@ -125,8 +139,24 @@ class IntegrationHub:
                 await self.connectors.dispatch(payload_from_ticket(ticket, name))
             except Exception:
                 log.warning("connector sync failed for ticket %s", ticket.id, exc_info=True)
+        if self.outbound is not None:
+            try:
+                await self.outbound.on_ticket_created(ticket)
+            except Exception:
+                log.warning("ticket callback scheduling failed for %s", ticket.id, exc_info=True)
 
     async def on_booking(self, booking: Booking) -> None:
+        if self.outbound is not None:
+            try:
+                await self.outbound.on_booking(
+                    tenant_id=booking.tenant_id,
+                    booking_id=booking.id,
+                    phone=booking.phone,
+                    name=booking.name,
+                    start=booking.start,
+                )
+            except Exception:
+                log.warning("reminder scheduling failed for %s", booking.id, exc_info=True)
         if self.connectors is None:
             return
         try:

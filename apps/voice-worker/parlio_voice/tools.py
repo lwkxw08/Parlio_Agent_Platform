@@ -24,6 +24,7 @@ from parlio_voice.models import (
     TransferMode,
     TransferOutcome,
 )
+from parlio_voice.outbound import OutcomeReporter, outcome_tool
 from parlio_voice.transfer import TransferEngine, TransferResult
 
 log = logging.getLogger("parlio.tools")
@@ -108,7 +109,9 @@ class ReceptionistTools:
         api: CoreApiClient | None,
         emit: Emit,
         say: Say,
+        reporter: OutcomeReporter | None = None,
     ) -> None:
+        self.reporter = reporter
         self.cfg = cfg
         self.call_id = call_id
         self.caller = caller
@@ -405,6 +408,9 @@ def build_tools(t: ReceptionistTools) -> list[Any]:
             return await t.book_appointment(start, name, phone, notes)
 
         tools.extend([check_calendar, book_appointment])
+
+    if t.reporter is not None:
+        tools.append(outcome_tool(t.reporter))
 
     return tools
 

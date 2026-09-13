@@ -1,5 +1,9 @@
 """Parlio voice worker entrypoint.
 
+Outbound (Phase 9): the Core API dispatches the agent with ``{"outbound": {...}}`` job metadata;
+the worker dials the callee through the SIP trunk, then runs the same session with the purpose
+script and a ``record_outcome`` tool (see ``parlio_voice.outbound``).
+
 Flow per inbound call:
   SIP INVITE -> LiveKit SIP creates room + dispatches this agent
   -> resolve AssistantConfig for the dialed number (Redis cache / Core API / demo)
@@ -37,6 +41,7 @@ from parlio_voice.config_client import ConfigClient
 from parlio_voice.events import EventPublisher
 from parlio_voice.latency import LatencyTracker
 from parlio_voice.models import AssistantConfig, CallEventType, TurnLatency
+from parlio_voice.outbound import OutboundJob, OutcomeReporter, dial_callee, parse_outbound
 from parlio_voice.recording import CallRecorder
 from parlio_voice.settings import get_settings
 from parlio_voice.tools import (
@@ -60,14 +65,21 @@ def prewarm(proc: JobProcess) -> None:
 
 
 class Receptionist(Agent):
-    def __init__(self, cfg: AssistantConfig, tools: ReceptionistTools | None = None) -> None:
+    def __init__(
+        self,
+        cfg: AssistantConfig,
+        tools: ReceptionistTools | None = None,
+        outbound: OutboundJob | None = None,
+    ) -> None:
         instructions = cfg.rendered_instructions()
         fn_tools = []
         if tools is not None:
-            if cfg.transfer.enabled:
+            if cfg.transfer.enabled and outbound is None:
                 avail = tools.availability()
                 instructions += after_hours_instruction(cfg, avail["someone_available"])
             fn_tools = build_tools(tools)
+        if outbound is not None:
+            instructions += "\n\n" + outbound.instructions()
         super().__init__(instructions=instructions, tools=fn_tools)
         self.cfg = cfg
 
@@ -97,17 +109,57 @@ async def entrypoint(ctx: JobContext) -> None:
     events = EventPublisher(settings, redis)
 
     await ctx.connect()
-    participant = await ctx.wait_for_participant()
-    attrs = participant.attributes
-    call_id = attrs.get(ATTR_CALL_ID) or f"lk-{uuid4().hex}"
-    caller = attrs.get(ATTR_CALLER, "unknown")
-    dialed = attrs.get(ATTR_DIALED, "unknown")
-    ctx.log_context_fields.update({"call_id": call_id, "dialed": dialed})
-
-    cfg = await config_client.resolve(dialed)
+    lk = api.LiveKitAPI()
     core_api = CoreApiClient(config_client.http)
-    log.info("call %s from %s -> %s (tenant=%s)", call_id, caller, dialed, cfg.tenant_id)
-    admitted = await _admit(core_api, dialed, call_id)
+    outbound = parse_outbound(ctx.job.metadata)
+    reporter: OutcomeReporter | None = None
+
+    if outbound is not None:
+        # Outbound: we placed this room; dial the callee before anything else.
+        call_id, dialed = outbound.call_id, outbound.to
+        caller = outbound.from_number or "unknown"
+        ctx.log_context_fields.update({"call_id": call_id, "dialed": dialed, "outbound": True})
+        cfg = await config_client.get(outbound.assistant_id)
+        reporter = OutcomeReporter(config_client.http, outbound)
+        events.emit(
+            cfg,
+            call_id,
+            CallEventType.CALL_STARTED,
+            {
+                "caller": caller,
+                "dialed": dialed,
+                "room": ctx.room.name,
+                "direction": "outbound",
+                "job_id": outbound.job_id,
+                "purpose": outbound.purpose,
+            },
+        )
+        result = await dial_callee(lk, ctx.room.name, outbound)
+        if result != "answered":
+            await reporter.record(result)
+            events.emit(
+                cfg,
+                call_id,
+                CallEventType.CALL_ENDED,
+                {"reason": result, "duration_s": round(time.perf_counter() - t_job, 1)},
+            )
+            await events.aclose()
+            await config_client.aclose()
+            await lk.aclose()
+            ctx.shutdown(reason=result)
+            return
+        participant = await ctx.wait_for_participant(identity="callee")
+        admitted = None
+    else:
+        participant = await ctx.wait_for_participant()
+        attrs = participant.attributes
+        call_id = attrs.get(ATTR_CALL_ID) or f"lk-{uuid4().hex}"
+        caller = attrs.get(ATTR_CALLER, "unknown")
+        dialed = attrs.get(ATTR_DIALED, "unknown")
+        ctx.log_context_fields.update({"call_id": call_id, "dialed": dialed})
+        cfg = await config_client.resolve(dialed)
+        log.info("call %s from %s -> %s (tenant=%s)", call_id, caller, dialed, cfg.tenant_id)
+        admitted = await _admit(core_api, dialed, call_id)
     if admitted is not None and not admitted.get("allowed", True):
         reason = str(admitted.get("reason") or "not admitted")
         log.info("call %s declined by trunk routing: %s", call_id, reason)
@@ -121,13 +173,14 @@ async def entrypoint(ctx: JobContext) -> None:
         return
     if admitted is not None and admitted.get("department"):
         ctx.log_context_fields["department"] = str(admitted["department"])
-    events.emit(
-        cfg,
-        call_id,
-        CallEventType.CALL_STARTED,
-        {"caller": caller, "dialed": dialed, "room": ctx.room.name, "direction": "inbound"},
-    )
-    if cfg.is_blocked(caller):
+    if outbound is None:
+        events.emit(
+            cfg,
+            call_id,
+            CallEventType.CALL_STARTED,
+            {"caller": caller, "dialed": dialed, "room": ctx.room.name, "direction": "inbound"},
+        )
+    if outbound is None and cfg.is_blocked(caller):
         log.info("blocked caller %s on call %s", caller, call_id)
         events.emit(cfg, call_id, CallEventType.CALL_ENDED, {"reason": "blocked", "duration_s": 0})
         ctx.shutdown(reason="blocked")
@@ -171,7 +224,6 @@ async def entrypoint(ctx: JobContext) -> None:
             },
         )
 
-    lk = api.LiveKitAPI()
     recorder = CallRecorder(settings, lk, ctx.room)
 
     def _emit(kind: CallEventType, payload: dict[str, object]) -> None:
@@ -191,11 +243,12 @@ async def entrypoint(ctx: JobContext) -> None:
     tools = ReceptionistTools(
         cfg,
         call_id,
-        caller,
+        dialed if outbound is not None else caller,
         TransferEngine(cfg.transfer, bridge),
         core_api,
         _emit,
         lambda text: session.say(text, allow_interruptions=False).wait_for_playout(),
+        reporter=reporter,
     )
 
     @session.on("user_input_transcribed")
@@ -218,6 +271,11 @@ async def entrypoint(ctx: JobContext) -> None:
     async def _on_shutdown(reason: str) -> None:
         if tools.transferred and reason != "transferred":
             reason = "transferred"
+        if reporter is not None and reporter.outcome is None:
+            # LLM never called record_outcome: infer from what happened on the call.
+            inferred = "booked" if tools.booking_id else "ticketed" if tools.ticket_id else None
+            if inferred:
+                await reporter.record(inferred, "inferred from call actions")
         await recorder.stop()
         try:
             await core_api.release(call_id)
@@ -250,7 +308,7 @@ async def entrypoint(ctx: JobContext) -> None:
     ctx.add_shutdown_callback(_on_shutdown)
 
     await session.start(
-        agent=Receptionist(cfg, tools),
+        agent=Receptionist(cfg, tools, outbound),
         room=ctx.room,
         room_input_options=RoomInputOptions(participant_identity=participant.identity),
         room_output_options=RoomOutputOptions(transcription_enabled=True),
@@ -272,7 +330,7 @@ async def entrypoint(ctx: JobContext) -> None:
     consent = cfg.consent_text()
     if consent:
         await session.say(consent, allow_interruptions=False, add_to_chat_ctx=False)
-    session.say(cfg.rendered_greeting())
+    session.say(outbound.opening if outbound is not None else cfg.rendered_greeting())
 
 
 def main() -> None:

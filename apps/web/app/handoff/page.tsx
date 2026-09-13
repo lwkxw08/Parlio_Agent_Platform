@@ -1,5 +1,6 @@
 import Link from "next/link";
-import { fetchHandoffAnalytics, fetchTransfers, secs } from "@/lib/api";
+import { fetchAssistants, fetchHandoffAnalytics, fetchTransfers, secs } from "@/lib/api";
+import Destinations from "./destinations";
 
 export const dynamic = "force-dynamic";
 
@@ -16,7 +17,8 @@ function Breakdown({ title, data }: { title: string; data: Record<string, number
 }
 
 export default async function Handoff() {
-  const [stats, transfers] = await Promise.all([fetchHandoffAnalytics(), fetchTransfers()]);
+  const [stats, transfers, assistants] = await Promise.all([fetchHandoffAnalytics(), fetchTransfers(), fetchAssistants()]);
+  const assistant = assistants?.[0];
   const tr = stats?.transfers;
   const tk = stats?.tickets;
   const pct = (x: number | null | undefined) => (x == null ? "—" : `${Math.round(x * 100)}%`);
@@ -24,6 +26,7 @@ export default async function Handoff() {
   return (
     <>
       <h1>Transfers &amp; tickets</h1>
+      {assistant ? <Destinations assistant={assistant} /> : <p className="muted">No assistant yet — <Link href="/onboarding">run the setup wizard</Link> to add departments.</p>}
       <div className="grid">
         <div className="card"><div className="label">Transfers</div><div className="value">{tr?.total ?? "—"}</div></div>
         <div className="card"><div className="label">Human answer rate</div><div className="value">{pct(tr?.answer_rate)}</div></div>

@@ -269,7 +269,7 @@ export default function AnalyticsView({ overview, initial }: { overview: Overvie
                     <li key={d.name}><span>{d.name}</span><i style={{ width: `${(d.count / cur.by_department[0].count) * 100}%` }} /><b>{d.count}</b></li>
                   ))}
                 </ul>
-              ) : <p className="small muted">No department routing in this period.</p>}
+              ) : <p className="small muted">No department routing in this period. Departments and their staff are set up on the <a href="/handoff">Transfers</a> page; calls appear here once the assistant routes or transfers to one.</p>}
             </div>
             <div className="card">
               <h2>First-time vs returning</h2>
