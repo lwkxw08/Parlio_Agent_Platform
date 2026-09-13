@@ -106,7 +106,7 @@ export default function Onboarding() {
               <p className="small">{analysis.faqs.length} FAQs · {analysis.business.services.length} services · {analysis.opening_hours_text.length ? "opening hours found" : "no opening hours found"}</p>
             </div>
           )}
-          {error && <p className="small" style={{ color: "#ff7b86" }}>{error}</p>}
+          {error && <p className="small" style={{ color: "var(--bad-fg)" }}>{error}</p>}
           <div><button className="primary" onClick={() => setStep(1)}>{analysis ? "Looks right — continue" : "Skip and enter manually"}</button></div>
         </div>
       )}
@@ -189,7 +189,7 @@ export default function Onboarding() {
             <input placeholder={`Hi, thanks for calling ${orgName || "{business_name}"}. How can I help you today?`} value={greeting} onChange={(e) => setGreeting(e.target.value)} />
           </label>
           <p className="hint">Voice, tone, business rules, SMS scenarios, blocked numbers and more are in Assistant Studio after setup.</p>
-          {error && <p className="small" style={{ color: "#ff7b86" }}>{error}</p>}
+          {error && <p className="small" style={{ color: "var(--bad-fg)" }}>{error}</p>}
           <div style={{ display: "flex", gap: 8 }}>
             <button className="ghost" onClick={() => setStep(2)}>Back</button>
             <button className="primary" disabled={busy} onClick={finish}>{busy ? "Creating…" : "Create my assistant"}</button>

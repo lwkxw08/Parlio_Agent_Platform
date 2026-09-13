@@ -279,7 +279,7 @@ function Latency({ report, tenant }: { report: LatencyReport | null; tenant: str
         {perDay.length === 0 ? <p className="muted small">No answered calls in this window.</p> : (
           <div className="bars" style={{ marginBottom: "1.4rem" }}>
             {perDay.map(([d, b]) => (
-              <div key={d} className="bar" style={{ height: `${((b.turn_p95_s ?? 0) / maxTurn) * 100}%`, background: turnCls(b) === "bad" ? "#ff7b86" : undefined }} title={`${d}: p95 ${ms(b.turn_p95_s)} (${b.calls} calls)`}><span>{d.slice(8)}</span></div>
+              <div key={d} className="bar" style={{ height: `${((b.turn_p95_s ?? 0) / maxTurn) * 100}%`, background: turnCls(b) === "bad" ? "var(--bad-fg)" : undefined }} title={`${d}: p95 ${ms(b.turn_p95_s)} (${b.calls} calls)`}><span>{d.slice(8)}</span></div>
             ))}
           </div>
         )}

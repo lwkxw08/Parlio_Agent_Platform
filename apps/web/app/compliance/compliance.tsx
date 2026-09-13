@@ -121,7 +121,7 @@ function Gdpr({ tenant, canManage, setMsg }: { tenant: string; canManage: boolea
         <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
           <input value={e164} onChange={(e) => setE164(e.target.value.replace(/\s+/g, ""))} placeholder="+447700900123" style={{ maxWidth: 220 }} />
           <button className="primary" onClick={doExport} disabled={!e164}>Export</button>
-          <button onClick={erase} disabled={!e164} style={{ borderColor: "#ff7b86", color: "#ff7b86" }}>Erase</button>
+          <button onClick={erase} disabled={!e164} style={{ borderColor: "var(--bad-fg)", color: "var(--bad-fg)" }}>Erase</button>
         </div>
       </div>
       {exp && (
