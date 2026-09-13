@@ -246,6 +246,41 @@ class BusinessInfo(BaseModel):
     services: list[str] = Field(default_factory=list)
 
 
+class VerificationField(StrEnum):
+    DOB = "dob"
+    POSTCODE = "postcode"
+    REFERENCE = "reference"
+
+
+class VerificationConfig(BaseModel):
+    """Caller identity checks against the contact record (Phase 12).
+
+    Answers are compared server-side and never written to transcripts or logs.
+    """
+
+    enabled: bool = False
+    fields: list[VerificationField] = Field(
+        default_factory=lambda: [VerificationField.POSTCODE, VerificationField.DOB]
+    )
+    required_matches: int = 1
+    max_attempts: int = 3
+    required_for_payments: bool = True
+    required_for_account_details: bool = True
+
+
+class PaymentsConfig(BaseModel):
+    """Mid-call payments: a hosted pay link is texted to the caller; Parlio never sees card data."""
+
+    enabled: bool = False
+    currency: str = "gbp"
+    max_pence: int = 50_000
+    default_description: str = "Deposit for {business_name}"
+    link_ttl_minutes: int = 30
+    # PCI-compliant card-by-phone (DTMF) capture via a provider that keeps digits off our media
+    # path; only offered when a capture provider is configured platform-side.
+    card_by_phone: bool = False
+
+
 class AssistantConfig(BaseModel):
     tenant_id: str
     company_id: str
@@ -275,6 +310,8 @@ class AssistantConfig(BaseModel):
     turn: TurnTuning = Field(default_factory=TurnTuning)
     recording: RecordingConfig = Field(default_factory=RecordingConfig)
     transfer: TransferConfig = Field(default_factory=TransferConfig)
+    verification: VerificationConfig = Field(default_factory=VerificationConfig)
+    payments: PaymentsConfig = Field(default_factory=PaymentsConfig)
 
     def rendered_greeting(self) -> str:
         return self.greeting.format(name=self.name, business_name=self.business_name)
@@ -360,6 +397,8 @@ class CallEventType(StrEnum):
     ESCALATION = "call.escalation"
     SUPERVISOR = "call.supervisor"
     APPROVAL_REQUESTED = "call.approval_requested"
+    PAYMENT_REQUESTED = "call.payment_requested"
+    CALLER_VERIFIED = "call.caller_verified"
 
 
 class TransferOutcome(StrEnum):

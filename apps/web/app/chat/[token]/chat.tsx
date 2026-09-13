@@ -1,7 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { type ChatConfig, type ChatMessage, pollChat, sendChat } from "@/lib/api";
+import type { RemoteTrack, Room } from "livekit-client";
+import { type ChatConfig, type ChatMessage, pollChat, sendChat, startChatVoice } from "@/lib/api";
 
 const VISITOR_KEY = "parlio-chat-visitor";
 const NAME_KEY = "parlio-chat-name";
@@ -18,6 +19,91 @@ function visitorId(): string {
   }
 }
 
+type VoiceState = "idle" | "connecting" | "connected" | "error";
+
+/** Click-to-talk: joins the LiveKit room issued by the API; the same voice worker answers. */
+function useVoice(token: string, visitor: string | null, name: string) {
+  const [state, setState] = useState<VoiceState>("idle");
+  const [muted, setMuted] = useState(false);
+  const [simulated, setSimulated] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [seconds, setSeconds] = useState(0);
+  const roomRef = useRef<Room | null>(null);
+  const audioEls = useRef<HTMLMediaElement[]>([]);
+
+  const cleanup = useCallback(() => {
+    for (const el of audioEls.current) el.remove();
+    audioEls.current = [];
+    roomRef.current = null;
+  }, []);
+
+  useEffect(() => {
+    if (state !== "connected") { setSeconds(0); return; }
+    const t = setInterval(() => setSeconds((s) => s + 1), 1000);
+    return () => clearInterval(t);
+  }, [state]);
+
+  const hangUp = useCallback(async () => {
+    const room = roomRef.current;
+    cleanup();
+    setMuted(false);
+    setState("idle");
+    if (room) await room.disconnect();
+  }, [cleanup]);
+
+  useEffect(() => () => { void roomRef.current?.disconnect(); cleanup(); }, [cleanup]);
+
+  const start = useCallback(async () => {
+    if (!visitor || state !== "idle") return;
+    setState("connecting"); setError(null); setSimulated(false);
+    const session = await startChatVoice(token, visitor, name.trim() || undefined, window.location.href.slice(0, 500));
+    if (!session) { setState("error"); setError("Voice isn't available right now — please type instead."); return; }
+    if (!session.url) {
+      setSimulated(true);
+      setState("connected");
+      return;
+    }
+    try {
+      const { Room: LKRoom, RoomEvent, Track } = await import("livekit-client");
+      const room = new LKRoom({ adaptiveStream: false, dynacast: false });
+      const attach = (track: RemoteTrack) => {
+        if (track.kind !== Track.Kind.Audio) return;
+        const el = track.attach();
+        el.autoplay = true;
+        document.body.appendChild(el);
+        audioEls.current.push(el);
+      };
+      room.on(RoomEvent.TrackSubscribed, (track) => attach(track));
+      room.on(RoomEvent.TrackUnsubscribed, (track) => {
+        for (const el of track.detach()) { el.remove(); audioEls.current = audioEls.current.filter((x) => x !== el); }
+      });
+      room.on(RoomEvent.Disconnected, () => { if (roomRef.current === room) { cleanup(); setMuted(false); setState("idle"); } });
+      roomRef.current = room;
+      await room.connect(session.url, session.token);
+      await room.localParticipant.setMicrophoneEnabled(true);
+      await room.startAudio();
+      setState("connected");
+    } catch (e) {
+      cleanup();
+      setState("error");
+      const msg = e instanceof Error ? e.message : "could not connect";
+      setError(/permission|denied|NotAllowed/i.test(msg) ? "Microphone access was blocked — allow it in your browser and try again." : `Couldn't connect: ${msg}`);
+    }
+  }, [token, visitor, name, state, cleanup]);
+
+  const toggleMute = useCallback(async () => {
+    const next = !muted;
+    setMuted(next);
+    await roomRef.current?.localParticipant.setMicrophoneEnabled(!next);
+  }, [muted]);
+
+  const reset = useCallback(() => { setState("idle"); setError(null); }, []);
+
+  return { state, muted, simulated, error, seconds, start, hangUp, toggleMute, reset };
+}
+
+const mmss = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+
 export default function Chat({ token, cfg }: { token: string; cfg: ChatConfig }) {
   const [visitor, setVisitor] = useState<string | null>(null);
   const [name, setName] = useState("");
@@ -26,6 +112,7 @@ export default function Chat({ token, cfg }: { token: string; cfg: ChatConfig })
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
+  const voice = useVoice(token, visitor, name);
 
   useEffect(() => {
     document.documentElement.classList.add("embed");
@@ -73,8 +160,37 @@ export default function Chat({ token, cfg }: { token: string; cfg: ChatConfig })
   return (
     <div className="chat-embed" style={{ ["--chat-accent" as string]: cfg.colour }}>
       <header className="chat-head">
-        <strong>{cfg.title}</strong>
-        <span className="small">Typically replies in seconds</span>
+        <div className="row between">
+          <strong>{cfg.title}</strong>
+          {cfg.voice_enabled && voice.state === "idle" && (
+            <button type="button" className="chat-talk" onClick={() => void voice.start()} disabled={!visitor} aria-label="Talk to us">
+              Talk to us
+            </button>
+          )}
+        </div>
+        <span className="small">
+          {voice.state === "connecting" && "Connecting…"}
+          {voice.state === "connected" && (voice.simulated ? "Voice demo mode (no audio)" : `On a call · ${mmss(voice.seconds)}`)}
+          {(voice.state === "idle" || voice.state === "error") && "Typically replies in seconds"}
+        </span>
+        {(voice.state === "connected" || voice.state === "connecting") && (
+          <div className="chat-row chat-call">
+            {voice.state === "connected" && !voice.simulated && (
+              <button type="button" className="chat-talk" onClick={() => void voice.toggleMute()} aria-pressed={voice.muted}>
+                {voice.muted ? "Unmute" : "Mute"}
+              </button>
+            )}
+            <button type="button" className="chat-talk danger" onClick={() => void voice.hangUp()}>
+              {voice.state === "connecting" ? "Cancel" : "Hang up"}
+            </button>
+          </div>
+        )}
+        {voice.state === "error" && voice.error && (
+          <div className="chat-row chat-call">
+            <span className="small">{voice.error}</span>
+            <button type="button" className="chat-talk" onClick={voice.reset}>Dismiss</button>
+          </div>
+        )}
       </header>
       <div className="chat-body" ref={bodyRef}>
         <div className="msg assistant"><span>{cfg.greeting}</span></div>

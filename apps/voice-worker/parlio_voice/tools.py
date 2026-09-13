@@ -88,6 +88,21 @@ class CoreApiClient:
         r.raise_for_status()
         return dict(r.json())
 
+    async def payment_link(self, cfg: AssistantConfig, req: dict[str, Any]) -> dict[str, Any]:
+        r = await self._http.post(
+            "/v1/worker/payments/link", json={"assistant_id": cfg.assistant_id, **req}
+        )
+        r.raise_for_status()
+        return dict(r.json())
+
+    async def verify_caller(self, cfg: AssistantConfig, req: dict[str, Any]) -> dict[str, Any]:
+        """Answers travel in the request body only and are hashed server-side; never logged."""
+        r = await self._http.post(
+            "/v1/worker/verification/check", json={"assistant_id": cfg.assistant_id, **req}
+        )
+        r.raise_for_status()
+        return dict(r.json())
+
     async def admit(self, number: str, call_id: str) -> dict[str, Any]:
         r = await self._http.post(
             "/v1/worker/telephony/admit", params={"number": number, "call_id": call_id}
@@ -146,6 +161,9 @@ class ReceptionistTools:
         self.booking_id: str | None = None
         self.sms_sent: list[str] = []
         self.approvals: list[dict[str, Any]] = []
+        self.verified = False
+        self.verification_locked = False
+        self.payment_ids: list[str] = []
 
     def sms_triggers(self) -> list[SmsTrigger]:
         """Scenarios the LLM may fire mid-call (post-call ones are sent by the API)."""
@@ -290,6 +308,98 @@ class ReceptionistTools:
         if msg.get("status") == "sent":
             self.sms_sent.append(trig)
         return {"status": msg.get("status"), "error": msg.get("error")}
+
+    # -- payments & verification (Phase 12) --------------------------------------------------
+    async def verify_caller(self, answers: dict[str, str]) -> dict[str, Any]:
+        """Check DOB / postcode / reference against the contact record. Only the outcome comes
+        back and only the outcome is emitted; the answers themselves never leave the request."""
+        if self.api is None:
+            return {"outcome": "unavailable"}
+        if self.verification_locked:
+            return {"outcome": "locked", "attempts_left": 0}
+        allowed = {f.value for f in self.cfg.verification.fields}
+        clean = {k: v.strip() for k, v in answers.items() if k in allowed and v and v.strip()}
+        if not clean:
+            return {"outcome": "failed", "error": "no answers for the configured fields"}
+        req = {"call_id": self.call_id, "caller": self.caller, "answers": clean}
+        try:
+            res = await self.api.verify_caller(self.cfg, req)
+        except Exception as e:
+            log.warning("verification failed: %s", type(e).__name__)
+            return {"outcome": "unavailable"}
+        outcome = res.get("outcome")
+        if outcome == "verified":
+            self.verified = True
+        if outcome == "locked":
+            self.verification_locked = True
+        self.emit(
+            CallEventType.CALLER_VERIFIED,
+            {
+                "outcome": outcome,
+                "fields": sorted(clean),
+                "attempts_left": res.get("attempts_left"),
+            },
+        )
+        return {
+            "outcome": outcome,
+            "attempts_left": res.get("attempts_left"),
+            "matched": res.get("matched"),
+        }
+
+    async def send_payment_link(
+        self, amount: float, description: str, to: str | None, consent: bool
+    ) -> dict[str, Any]:
+        if self.api is None or not self.cfg.payments.enabled:
+            return {"status": "unavailable"}
+        if not consent:
+            return {"status": "failed", "error": "caller has not agreed to receive a text"}
+        dest = to or self.caller
+        if not dest or dest.startswith(("anonymous", "web:")) or dest == "unknown":
+            return {"status": "failed", "error": "need a mobile number to text the link to"}
+        pence = round(amount * 100)
+        if pence <= 0:
+            return {"status": "failed", "error": "amount must be positive"}
+        if pence > self.cfg.payments.max_pence:
+            return {
+                "status": "failed",
+                "error": f"amount above the limit of {self.cfg.payments.max_pence / 100:.2f}",
+            }
+        vc = self.cfg.verification
+        if vc.enabled and vc.required_for_payments and not self.verified:
+            return {"status": "failed", "error": "verify the caller first (verify_caller)"}
+        req = {
+            "call_id": self.call_id,
+            "to": dest,
+            "amount_pence": pence,
+            "description": description.strip()[:200],
+            "consent": True,
+            "verified_caller": self.verified,
+        }
+        try:
+            res = await self.api.payment_link(self.cfg, req)
+        except httpx.HTTPStatusError as e:
+            detail = e.response.json().get("detail") if e.response.content else None
+            return {"status": "failed", "error": detail or "payment link refused"}
+        except Exception as e:
+            log.warning("payment link failed: %s", type(e).__name__)
+            return {"status": "failed", "error": "payments unavailable"}
+        if res.get("id"):
+            self.payment_ids.append(str(res["id"]))
+        self.emit(
+            CallEventType.PAYMENT_REQUESTED,
+            {
+                "payment_id": res.get("id"),
+                "amount_pence": pence,
+                "currency": self.cfg.payments.currency,
+                "status": res.get("status"),
+                "sms_status": res.get("sms_status"),
+            },
+        )
+        return {
+            "status": res.get("sms_status") or res.get("status"),
+            "amount": res.get("amount_display"),
+            "expires_at": res.get("expires_at"),
+        }
 
     # -- calendar -----------------------------------------------------------------------------
     async def calendar_availability(self, days: int = 7) -> dict[str, Any]:
@@ -498,6 +608,51 @@ def build_tools(t: ReceptionistTools) -> list[Any]:
             return await request_owner_approval(t, kind, title, details, amount)
 
         tools.append(request_owner_approval_tool)
+
+    if t.api is not None and t.cfg.verification.enabled:
+        vfields = ", ".join(f.value for f in t.cfg.verification.fields)
+
+        @function_tool(
+            name="verify_caller",
+            description=(
+                "Verify the caller's identity before discussing account details or taking a "
+                f"payment. Ask for these in turn: {vfields}. Pass what they said as answers "
+                "(keys: dob as YYYY-MM-DD or as spoken, postcode, reference). Returns verified, "
+                "failed (with attempts_left), locked or no_record. Never repeat the values back "
+                "in full; if locked, offer a callback from a staff member."
+            ),
+        )
+        async def verify_caller(
+            dob: str | None = None, postcode: str | None = None, reference: str | None = None
+        ) -> dict[str, Any]:
+            answers = {
+                k: v
+                for k, v in {"dob": dob, "postcode": postcode, "reference": reference}.items()
+                if v
+            }
+            return await t.verify_caller(answers)
+
+        tools.append(verify_caller)
+
+    if t.api is not None and t.cfg.payments.enabled:
+        limit = t.cfg.payments.max_pence / 100
+
+        @function_tool(
+            name="send_payment_link",
+            description=(
+                "Text the caller a secure payment link (card details are entered on the hosted "
+                f"payment page, never spoken to you). Amount in {t.cfg.payments.currency.upper()}"
+                f", maximum {limit:.2f}. Only after the caller explicitly agrees to receive the "
+                "text (consent=true) and you have confirmed the amount and mobile number. Do "
+                "not ask for card numbers under any circumstances."
+            ),
+        )
+        async def send_payment_link(
+            amount: float, description: str, consent: bool, to: str | None = None
+        ) -> dict[str, Any]:
+            return await t.send_payment_link(amount, description, to, consent)
+
+        tools.append(send_payment_link)
 
     if t.reporter is not None:
         tools.append(outcome_tool(t.reporter))

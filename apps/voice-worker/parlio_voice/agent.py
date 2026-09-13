@@ -52,6 +52,7 @@ from parlio_voice.tools import (
     build_tools,
 )
 from parlio_voice.transfer import LiveKitSipBridge, TransferEngine
+from parlio_voice.web import WEB_DIALED, WebJob, parse_web
 
 load_dotenv()
 log = logging.getLogger("parlio.agent")
@@ -71,6 +72,7 @@ class Receptionist(Agent):
         cfg: AssistantConfig,
         tools: ReceptionistTools | None = None,
         outbound: OutboundJob | None = None,
+        web: WebJob | None = None,
     ) -> None:
         instructions = cfg.rendered_instructions()
         fn_tools = []
@@ -81,6 +83,8 @@ class Receptionist(Agent):
             fn_tools = build_tools(tools)
         if outbound is not None:
             instructions += "\n\n" + outbound.instructions()
+        if web is not None:
+            instructions += "\n\n" + web.instructions()
         super().__init__(instructions=instructions, tools=fn_tools)
         self.cfg = cfg
 
@@ -136,6 +140,7 @@ async def entrypoint(ctx: JobContext) -> None:
     lk = api.LiveKitAPI()
     core_api = CoreApiClient(config_client.http)
     outbound = parse_outbound(ctx.job.metadata)
+    web = parse_web(ctx.job.metadata)
     reporter: OutcomeReporter | None = None
 
     if outbound is not None:
@@ -174,6 +179,30 @@ async def entrypoint(ctx: JobContext) -> None:
             return
         participant = await ctx.wait_for_participant(identity="callee")
         admitted = None
+    elif web is not None:
+        # Browser voice: the widget visitor joins with a short-lived token; no phone leg.
+        call_id, dialed, caller = web.call_id, WEB_DIALED, web.caller
+        ctx.log_context_fields.update({"call_id": call_id, "dialed": dialed, "web": True})
+        cfg = await config_client.get(web.assistant_id)
+        if cfg.tenant_id != web.tenant_id:
+            log.warning("web job tenant mismatch on %s", call_id)
+            ctx.shutdown(reason="tenant mismatch")
+            return
+        participant = await ctx.wait_for_participant(identity=caller)
+        admitted = None
+        events.emit(
+            cfg,
+            call_id,
+            CallEventType.CALL_STARTED,
+            {
+                "caller": caller,
+                "dialed": dialed,
+                "room": ctx.room.name,
+                "direction": "inbound",
+                "source": "browser",
+                "page_url": web.page_url,
+            },
+        )
     else:
         participant = await ctx.wait_for_participant()
         attrs = participant.attributes
@@ -197,14 +226,14 @@ async def entrypoint(ctx: JobContext) -> None:
         return
     if admitted is not None and admitted.get("department"):
         ctx.log_context_fields["department"] = str(admitted["department"])
-    if outbound is None:
+    if outbound is None and web is None:
         events.emit(
             cfg,
             call_id,
             CallEventType.CALL_STARTED,
             {"caller": caller, "dialed": dialed, "room": ctx.room.name, "direction": "inbound"},
         )
-    if outbound is None and cfg.is_blocked(caller):
+    if outbound is None and web is None and cfg.is_blocked(caller):
         log.info("blocked caller %s on call %s", caller, call_id)
         events.emit(cfg, call_id, CallEventType.CALL_ENDED, {"reason": "blocked", "duration_s": 0})
         ctx.shutdown(reason="blocked")
@@ -267,7 +296,7 @@ async def entrypoint(ctx: JobContext) -> None:
     tools = ReceptionistTools(
         cfg,
         call_id,
-        dialed if outbound is not None else caller,
+        dialed if outbound is not None else (None if web is not None else caller),
         TransferEngine(cfg.transfer, bridge),
         core_api,
         _emit,
@@ -346,7 +375,7 @@ async def entrypoint(ctx: JobContext) -> None:
     ctx.add_shutdown_callback(_on_shutdown)
 
     await session.start(
-        agent=Receptionist(cfg, tools, outbound),
+        agent=Receptionist(cfg, tools, outbound, web),
         room=ctx.room,
         room_input_options=RoomInputOptions(participant_identity=participant.identity),
         room_output_options=RoomOutputOptions(transcription_enabled=True),

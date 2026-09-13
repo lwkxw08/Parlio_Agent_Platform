@@ -27,6 +27,18 @@ from parlio_api.telephony.base import CarrierHealth, CarrierStatus, PhoneNumber,
 
 log = logging.getLogger("parlio.billing")
 
+INBOX_MESSAGE_KIND = "inbox_message"  # parlio_api.inbox.MESSAGE_KIND (avoids an import cycle)
+CHAT_CHANNELS = {"webchat", "whatsapp"}
+WEB_CALLER_PREFIX = "web:"
+WEB_DIALED = "web"
+
+
+def is_browser_call(call: CallRecord) -> bool:
+    """Browser voice sessions (Phase 11b): caller ``web:<visitor>`` on the ``web`` line."""
+    return call.dialed == WEB_DIALED or bool(
+        call.caller and call.caller.startswith(WEB_CALLER_PREFIX)
+    )
+
 
 # -- catalogue --------------------------------------------------------------------------------
 
@@ -44,6 +56,13 @@ class Plan(BaseModel):
     max_concurrent_calls: int
     features: list[str] = Field(default_factory=list)
     enterprise: bool = False
+    # Channel bundle (Phase 11b): web chat / WhatsApp inbound messages; browser-voice minutes
+    # draw from ``included_minutes`` like phone calls (no telephony cost -> higher margin).
+    included_chat_messages: int = 500
+    chat_overage_pence: int = 2
+    channels: list[str] = Field(
+        default_factory=lambda: ["phone", "sms", "webchat", "browser_voice"]
+    )
 
 
 PLANS: list[Plan] = [
@@ -58,7 +77,13 @@ PLANS: list[Plan] = [
         sms_overage_pence=6,
         max_assistants=1,
         max_concurrent_calls=2,
-        features=["1 assistant", "Tickets & callbacks", "Email/SMS alerts"],
+        features=[
+            "1 assistant",
+            "Tickets & callbacks",
+            "Email/SMS alerts",
+            "Web chat + browser voice",
+        ],
+        included_chat_messages=300,
     ),
     Plan(
         id="growth",
@@ -72,6 +97,8 @@ PLANS: list[Plan] = [
         max_assistants=3,
         max_concurrent_calls=5,
         features=["3 assistants", "Calendar booking", "Warm transfers", "Analytics Ask AI"],
+        included_chat_messages=1500,
+        channels=["phone", "sms", "webchat", "browser_voice", "whatsapp"],
     ),
     Plan(
         id="scale",
@@ -85,6 +112,9 @@ PLANS: list[Plan] = [
         max_assistants=10,
         max_concurrent_calls=15,
         features=["10 assistants", "BYO SIP / PBX", "Slack & webhooks", "Priority support"],
+        included_chat_messages=5000,
+        chat_overage_pence=1,
+        channels=["phone", "sms", "webchat", "browser_voice", "whatsapp"],
     ),
     Plan(
         id="enterprise",
@@ -99,6 +129,9 @@ PLANS: list[Plan] = [
         max_concurrent_calls=100,
         features=["UK-sovereign deployment", "SSO", "Custom SLAs", "Dedicated capacity"],
         enterprise=True,
+        included_chat_messages=0,
+        chat_overage_pence=1,
+        channels=["phone", "sms", "webchat", "browser_voice", "whatsapp"],
     ),
 ]
 PLAN_BY_ID = {p.id: p for p in PLANS}
@@ -167,6 +200,7 @@ class CostRates(BaseModel):
     llm_pence_per_min: float = 0.4  # gpt-4o-mini class at ~400 tok/turn
     telephony_pence_per_min: float = 0.8  # Telnyx UK inbound + SIP
     sms_pence: float = 3.5
+    chat_message_pence: float = 0.05  # LLM tokens per text reply
 
 
 class CallCost(BaseModel):
@@ -190,6 +224,14 @@ class UsageSummary(BaseModel):
     sms_used: int
     sms_included: int
     sms_overage_pence: int
+    # per-channel breakdown (Phase 11b)
+    phone_minutes: float = 0.0
+    browser_voice_minutes: float = 0.0
+    browser_voice_calls: int = 0
+    chat_messages_used: int = 0
+    chat_messages_included: int = 0
+    chat_overage_pence: int = 0
+    chat_by_channel: dict[str, int] = Field(default_factory=dict)
     numbers_used: int
     numbers_included: int
     base_pence: int
@@ -328,23 +370,29 @@ class StripeBilling:
         r.raise_for_status()
 
     def verify_webhook(self, payload: bytes, signature: str | None) -> dict[str, Any]:
-        if not self._webhook_secret:
-            raise ValueError("webhook secret not configured")
-        if not signature:
-            raise ValueError("missing Stripe-Signature")
-        parts = dict(p.split("=", 1) for p in signature.split(",") if "=" in p)
-        ts = parts.get("t")
-        v1 = parts.get("v1")
-        if not ts or not v1:
-            raise ValueError("malformed Stripe-Signature")
-        if abs(time.time() - int(ts)) > 300:
-            raise ValueError("stale webhook")
-        expected = hmac.new(
-            self._webhook_secret.encode(), f"{ts}.".encode() + payload, hashlib.sha256
-        ).hexdigest()
-        if not hmac.compare_digest(expected, v1):
-            raise ValueError("bad webhook signature")
-        return dict(json.loads(payload))
+        return verify_stripe_webhook(self._webhook_secret, payload, signature)
+
+
+def verify_stripe_webhook(
+    webhook_secret: str | None, payload: bytes, signature: str | None
+) -> dict[str, Any]:
+    if not webhook_secret:
+        raise ValueError("webhook secret not configured")
+    if not signature:
+        raise ValueError("missing Stripe-Signature")
+    parts = dict(p.split("=", 1) for p in signature.split(",") if "=" in p)
+    ts = parts.get("t")
+    v1 = parts.get("v1")
+    if not ts or not v1:
+        raise ValueError("malformed Stripe-Signature")
+    if abs(time.time() - int(ts)) > 300:
+        raise ValueError("stale webhook")
+    expected = hmac.new(
+        webhook_secret.encode(), f"{ts}.".encode() + payload, hashlib.sha256
+    ).hexdigest()
+    if not hmac.compare_digest(expected, v1):
+        raise ValueError("bad webhook signature")
+    return dict(json.loads(payload))
 
 
 # -- numbers ------------------------------------------------------------------------------------
@@ -589,17 +637,23 @@ class BillingService:
         costs: list[CallCost] = []
         per_day: dict[str, float] = {}
         minutes = 0.0
+        browser_minutes = 0.0
+        browser_calls = 0
         vendor = 0.0
         for c in calls:
             m = billable_minutes(c)
             if m <= 0:
                 continue
             minutes += m
+            browser = is_browser_call(c)
+            if browser:
+                browser_minutes += m
+                browser_calls += 1
             v = m * (
                 self.rates.stt_pence_per_min
                 + self.rates.tts_pence_per_min
                 + self.rates.llm_pence_per_min
-                + self.rates.telephony_pence_per_min
+                + (0.0 if browser else self.rates.telephony_pence_per_min)
             )
             vendor += v
             day = c.started_at.date().isoformat()
@@ -619,18 +673,25 @@ class BillingService:
             if m.status == MessageStatus.SENT and sub.period_start <= m.created_at < sub.period_end
         )
         vendor += sms_used * self.rates.sms_pence
+        chat_by_channel = await self._chat_messages(sub)
+        chat_used = sum(chat_by_channel.values())
+        vendor += chat_used * self.rates.chat_message_pence
         numbers = await self.list_numbers(sub.tenant_id)
 
         overage_min = max(0.0, minutes - plan.included_minutes) if not plan.enterprise else minutes
         overage_pence = round(overage_min * plan.overage_pence_per_minute)
         sms_over = max(0, sms_used - plan.included_sms)
         sms_over_pence = sms_over * plan.sms_overage_pence
+        chat_over = (
+            chat_used if plan.enterprise else max(0, chat_used - plan.included_chat_messages)
+        )
+        chat_over_pence = chat_over * plan.chat_overage_pence
         extra_numbers = max(0, len(numbers) - plan.included_numbers)
         base = plan.monthly_pence + extra_numbers * 100
         discount = 0
         if sub.coupon and (cp := COUPONS.get(sub.coupon)):
             discount = base - cp.apply(base)
-        total = base - discount + overage_pence + sms_over_pence
+        total = base - discount + overage_pence + sms_over_pence + chat_over_pence
         margin = None if total <= 0 else round((total - vendor) / total * 100, 1)
         costs.sort(key=lambda x: x.minutes, reverse=True)
         return UsageSummary(
@@ -647,6 +708,13 @@ class BillingService:
             sms_used=sms_used,
             sms_included=plan.included_sms,
             sms_overage_pence=sms_over_pence,
+            phone_minutes=round(minutes - browser_minutes, 2),
+            browser_voice_minutes=round(browser_minutes, 2),
+            browser_voice_calls=browser_calls,
+            chat_messages_used=chat_used,
+            chat_messages_included=plan.included_chat_messages,
+            chat_overage_pence=chat_over_pence,
+            chat_by_channel=chat_by_channel,
             numbers_used=len(numbers),
             numbers_included=plan.included_numbers,
             base_pence=base,
@@ -657,6 +725,18 @@ class BillingService:
             per_day_minutes=dict(sorted(per_day.items())),
             top_calls=costs[:10],
         )
+
+    async def _chat_messages(self, sub: Subscription) -> dict[str, int]:
+        """Inbound web-chat / WhatsApp messages this period (what the AI had to answer)."""
+        out: dict[str, int] = {}
+        for d in await self.store.list_docs(INBOX_MESSAGE_KIND, sub.tenant_id, 100000):
+            ch = str(d.data.get("channel"))
+            if ch not in CHAT_CHANNELS or d.data.get("direction") != "in":
+                continue
+            if not (sub.period_start <= d.created_at < sub.period_end):
+                continue
+            out[ch] = out.get(ch, 0) + 1
+        return out
 
     async def concurrent_limit(self, tenant_id: str) -> int:
         return (await self.subscription(tenant_id)).plan.max_concurrent_calls

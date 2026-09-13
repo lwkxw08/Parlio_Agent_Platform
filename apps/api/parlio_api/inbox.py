@@ -29,6 +29,7 @@ from uuid import uuid4
 import httpx
 from pydantic import BaseModel, Field
 
+from parlio_api.billing import WEB_CALLER_PREFIX
 from parlio_api.live import LiveCallHub, LiveMessage
 from parlio_api.messaging import MessageService, MessageStatus
 from parlio_api.notifications import NotificationEvent, NotificationService, NotifyEvent
@@ -173,6 +174,7 @@ class ChatWidget(BaseModel):
     greeting: str = "Hi! How can we help today?"
     colour: str = "#3b5bdb"
     allowed_origins: list[str] = Field(default_factory=list)
+    voice_enabled: bool = True  # "Talk to us" browser-voice button (Phase 11b)
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
     def to_doc(self) -> TenantDoc:
@@ -190,6 +192,7 @@ class ChatWidget(BaseModel):
             "greeting": self.greeting,
             "colour": self.colour,
             "enabled": self.enabled,
+            "voice_enabled": self.voice_enabled,
         }
 
 
@@ -906,16 +909,27 @@ class InboxService:
         if not call.caller or call.caller.startswith("anonymous") or call.caller == "unknown":
             return None
         missed = call.status == "failed" or call.answered_at is None
-        channel = Channel.VOICEMAIL if missed else Channel.CALL
-        t = await self.find_or_open(
-            call.tenant_id, call.company_id, channel, call.caller, contact_id=call.contact_id
-        )
         mins = int((call.duration_s or 0) // 60)
         secs = int((call.duration_s or 0) % 60)
-        text = (
-            f"Missed call ({call.end_reason or 'no answer'})"
-            if missed
-            else call.summary or f"{call.direction.title()} call, {mins}m {secs:02d}s"
+        if call.caller.startswith(WEB_CALLER_PREFIX):
+            # Browser voice: file under the visitor's web-chat thread so chat + voice read as one.
+            channel = Channel.WEBCHAT
+            identity = call.caller[len(WEB_CALLER_PREFIX) :]
+            text = (
+                f"Browser voice call ({call.end_reason or 'not connected'})"
+                if missed
+                else call.summary or f"Browser voice call, {mins}m {secs:02d}s"
+            )
+        else:
+            channel = Channel.VOICEMAIL if missed else Channel.CALL
+            identity = call.caller
+            text = (
+                f"Missed call ({call.end_reason or 'no answer'})"
+                if missed
+                else call.summary or f"{call.direction.title()} call, {mins}m {secs:02d}s"
+            )
+        t = await self.find_or_open(
+            call.tenant_id, call.company_id, channel, identity, contact_id=call.contact_id
         )
         m = InboxMessage(
             tenant_id=call.tenant_id,

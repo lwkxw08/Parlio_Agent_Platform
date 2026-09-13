@@ -62,6 +62,12 @@ class Settings(BaseSettings):
     billing_provider: Literal["simulated", "stripe"] = "simulated"
     stripe_secret_key: str | None = None
     stripe_webhook_secret: str | None = None
+    # Phase 12: one-off payment links texted mid-call (Stripe Checkout) - same Stripe account;
+    # a separate webhook endpoint secret if you register a second endpoint.
+    payments_provider: Literal["simulated", "stripe"] = "simulated"
+    stripe_payments_webhook_secret: str | None = None
+    # Phase 11b: LiveKit agent name the browser-voice dispatcher targets (worker registers it).
+    agent_name: str = "parlio-voice"
     number_provider: Literal["simulated", "telnyx"] = "simulated"
     telnyx_sip_uri: str | None = None
     telnyx_connection_id: str | None = None

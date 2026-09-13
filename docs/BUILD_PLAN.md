@@ -161,12 +161,13 @@ Parlio owns and guarantees AI numbers, carrier, SIP edge and AI pipeline; custom
 ### Phase 11 — Omnichannel shared inbox (1.5)
 - Unified threads per contact: calls, SMS, voicemail, WhatsApp Business, web chat widget — same assistant brain and tools. Team assignment, internal notes, canned replies, unread/SLA states.
 
-### Phase 11b — Browser voice ("click to talk") & chat bundle (0.5, later)
+### Phase 11b — Browser voice ("click to talk") & chat bundle (0.5)
 - Voice-in-browser button on the web chat widget / hosted chat page using the existing LiveKit WebRTC stack and the same voice worker — no phone line needed; sessions land in the shared inbox as a call thread with transcript and post-call summary.
 - Packaging: telephony + web chat + browser voice sold as one bundle sharing FAQs, hours, booking, tickets, handoff and analytics; per-channel usage metering (chat messages, browser-voice minutes) feeding Phase 6 billing.
 
 ### Phase 12 — Payments & identity (1)
-- Stripe deposit/payment links via SMS mid-call; PCI-compliant DTMF card capture (Twilio <Pay>). Caller verification flows (DOB/postcode/reference).
+- Stripe deposit/payment links via SMS mid-call (hosted Checkout; simulated provider offline), consent-gated, idempotent per tenant/call/customer/amount; refunds and status webhooks. Caller verification flows (DOB/postcode/reference) with salted hashes, configurable required matches / max attempts, redacted audit trail.
+- Card capture is a PCI-safe provider seam only (`CardCaptureProvider`: Twilio <Pay>-style DTMF or a Telnyx equivalent) — no raw card data ever transits Parlio; activate once a live PSTN number is approved.
 
 ### Phase 13 — QA, self-improvement & simulation (1.5)
 - Per-call AI QA scoring (resolution, tone, accuracy, hallucination flags); low-score alerts. Insight engine clusters unanswered questions -> suggested FAQs/rules with one-click apply. Simulation sandbox (browser/phone) against draft config, scripted test callers, prompt A/B — also used pre-release. Owner voice cloning with consent.

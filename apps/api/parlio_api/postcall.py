@@ -117,7 +117,7 @@ async def process_call(store: CallStore, analyser: Analyser, call_id: str) -> Po
     analysis = await analyser.analyse(call, fields)
 
     caller_type, contact_id = "unknown", None
-    if call.caller and call.caller != "unknown":
+    if call.caller and call.caller != "unknown" and not call.caller.startswith("web:"):
         contact_id, returning = await store.touch_contact(
             call.tenant_id, call.company_id, call.caller
         )

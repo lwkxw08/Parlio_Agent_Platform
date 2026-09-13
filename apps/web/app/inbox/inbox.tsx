@@ -527,7 +527,7 @@ function ChannelsPane({ tenant, widget: initialWidget, whatsapp: initialWa }: { 
   const [token, setToken] = useState("");
   const [waErr, setWaErr] = useState<string | null>(null);
 
-  const saveWidget = async (extra: { enabled?: boolean; rotate_token?: boolean } = {}) => {
+  const saveWidget = async (extra: { enabled?: boolean; voice_enabled?: boolean; rotate_token?: boolean } = {}) => {
     const r = await patchWidget(tenant, {
       title: title.trim() || undefined,
       greeting: greeting.trim() || undefined,
@@ -568,6 +568,7 @@ function ChannelsPane({ tenant, widget: initialWidget, whatsapp: initialWa }: { 
         <div className="row">
           <button type="submit" className="primary">Save</button>
           {w && <button type="button" onClick={() => void saveWidget({ enabled: !w.enabled })}>{w.enabled ? "Disable" : "Enable"}</button>}
+          {w && <button type="button" onClick={() => void saveWidget({ voice_enabled: !w.voice_enabled })}>{w.voice_enabled ? "Turn off click-to-talk" : "Turn on click-to-talk"}</button>}
           {w && <button type="button" onClick={() => { if (confirm("Rotate the embed token? Existing embeds stop working.")) void saveWidget({ rotate_token: true }); }}>Rotate token</button>}
         </div>
         {w && (
