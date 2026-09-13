@@ -17,7 +17,8 @@ from fastapi import APIRouter, HTTPException, Query, Request, Response, status
 from pydantic import BaseModel, Field
 
 from parlio_api.auth import UserDep
-from parlio_api.deps import AuditDep, InboxDep, SettingsDep, StoreDep
+from parlio_api.browser_voice import WebVoiceSession
+from parlio_api.deps import AuditDep, BrowserVoiceDep, InboxDep, SettingsDep, StoreDep
 from parlio_api.inbox import (
     CannedReply,
     Channel,
@@ -231,6 +232,7 @@ class WidgetOut(BaseModel):
     greeting: str
     colour: str
     allowed_origins: list[str]
+    voice_enabled: bool
     embed_url: str
     snippet: str
 
@@ -250,6 +252,7 @@ def _widget_out(w: ChatWidget, dashboard_url: str) -> WidgetOut:
         greeting=w.greeting,
         colour=w.colour,
         allowed_origins=w.allowed_origins,
+        voice_enabled=w.voice_enabled,
         embed_url=embed,
         snippet=snippet,
     )
@@ -261,6 +264,7 @@ class WidgetPatch(BaseModel):
     greeting: str | None = Field(default=None, min_length=1, max_length=300)
     colour: str | None = Field(default=None, pattern=r"^#[0-9a-fA-F]{6}$")
     allowed_origins: list[str] | None = None
+    voice_enabled: bool | None = None
     rotate_token: bool = False
 
 
@@ -422,6 +426,7 @@ class ChatConfig(BaseModel):
     greeting: str
     colour: str
     enabled: bool
+    voice_enabled: bool
 
 
 async def _widget(inbox: InboxDep, token: str) -> ChatWidget:
@@ -470,6 +475,26 @@ async def chat_send(inbox: InboxDep, token: str, body: ChatSend) -> list[ChatMes
     )
     t, _ = await inbox.inbound(w.tenant_id, inb)
     return [_chat_msg(m) for m in await inbox.messages(w.tenant_id, t.id) if m.direction != "note"]
+
+
+class VoiceStart(BaseModel):
+    visitor: str = Field(min_length=8, max_length=64, pattern=r"^[A-Za-z0-9_-]+$")
+    name: str | None = Field(default=None, max_length=80)
+    page_url: str | None = Field(default=None, max_length=500)
+
+
+@public.post("/{token}/voice", response_model=WebVoiceSession)
+async def chat_voice_start(
+    inbox: InboxDep, voice: BrowserVoiceDep, token: str, body: VoiceStart
+) -> WebVoiceSession:
+    """Browser "click to talk": dispatch the voice worker and return a LiveKit join token."""
+    w = await _widget(inbox, token)
+    if not w.voice_enabled:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "voice unavailable")
+    session = await voice.start(w.tenant_id, body.visitor, body.name, body.page_url)
+    if session is None:
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "no assistant configured")
+    return session
 
 
 @public.get("/{token}/messages", response_model=list[ChatMessageOut])

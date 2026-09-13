@@ -724,7 +724,7 @@ export type InboxMessage = {
 export type InboxStats = { open: number; waiting: number; unread: number; unassigned: number; breached: number; by_channel: Record<string, number> };
 export type CannedReply = { id: string; title: string; shortcut: string | null; body: string };
 export type ChatWidgetInfo = {
-  id: string; token: string; enabled: boolean; title: string; greeting: string; colour: string; allowed_origins: string[]; embed_url: string; snippet: string;
+  id: string; token: string; enabled: boolean; voice_enabled: boolean; title: string; greeting: string; colour: string; allowed_origins: string[]; embed_url: string; snippet: string;
 };
 export type WhatsAppInfo = { id: string; phone_number_id: string; display_number: string | null; has_token: boolean; verify_token: string; webhook_url: string };
 export type ThreadFilters = { status?: ThreadStatus; channel?: Channel; assigned_to?: string; unassigned?: boolean; unread_only?: boolean; q?: string };
@@ -745,13 +745,16 @@ export const createCanned = (tenant_id: string, body: { title: string; shortcut?
 export const updateCanned = (tenant_id: string, id: string, body: { title: string; shortcut?: string; body: string }) => put<CannedReply>(`/v1/inbox/canned/${id}${qs({ tenant_id })}`, body);
 export const deleteCanned = (tenant_id: string, id: string) => del(`/v1/inbox/canned/${id}${qs({ tenant_id })}`);
 export const fetchWidget = (tenant_id: string) => get<ChatWidgetInfo>(`/v1/inbox/widget${qs({ tenant_id })}`);
-export const patchWidget = (tenant_id: string, body: { enabled?: boolean; title?: string; greeting?: string; colour?: string; allowed_origins?: string[]; rotate_token?: boolean }) =>
+export const patchWidget = (tenant_id: string, body: { enabled?: boolean; voice_enabled?: boolean; title?: string; greeting?: string; colour?: string; allowed_origins?: string[]; rotate_token?: boolean }) =>
   patch<ChatWidgetInfo>(`/v1/inbox/widget${qs({ tenant_id })}`, body);
 export const fetchWhatsApp = (tenant_id: string) => get<WhatsAppInfo | null>(`/v1/inbox/whatsapp${qs({ tenant_id })}`);
 export const saveWhatsApp = (tenant_id: string, body: { phone_number_id: string; display_number?: string; access_token?: string }) =>
   put<WhatsAppInfo>(`/v1/inbox/whatsapp${qs({ tenant_id })}`, body);
 
-export type ChatConfig = { title: string; greeting: string; colour: string; enabled: boolean };
+export type ChatConfig = { title: string; greeting: string; colour: string; enabled: boolean; voice_enabled: boolean };
+export type WebVoiceSession = { call_id: string; room: string; identity: string; url: string | null; token: string; simulated: boolean };
+export const startChatVoice = (token: string, visitor: string, name?: string, page_url?: string) =>
+  post<WebVoiceSession>(`/v1/public/chat/${token}/voice`, { visitor, name, page_url });
 export type ChatMessage = { id: string; direction: string; author: string; author_name: string | null; text: string; created_at: string };
 export const fetchChatConfig = (token: string) => get<ChatConfig>(`/v1/public/chat/${token}`);
 export const sendChat = (token: string, visitor: string, text: string, name?: string) => post<ChatMessage[]>(`/v1/public/chat/${token}/messages`, { visitor, text, name });

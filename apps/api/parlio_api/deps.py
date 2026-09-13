@@ -6,6 +6,7 @@ from typing import Annotated
 from fastapi import Depends, Header, HTTPException, Request, status
 
 from parlio_api.billing import BillingService
+from parlio_api.browser_voice import BrowserVoiceService
 from parlio_api.calendar import CalendarService
 from parlio_api.compliance import ComplianceService
 from parlio_api.connectors import ConnectorService, TenantApiKey
@@ -16,6 +17,7 @@ from parlio_api.messaging import MessageService
 from parlio_api.notifications import NotificationService
 from parlio_api.observability import AuditLog, Telemetry
 from parlio_api.outbound import OutboundService
+from parlio_api.payments import PaymentService
 from parlio_api.postcall import PostCallProcessor
 from parlio_api.settings import Settings, get_settings
 from parlio_api.sip import SipService
@@ -113,8 +115,20 @@ def get_inbox(request: Request) -> InboxService:
     return i
 
 
+def get_browser_voice(request: Request) -> BrowserVoiceService:
+    b: BrowserVoiceService = request.app.state.browser_voice
+    return b
+
+
+def get_payments(request: Request) -> PaymentService:
+    p: PaymentService = request.app.state.payments
+    return p
+
+
 StoreDep = Annotated[CallStore, Depends(get_store)]
 InboxDep = Annotated[InboxService, Depends(get_inbox)]
+BrowserVoiceDep = Annotated[BrowserVoiceService, Depends(get_browser_voice)]
+PaymentsDep = Annotated[PaymentService, Depends(get_payments)]
 BillingDep = Annotated[BillingService, Depends(get_billing)]
 TelemetryDep = Annotated[Telemetry, Depends(get_telemetry)]
 AuditDep = Annotated[AuditLog, Depends(get_audit)]

@@ -24,6 +24,12 @@ from parlio_api.billing import (
     SimulatedNumbers,
     StripeBilling,
 )
+from parlio_api.browser_voice import (
+    AgentDispatcher,
+    BrowserVoiceService,
+    LiveKitDispatcher,
+    SimulatedDispatcher,
+)
 from parlio_api.calendar import (
     CalendarBackend,
     CalendarProvider,
@@ -73,6 +79,12 @@ from parlio_api.outbound import (
     OutboundService,
     SimulatedDialer,
 )
+from parlio_api.payments import (
+    PaymentProvider,
+    PaymentService,
+    SimulatedPayments,
+    StripePayments,
+)
 from parlio_api.postcall import Analyser, HeuristicAnalyser, OpenAIAnalyser, PostCallProcessor
 from parlio_api.routes import (
     account,
@@ -90,6 +102,9 @@ from parlio_api.routes import (
 )
 from parlio_api.routes import (
     outbound as outbound_routes,
+)
+from parlio_api.routes import (
+    payments as payment_routes,
 )
 from parlio_api.settings import Settings, get_settings
 from parlio_api.sip import SimulatedProvisioner, SimulatedRegistrar, SipProvisioner, SipService
@@ -157,6 +172,17 @@ def build_billing_provider(settings: Settings) -> BillingProvider:
     if settings.billing_provider == "stripe":
         log.warning("PARLIO_BILLING_PROVIDER=stripe but no secret key; using simulated billing")
     return SimulatedBilling()
+
+
+def build_payment_provider(settings: Settings) -> PaymentProvider:
+    if settings.payments_provider == "stripe" and settings.stripe_secret_key:
+        return StripePayments(
+            settings.stripe_secret_key,
+            settings.stripe_payments_webhook_secret or settings.stripe_webhook_secret,
+        )
+    if settings.payments_provider == "stripe":
+        log.warning("PARLIO_PAYMENTS_PROVIDER=stripe but no secret key; using simulated payments")
+    return SimulatedPayments(settings.dashboard_url)
 
 
 def build_number_provider(settings: Settings) -> TelephonyProvider:
@@ -328,6 +354,20 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     else:
         control = SimulatedRoomControl()
     app.state.room_control = control
+    dispatcher: AgentDispatcher
+    if settings.livekit_url and settings.livekit_api_key and settings.livekit_api_secret:
+        dispatcher = LiveKitDispatcher(
+            settings.livekit_url,
+            settings.livekit_api_key,
+            settings.livekit_api_secret,
+            agent_name=settings.agent_name,
+        )
+    else:
+        dispatcher = SimulatedDispatcher()
+    app.state.browser_voice = BrowserVoiceService(store, control, dispatcher)
+    app.state.payments = PaymentService(
+        store, build_payment_provider(settings), sms, dashboard_url=settings.dashboard_url
+    )
     app.state.supervisor = SupervisorService(live, control)
     app.state.approvals = ApprovalService(store, live, notifications, settings.dashboard_url)
     hub = IntegrationHub(
@@ -444,6 +484,9 @@ def create_app() -> FastAPI:
     app.include_router(inbox_routes.router)
     app.include_router(inbox_routes.inbound)
     app.include_router(inbox_routes.public)
+    app.include_router(payment_routes.router)
+    app.include_router(payment_routes.worker)
+    app.include_router(payment_routes.public)
     app.include_router(platform.router)
     app.include_router(platform.public)
     app.include_router(platform.ops)
