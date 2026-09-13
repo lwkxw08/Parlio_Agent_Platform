@@ -45,6 +45,8 @@ class NotifyEvent(StrEnum):
     BOOKING_CREATED = "booking.created"
     SIP_REGISTRATION = "sip.registration_changed"
     APPROVAL_REQUESTED = "approval.requested"
+    INBOX_HANDOFF = "inbox.handoff"
+    INBOX_SLA_BREACHED = "inbox.sla_breached"
 
 
 class NotificationRule(BaseModel):

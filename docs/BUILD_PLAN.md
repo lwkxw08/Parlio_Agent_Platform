@@ -161,6 +161,10 @@ Parlio owns and guarantees AI numbers, carrier, SIP edge and AI pipeline; custom
 ### Phase 11 — Omnichannel shared inbox (1.5)
 - Unified threads per contact: calls, SMS, voicemail, WhatsApp Business, web chat widget — same assistant brain and tools. Team assignment, internal notes, canned replies, unread/SLA states.
 
+### Phase 11b — Browser voice ("click to talk") & chat bundle (0.5, later)
+- Voice-in-browser button on the web chat widget / hosted chat page using the existing LiveKit WebRTC stack and the same voice worker — no phone line needed; sessions land in the shared inbox as a call thread with transcript and post-call summary.
+- Packaging: telephony + web chat + browser voice sold as one bundle sharing FAQs, hours, booking, tickets, handoff and analytics; per-channel usage metering (chat messages, browser-voice minutes) feeding Phase 6 billing.
+
 ### Phase 12 — Payments & identity (1)
 - Stripe deposit/payment links via SMS mid-call; PCI-compliant DTMF card capture (Twilio <Pay>). Caller verification flows (DOB/postcode/reference).
 
@@ -173,7 +177,7 @@ Parlio owns and guarantees AI numbers, carrier, SIP edge and AI pipeline; custom
 
 ---
 
-## Part D — UK Sovereign tier ~4 sessions
+## Part D — UK Sovereign tier ~5 sessions
 
 ### Phase 15 — Region profiles & UK-region deployment (2 sessions)
 - region_profile provider selection end-to-end (compute, DB, storage, telephony, STT/LLM/TTS, frontend, trackers), per-tenant enforcement, "sovereignty report" page listing every processor and location.
@@ -183,6 +187,16 @@ Parlio owns and guarantees AI numbers, carrier, SIP edge and AI pipeline; custom
 ### Phase 16 — Self-hosted model stack (strict) (2 sessions)
 - UK GPU workers: faster-whisper or NVIDIA Parakeet (STT), vLLM + Llama 3/Mistral/Qwen with tool calling (LLM), Kokoro/Orpheus (TTS); latency/quality benchmark vs vendor stack; per-tenant switch (also the long-term cost/quota lever at scale).
 - Compliance collateral: UK GDPR DPA with no international transfers, ICO registration, Cyber Essentials Plus -> ISO 27001 path, pen test, G-Cloud listing prep, DPIA template for customers.
+
+### Phase 16b — Platform owner console: analytics, subscriptions & tenant management (1)
+- Superadmin role (platform staff only, separate from tenant roles; 2FA enforced) and an `/admin` area of the dashboard, cross-tenant data never exposed to tenants; every admin action written to the audit log.
+- Subscription management: create/edit plans (price, included minutes, seats, features, overage rates), coupons/credits; per tenant: change plan, extend/convert trial, apply credit or discount, pause/suspend/reactivate, cancel, issue refund, view invoices and payment status (Stripe-backed with simulated fallback), override usage caps and rate limits.
+- Tenant management: tenant directory with search/filters, tenant detail (config, numbers, trunks, integrations, members), feature flags per tenant, support login ("view as tenant", read-only by default, logged), notes, resend invites/reset 2FA, GDPR export/erase on request, force number release.
+- Platform staff: invite/remove staff, roles (owner / support / finance / read-only), IP allow-list.
+- Business analytics: tenants/sign-ups/trials/conversions/churn over time, plan mix, MRR/ARR and overage revenue, top accounts, cohort retention.
+- Demand analytics: calls and minutes per day/hour across all tenants, peak concurrency vs capacity, growth trends and forecasts, inbound vs outbound, channel mix (voice/SMS/WhatsApp/web chat), missed/failed rate, transfer and ticket volumes.
+- Quality & cost: answer latency and turn latency p50/p95, STT/LLM/TTS vendor spend per minute and gross margin per tenant, QA score trends, integration/connector usage and failure rates.
+- Drill-down to a tenant health page (feeds Phase 17's health engine), CSV export, platform status/incident banner.
 
 ---
 

@@ -707,3 +707,52 @@ export async function liveSocketUrl(tenant_id: string): Promise<string> {
   const base = API_URL.replace(/^http/, "ws");
   return `${base}/v1/live/ws${qs({ tenant_id, token })}`;
 }
+
+// -- Phase 11: omnichannel inbox -------------------------------------------------------------------
+export type Channel = "call" | "voicemail" | "sms" | "whatsapp" | "webchat";
+export type ThreadStatus = "open" | "waiting" | "closed";
+export type InboxThread = {
+  id: string; tenant_id: string; channel: Channel; identity: string; contact_id: string | null; contact_name: string | null;
+  subject: string | null; status: ThreadStatus; assigned_to: string | null; ai_enabled: boolean; unread: number; message_count: number;
+  last_preview: string; last_direction: "in" | "out" | "note" | null; last_message_at: string; sla_due_at: string | null;
+  sla_breached: boolean; tags: string[]; created_at: string;
+};
+export type InboxMessage = {
+  id: string; thread_id: string; channel: Channel; direction: "in" | "out" | "note"; author: "contact" | "ai" | "agent" | "system";
+  author_name: string | null; text: string; call_id: string | null; ticket_id: string | null; status: string; error: string | null; created_at: string;
+};
+export type InboxStats = { open: number; waiting: number; unread: number; unassigned: number; breached: number; by_channel: Record<string, number> };
+export type CannedReply = { id: string; title: string; shortcut: string | null; body: string };
+export type ChatWidgetInfo = {
+  id: string; token: string; enabled: boolean; title: string; greeting: string; colour: string; allowed_origins: string[]; embed_url: string; snippet: string;
+};
+export type WhatsAppInfo = { id: string; phone_number_id: string; display_number: string | null; has_token: boolean; verify_token: string; webhook_url: string };
+export type ThreadFilters = { status?: ThreadStatus; channel?: Channel; assigned_to?: string; unassigned?: boolean; unread_only?: boolean; q?: string };
+
+const boolq = (b: boolean | undefined) => (b ? "true" : undefined);
+export const fetchThreads = (tenant_id: string, f: ThreadFilters = {}) =>
+  get<InboxThread[]>(`/v1/inbox/threads${qs({ tenant_id, status: f.status, channel: f.channel, assigned_to: f.assigned_to, unassigned: boolq(f.unassigned), unread_only: boolq(f.unread_only), q: f.q })}`);
+export const fetchInboxStats = (tenant_id: string) => get<InboxStats>(`/v1/inbox/stats${qs({ tenant_id })}`);
+export const fetchThread = (tenant_id: string, id: string) => get<{ thread: InboxThread; messages: InboxMessage[] }>(`/v1/inbox/threads/${id}${qs({ tenant_id })}`);
+export const replyThread = (tenant_id: string, id: string, text: string) => post<InboxMessage>(`/v1/inbox/threads/${id}/reply${qs({ tenant_id })}`, { text });
+export const noteThread = (tenant_id: string, id: string, text: string) => post<InboxMessage>(`/v1/inbox/threads/${id}/note${qs({ tenant_id })}`, { text });
+export const patchThread = (
+  tenant_id: string, id: string,
+  body: { status?: ThreadStatus; assigned_to?: string; clear_assignee?: boolean; ai_enabled?: boolean; read?: boolean; tags?: string[]; subject?: string },
+) => patch<InboxThread>(`/v1/inbox/threads/${id}${qs({ tenant_id })}`, body);
+export const fetchCanned = (tenant_id: string) => get<CannedReply[]>(`/v1/inbox/canned${qs({ tenant_id })}`);
+export const createCanned = (tenant_id: string, body: { title: string; shortcut?: string; body: string }) => post<CannedReply>(`/v1/inbox/canned${qs({ tenant_id })}`, body);
+export const updateCanned = (tenant_id: string, id: string, body: { title: string; shortcut?: string; body: string }) => put<CannedReply>(`/v1/inbox/canned/${id}${qs({ tenant_id })}`, body);
+export const deleteCanned = (tenant_id: string, id: string) => del(`/v1/inbox/canned/${id}${qs({ tenant_id })}`);
+export const fetchWidget = (tenant_id: string) => get<ChatWidgetInfo>(`/v1/inbox/widget${qs({ tenant_id })}`);
+export const patchWidget = (tenant_id: string, body: { enabled?: boolean; title?: string; greeting?: string; colour?: string; allowed_origins?: string[]; rotate_token?: boolean }) =>
+  patch<ChatWidgetInfo>(`/v1/inbox/widget${qs({ tenant_id })}`, body);
+export const fetchWhatsApp = (tenant_id: string) => get<WhatsAppInfo | null>(`/v1/inbox/whatsapp${qs({ tenant_id })}`);
+export const saveWhatsApp = (tenant_id: string, body: { phone_number_id: string; display_number?: string; access_token?: string }) =>
+  put<WhatsAppInfo>(`/v1/inbox/whatsapp${qs({ tenant_id })}`, body);
+
+export type ChatConfig = { title: string; greeting: string; colour: string; enabled: boolean };
+export type ChatMessage = { id: string; direction: string; author: string; author_name: string | null; text: string; created_at: string };
+export const fetchChatConfig = (token: string) => get<ChatConfig>(`/v1/public/chat/${token}`);
+export const sendChat = (token: string, visitor: string, text: string, name?: string) => post<ChatMessage[]>(`/v1/public/chat/${token}/messages`, { visitor, text, name });
+export const pollChat = (token: string, visitor: string) => get<ChatMessage[]>(`/v1/public/chat/${token}/messages${qs({ visitor })}`);

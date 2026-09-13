@@ -9,6 +9,7 @@ from parlio_api.billing import BillingService
 from parlio_api.calendar import CalendarService
 from parlio_api.compliance import ComplianceService
 from parlio_api.connectors import ConnectorService, TenantApiKey
+from parlio_api.inbox import InboxService
 from parlio_api.integrations import IntegrationHub
 from parlio_api.live import ApprovalService, LiveCallHub, SupervisorService
 from parlio_api.messaging import MessageService
@@ -107,7 +108,13 @@ def get_approvals(request: Request) -> ApprovalService:
     return a
 
 
+def get_inbox(request: Request) -> InboxService:
+    i: InboxService = request.app.state.inbox
+    return i
+
+
 StoreDep = Annotated[CallStore, Depends(get_store)]
+InboxDep = Annotated[InboxService, Depends(get_inbox)]
 BillingDep = Annotated[BillingService, Depends(get_billing)]
 TelemetryDep = Annotated[Telemetry, Depends(get_telemetry)]
 AuditDep = Annotated[AuditLog, Depends(get_audit)]

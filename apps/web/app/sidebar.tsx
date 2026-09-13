@@ -11,6 +11,7 @@ const S = { fill: "none", stroke: "currentColor", strokeWidth: 1.8, strokeLineca
 const I = {
   home: <svg viewBox="0 0 24 24" {...S}><path d="M3 11l9-8 9 8v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z" /></svg>,
   calls: <svg viewBox="0 0 24 24" {...S}><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.6a2 2 0 0 1-.5 2.1L8 9.7a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.8.3 1.7.5 2.6.7a2 2 0 0 1 1.7 2z" /></svg>,
+  inbox: <svg viewBox="0 0 24 24" {...S}><path d="M22 12h-6l-2 3h-4l-2-3H2" /><path d="M5.5 5.1L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.5-6.9A2 2 0 0 0 16.7 4H7.3a2 2 0 0 0-1.8 1.1z" /></svg>,
   live: <svg viewBox="0 0 24 24" {...S}><circle cx="12" cy="12" r="2.5" /><path d="M8.5 8.5a5 5 0 0 0 0 7M15.5 8.5a5 5 0 0 1 0 7" /><path d="M5.6 5.6a9 9 0 0 0 0 12.8M18.4 5.6a9 9 0 0 1 0 12.8" /></svg>,
   analytics: <svg viewBox="0 0 24 24" {...S}><path d="M3 3v18h18" /><path d="M7 15l4-5 4 3 5-7" /></svg>,
   contacts: <svg viewBox="0 0 24 24" {...S}><circle cx="12" cy="8" r="4" /><path d="M4 21a8 8 0 0 1 16 0" /></svg>,
@@ -33,6 +34,7 @@ export const NAV: Item[] = [
   { href: "/", label: "Overview", icon: I.home },
   { href: "/calls", label: "Calls", icon: I.calls },
   { href: "/live", label: "Live", icon: I.live },
+  { href: "/inbox", label: "Inbox", icon: I.inbox },
   { href: "/analytics", label: "Analytics", icon: I.analytics },
   { href: "/contacts", label: "Contacts", icon: I.contacts },
   { href: "/tickets", label: "Tickets", icon: I.tickets },
@@ -77,6 +79,7 @@ function ThemeToggle() {
 export default function Sidebar({ account }: { account: Account }) {
   const path = usePathname();
   const isActive = (href: string) => (href === "/" ? path === "/" : path.startsWith(href));
+  if (path.startsWith("/chat/")) return null;
   return (
     <aside className="side">
       <Link href="/" className="logo" aria-label="Parlio home">
