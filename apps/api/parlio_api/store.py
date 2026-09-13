@@ -517,6 +517,14 @@ def fold_event(call: CallRecord, ev: CallEvent) -> CallRecord:
             call.transcript.append(
                 {"role": p.get("role"), "text": p.get("text"), "at": ev.occurred_at.isoformat()}
             )
+        case CallEventType.SUPERVISOR:
+            call.transcript.append(
+                {
+                    "role": "supervisor",
+                    "text": p.get("text") or f"[{p.get('cmd')} by {p.get('by')}]",
+                    "at": ev.occurred_at.isoformat(),
+                }
+            )
         case CallEventType.RECORDING_STARTED:
             call.recordings = list(p.get("keys", []))
         case CallEventType.CALL_ENDED:

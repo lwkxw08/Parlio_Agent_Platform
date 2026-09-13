@@ -358,6 +358,8 @@ class CallEventType(StrEnum):
     TRANSFER_COMPLETED = "call.transfer_completed"
     TICKET_CREATED = "call.ticket_created"
     ESCALATION = "call.escalation"
+    SUPERVISOR = "call.supervisor"
+    APPROVAL_REQUESTED = "call.approval_requested"
 
 
 class TransferOutcome(StrEnum):

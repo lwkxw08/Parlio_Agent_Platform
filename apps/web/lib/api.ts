@@ -662,3 +662,48 @@ export const fetchJurisdictions = () => get<Record<string, Jurisdiction>>("/v1/o
 export const fetchLeads = (tenant_id: string) => get<Lead[]>(`/v1/outbound/leads${qs({ tenant_id })}`);
 export const fetchOutboundCalls = (tenant_id: string) => get<OutboundCall[]>(`/v1/outbound/calls${qs({ tenant_id })}`);
 export const fetchSuppressions = (tenant_id: string) => get<Suppression[]>(`/v1/outbound/suppressions${qs({ tenant_id })}`);
+
+// -- Phase 10: live monitoring, takeover & approvals --------------------------------------------
+
+export type SupervisorMode = "none" | "listening" | "taken_over";
+export type LiveTranscriptItem = { role: string; text: string; at?: string };
+export type LiveCall = {
+  call_id: string; tenant_id: string; assistant_id: string; room: string | null; caller: string | null; dialed: string | null;
+  direction: string; status: string; started_at: string; answered_at: string | null; transcript: LiveTranscriptItem[];
+  escalated: boolean; transfers: number; tickets: number; supervisor: string | null; supervisor_mode: SupervisorMode;
+  pending_approval_id: string | null;
+};
+export type LiveMessage = {
+  type: string; tenant_id: string; call_id: string | null; call: LiveCall | null; calls: LiveCall[] | null;
+  payload: Record<string, unknown>; at: string;
+};
+export type JoinInfo = { url: string | null; token: string; room: string; identity: string; mode: SupervisorMode };
+export type SupervisorCommand = "whisper" | "say" | "takeover" | "handback" | "hangup";
+export type ApprovalKind = "quote" | "booking" | "refund" | "discount" | "other";
+export type ApprovalStatus = "pending" | "approved" | "rejected" | "expired";
+export type Approval = {
+  id: string; tenant_id: string; call_id: string | null; kind: ApprovalKind; title: string; details: string; amount: number | null;
+  currency: string; caller: string | null; status: ApprovalStatus; requested_at: string; expires_at: string; decided_at: string | null;
+  decided_by: string | null; note: string | null;
+};
+export type PublicApproval = Omit<Approval, "tenant_id">;
+
+export const fetchLiveCalls = (tenant_id: string) => get<LiveCall[]>(`/v1/live/calls${qs({ tenant_id })}`);
+export const joinLiveCall = (tenant_id: string, call_id: string) => request<JoinInfo>(`/v1/live/calls/${call_id}/join${qs({ tenant_id })}`, { method: "POST" });
+export const leaveLiveCall = (tenant_id: string, call_id: string) => request<undefined>(`/v1/live/calls/${call_id}/leave${qs({ tenant_id })}`, { method: "POST" });
+export const commandLiveCall = (tenant_id: string, call_id: string, cmd: SupervisorCommand, text?: string) =>
+  request<JoinInfo | null>(`/v1/live/calls/${call_id}/command${qs({ tenant_id })}`, { method: "POST", body: JSON.stringify({ cmd, text }) });
+export const fetchApprovals = (tenant_id: string, status?: ApprovalStatus) => get<Approval[]>(`/v1/approvals${qs({ tenant_id, status })}`);
+export const decideApproval = (tenant_id: string, id: string, approve: boolean, note?: string) =>
+  request<Approval>(`/v1/approvals/${id}/decide${qs({ tenant_id })}`, { method: "POST", body: JSON.stringify({ approve, note }) });
+export const fetchPublicApproval = (token: string) => get<PublicApproval>(`/v1/public/approvals/${token}`);
+export const decidePublicApproval = (token: string, approve: boolean, name?: string, note?: string) =>
+  request<PublicApproval>(`/v1/public/approvals/${token}`, { method: "POST", body: JSON.stringify({ approve, name, note }) });
+
+/** Browser WebSocket URL for the live stream (auth via query — browsers can't set upgrade headers). */
+export async function liveSocketUrl(tenant_id: string): Promise<string> {
+  const h = await authHeaders();
+  const token = h.authorization?.replace(/^Bearer /, "");
+  const base = API_URL.replace(/^http/, "ws");
+  return `${base}/v1/live/ws${qs({ tenant_id, token })}`;
+}

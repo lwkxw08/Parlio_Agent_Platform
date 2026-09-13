@@ -18,6 +18,7 @@ from parlio_api.connectors import (
     payload_from_call,
     payload_from_ticket,
 )
+from parlio_api.live import LiveCallHub
 from parlio_api.messaging import MessageService
 from parlio_api.notifications import (
     NotificationEvent,
@@ -46,6 +47,7 @@ class IntegrationHub:
         compliance: ComplianceService | None = None,
         connectors: ConnectorService | None = None,
         outbound: OutboundService | None = None,
+        live: LiveCallHub | None = None,
     ) -> None:
         self.store = store
         self.sms = sms
@@ -55,6 +57,7 @@ class IntegrationHub:
         self.compliance = compliance
         self.connectors = connectors
         self.outbound = outbound
+        self.live = live
 
     async def _business_name(self, tenant_id: str, assistant_id: str | None = None) -> str:
         cfg = await self.store.get_assistant(assistant_id) if assistant_id else None
@@ -66,6 +69,8 @@ class IntegrationHub:
     async def on_event(self, ev: CallEvent) -> None:
         if self.telemetry is not None:
             self.telemetry.on_event(ev)
+        if self.live is not None:
+            self.live.on_event(ev)
         if self.outbound is not None and ev.type == CallEventType.CALL_STARTED:
             with suppress(Exception):
                 await self.outbound.on_call_started(ev.call_id)

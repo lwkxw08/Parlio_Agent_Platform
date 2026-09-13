@@ -159,3 +159,20 @@ code.block, pre.block { display: block; background: var(--field); border: 1px so
 .cmp-table { background: none; border: 0; }
 .cmp-table td { padding: 0.4rem 0; font-size: 0.85rem; }
 .cmp-table td:last-child { text-align: right; }
+
+/* live monitoring */
+.live-layout { display: grid; grid-template-columns: minmax(260px, 1fr) minmax(0, 2.2fr); gap: 1.2rem; align-items: start; }
+@media (max-width: 900px) { .live-layout { grid-template-columns: 1fr; } }
+.live-list { display: flex; flex-direction: column; gap: 0.5rem; }
+.live-row { display: flex; flex-direction: column; gap: 0.3rem; text-align: left; background: var(--field); border: 1px solid var(--line); border-radius: 10px; padding: 0.7rem 0.8rem; cursor: pointer; font: inherit; color: var(--fg); }
+.live-row:hover { border-color: var(--accent); }
+.live-row.active { border-color: var(--accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 30%, transparent); }
+.live-last { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.live-transcript { max-height: 26rem; overflow-y: auto; margin-top: 0.9rem; padding: 0.5rem; background: var(--field); border-radius: 10px; }
+.msg.supervisor { background: var(--warn-bg); color: var(--warn-fg); align-self: center; max-width: 90%; font-size: 0.9rem; }
+.msg .who { display: block; margin-bottom: 0.15rem; }
+.approval { border: 1px solid var(--line); border-left: 4px solid var(--accent); border-radius: 10px; padding: 0.8rem 1rem; margin-top: 0.8rem; background: var(--field); }
+.approval-note { background: var(--panel); color: var(--fg); border: 1px solid var(--line); border-radius: 6px; padding: 0.4rem 0.6rem; font: inherit; width: 12rem; }
+.approve-page { max-width: 520px; margin: 3rem auto; }
+.approve-page .big { display: flex; gap: 0.8rem; margin-top: 1.2rem; }
+.approve-page .big button { flex: 1; padding: 0.9rem; font-size: 1.05rem; border-radius: 10px; }
