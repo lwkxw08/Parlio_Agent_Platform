@@ -629,3 +629,36 @@ export const pct = (v: number | null | undefined, digits = 0) =>
   v == null ? "—" : `${(v * 100).toFixed(digits)}%`;
 
 export const when = (iso: string) => new Date(iso).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" });
+
+// -- Phase 9: outbound & speed-to-lead -----------------------------------------------------------
+export type OutboundPurpose = "lead_followup" | "ticket_callback" | "reminder" | "confirmation" | "no_show" | "review_request";
+export type OutboundStatus = "scheduled" | "dialing" | "in_progress" | "completed" | "retry" | "exhausted" | "suppressed" | "cancelled" | "failed";
+export type LeadStatus = "new" | "calling" | "contacted" | "qualified" | "booked" | "ticketed" | "lost" | "opted_out" | "unreachable";
+export type Lead = {
+  id: string; tenant_id: string; name: string; phone: string; email: string | null; source: string; interest: string | null;
+  notes: string | null; consent: boolean; status: LeadStatus; outbound_call_ids: string[]; created_at: string; first_call_at: string | null;
+  speed_to_lead_s: number | null;
+};
+export type OutboundAttempt = { n: number; at: string; call_id: string | null; outcome: string; detail: string | null };
+export type OutboundCall = {
+  id: string; tenant_id: string; assistant_id: string; purpose: OutboundPurpose; to: string; name: string | null; lead_id: string | null;
+  ticket_id: string | null; scheduled_at: string; status: OutboundStatus; attempts: OutboundAttempt[]; max_attempts: number;
+  call_id: string | null; outcome: string | null; outcome_detail: string | null; reason: string | null; created_at: string;
+};
+export type Suppression = { id: string; tenant_id: string; phone: string; reason: string; source: string; created_at: string };
+export type OutboundPolicy = {
+  tenant_id: string; enabled: boolean; purposes: OutboundPurpose[]; jurisdiction: string; timezone: string; window_start: string; window_end: string;
+  days: string[]; max_attempts: number; retry_gap_min: number; daily_cap_per_number: number; speed_to_lead_target_s: number; require_consent: boolean;
+  caller_id: string | null; form_token: string; reminder_hours_before: number; review_request_delay_h: number; leave_voicemail: boolean; opt_out_keywords: string[];
+};
+export type Jurisdiction = { prefix: string; timezone: string; start: string; end: string; days: string[]; max_attempts: number; note: string };
+export type OutboundSummary = {
+  jobs: number; leads: number; queued: number; contact_rate: number | null; speed_to_lead_median_s: number | null; speed_to_lead_within_target: number | null;
+  leads_by_status: Record<string, number>; by_status: Record<string, number>; by_purpose: Record<string, number>; by_outcome: Record<string, number>; suppressed: number;
+};
+export const fetchOutboundSummary = (tenant_id: string) => get<OutboundSummary>(`/v1/outbound/summary${qs({ tenant_id })}`);
+export const fetchOutboundPolicy = (tenant_id: string) => get<OutboundPolicy>(`/v1/outbound/policy${qs({ tenant_id })}`);
+export const fetchJurisdictions = () => get<Record<string, Jurisdiction>>("/v1/outbound/jurisdictions");
+export const fetchLeads = (tenant_id: string) => get<Lead[]>(`/v1/outbound/leads${qs({ tenant_id })}`);
+export const fetchOutboundCalls = (tenant_id: string) => get<OutboundCall[]>(`/v1/outbound/calls${qs({ tenant_id })}`);
+export const fetchSuppressions = (tenant_id: string) => get<Suppression[]>(`/v1/outbound/suppressions${qs({ tenant_id })}`);

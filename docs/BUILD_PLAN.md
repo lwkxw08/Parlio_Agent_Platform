@@ -169,6 +169,7 @@ Parlio owns and guarantees AI numbers, carrier, SIP edge and AI pipeline; custom
 
 ### Phase 14 — Business value, white-label, compliance (1)
 - Lead scoring, revenue attribution (call -> booking -> value), missed-revenue report, weekly owner digest (email/WhatsApp). Tracking numbers per marketing channel. White-label/reseller mode (custom domain, branding, agency parent accounts, per-client billing). Compliance pack UI (consent, retention, redaction, audit export, region pinning).
+- Account security: 2FA (TOTP authenticator app via Supabase MFA, optional recovery codes) with per-tenant enforcement for admins/all members; session/device list and revoke; enterprise SSO (SAML/OIDC — Microsoft Entra, Google Workspace, Okta) and SCIM provisioning for Enterprise/Sovereign tiers.
 
 ---
 

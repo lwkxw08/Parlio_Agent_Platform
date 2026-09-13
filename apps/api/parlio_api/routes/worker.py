@@ -19,6 +19,14 @@ async def resolve_assistant(store: StoreDep, number: str = Query(min_length=3)) 
     return cfg
 
 
+@router.get("/assistants/{assistant_id}", response_model=AssistantConfig)
+async def get_assistant(store: StoreDep, assistant_id: str) -> AssistantConfig:
+    cfg = await store.get_assistant(assistant_id)
+    if cfg is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "assistant not found")
+    return cfg
+
+
 @router.post("/events", status_code=status.HTTP_202_ACCEPTED)
 async def ingest_event(
     ev: CallEvent, store: StoreDep, postcall: PostCallDep, tickets: TicketsDep, hub: HubDep

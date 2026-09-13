@@ -93,6 +93,14 @@ class ConfigClient:
                 log.warning("redis cache write failed", exc_info=True)
         return cfg
 
+    async def get(self, assistant_id: str) -> AssistantConfig:
+        """Config by id (outbound jobs know their assistant; no number lookup involved)."""
+        r = await self._http.get(f"/v1/worker/assistants/{assistant_id}")
+        if r.status_code == 404:
+            raise LookupError(f"assistant {assistant_id} not found")
+        r.raise_for_status()
+        return AssistantConfig.model_validate(r.json())
+
     async def _fetch(self, dialed_number: str) -> AssistantConfig | None:
         try:
             r = await self._http.get(

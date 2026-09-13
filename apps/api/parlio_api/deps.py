@@ -13,6 +13,7 @@ from parlio_api.integrations import IntegrationHub
 from parlio_api.messaging import MessageService
 from parlio_api.notifications import NotificationService
 from parlio_api.observability import AuditLog, Telemetry
+from parlio_api.outbound import OutboundService
 from parlio_api.postcall import PostCallProcessor
 from parlio_api.settings import Settings, get_settings
 from parlio_api.sip import SipService
@@ -85,12 +86,18 @@ def get_connectors(request: Request) -> ConnectorService:
     return c
 
 
+def get_outbound(request: Request) -> OutboundService:
+    o: OutboundService = request.app.state.outbound
+    return o
+
+
 StoreDep = Annotated[CallStore, Depends(get_store)]
 BillingDep = Annotated[BillingService, Depends(get_billing)]
 TelemetryDep = Annotated[Telemetry, Depends(get_telemetry)]
 AuditDep = Annotated[AuditLog, Depends(get_audit)]
 ComplianceDep = Annotated[ComplianceService, Depends(get_compliance)]
 ConnectorsDep = Annotated[ConnectorService, Depends(get_connectors)]
+OutboundDep = Annotated[OutboundService, Depends(get_outbound)]
 SmsDep = Annotated[MessageService, Depends(get_sms)]
 NotificationsDep = Annotated[NotificationService, Depends(get_notifications)]
 CalendarDep = Annotated[CalendarService, Depends(get_calendar)]
