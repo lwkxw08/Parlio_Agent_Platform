@@ -397,6 +397,30 @@ export type Booking = {
 };
 export type SyncLogEntry = { id: string; connection_id: string; action: string; ok: boolean; detail: string | null; at: string };
 
+export type ConnectorProvider =
+  | "webhook" | "zapier" | "make" | "google_sheets" | "hubspot" | "salesforce"
+  | "pipedrive" | "zoho" | "teams" | "servicem8" | "simulated";
+export type ConnectorTrigger = "call.completed" | "lead.qualified" | "ticket.created" | "booking.created";
+export type ProviderInfo = {
+  provider: ConnectorProvider; label: string; category: string; auth: "url" | "api_key" | "oauth" | "none";
+  fields: string[]; help: string; available: boolean;
+};
+export type Connector = {
+  id: string; tenant_id: string; provider: ConnectorProvider; name: string; enabled: boolean;
+  triggers: ConnectorTrigger[]; qualified_only: boolean; target_url: string | null;
+  options: Record<string, string>; field_map: Record<string, string>; has_secret: boolean;
+  account_label: string | null; status: string; last_sync_at: string | null; last_error: string | null;
+  created_at: string;
+};
+export type SyncJob = {
+  id: string; connector_id: string; provider: ConnectorProvider; event: ConnectorTrigger;
+  status: "queued" | "sent" | "retry" | "failed" | "skipped"; attempts: number;
+  next_attempt_at: string | null; external_ref: string | null; error: string | null; created_at: string;
+};
+export type TenantApiKey = {
+  id: string; name: string; prefix: string; created_at: string; last_used_at: string | null; revoked: boolean; key?: string;
+};
+
 export type TrunkMode = "forward" | "pbx" | "byo_register";
 export type DdiRoute = { id?: string; e164: string; assistant_id: string; department: string | null; when: "always" | "out_of_hours" | "no_answer"; label: string | null };
 export type SipTrunk = {
@@ -565,6 +589,21 @@ export const fetchNotificationLog = (tenant_id: string) => get<Notification[]>(`
 export const fetchConnections = (tenant_id: string) => get<CalendarConnection[]>(`/v1/calendar/connections${qs({ tenant_id })}`);
 export const fetchBookings = (tenant_id: string) => get<Booking[]>(`/v1/calendar/bookings${qs({ tenant_id })}`);
 export const fetchSyncLog = (tenant_id: string) => get<SyncLogEntry[]>(`/v1/calendar/sync-log${qs({ tenant_id })}`);
+export const fetchProviders = () => get<{ providers: ProviderInfo[]; payload_fields: string[] }>("/v1/connectors/providers");
+export const fetchConnectors = (tenant_id: string) => get<Connector[]>(`/v1/connectors${qs({ tenant_id })}`);
+export const fetchSyncJobs = (tenant_id: string) => get<SyncJob[]>(`/v1/connectors/jobs${qs({ tenant_id })}`);
+export const fetchApiKeys = (tenant_id: string) => get<TenantApiKey[]>(`/v1/api-keys${qs({ tenant_id })}`);
+
+/** Browser-only: fetch a CSV export with auth headers and trigger a file download. */
+export async function downloadCsv(what: "calls" | "contacts" | "tickets", tenant_id: string): Promise<string | null> {
+  const res = await fetch(`${API_URL}/v1/export/${what}.csv${qs({ tenant_id })}`, { headers: await authHeaders() });
+  if (!res.ok) return res.statusText;
+  const url = URL.createObjectURL(await res.blob());
+  const a = Object.assign(document.createElement("a"), { href: url, download: `parlio-${what}.csv` });
+  a.click();
+  URL.revokeObjectURL(url);
+  return null;
+}
 export const fetchTrunks = (tenant_id: string) => get<SipTrunk[]>(`/v1/telephony/trunks${qs({ tenant_id })}`);
 export const fetchGuides = () => get<ProviderGuide[]>("/v1/telephony/guides");
 export const fetchPlans = () => get<Plan[]>("/v1/billing/plans");
