@@ -9,7 +9,14 @@ from __future__ import annotations
 
 import logging
 
+from parlio_api.calendar import Booking
 from parlio_api.compliance import ComplianceService
+from parlio_api.connectors import (
+    ConnectorService,
+    payload_from_booking,
+    payload_from_call,
+    payload_from_ticket,
+)
 from parlio_api.messaging import MessageService
 from parlio_api.notifications import (
     NotificationEvent,
@@ -21,7 +28,7 @@ from parlio_api.notifications import (
 from parlio_api.observability import Telemetry
 from parlio_api.sip import SipService
 from parlio_api.store import CallRecord, CallStore, Ticket
-from parlio_voice.models import CallEvent, CallEventType
+from parlio_voice.models import AssistantConfig, CallEvent, CallEventType
 
 log = logging.getLogger("parlio.api.integrations")
 
@@ -35,6 +42,7 @@ class IntegrationHub:
         sip: SipService,
         telemetry: Telemetry | None = None,
         compliance: ComplianceService | None = None,
+        connectors: ConnectorService | None = None,
     ) -> None:
         self.store = store
         self.sms = sms
@@ -42,6 +50,14 @@ class IntegrationHub:
         self.sip = sip
         self.telemetry = telemetry
         self.compliance = compliance
+        self.connectors = connectors
+
+    async def _business_name(self, tenant_id: str, assistant_id: str | None = None) -> str:
+        cfg = await self.store.get_assistant(assistant_id) if assistant_id else None
+        if cfg is None:
+            cfgs = await self.store.list_assistants(tenant_id)
+            cfg = cfgs[0] if cfgs else None
+        return cfg.business_name if cfg else ""
 
     async def on_event(self, ev: CallEvent) -> None:
         if self.telemetry is not None:
@@ -73,6 +89,16 @@ class IntegrationHub:
                 )
         except Exception:
             log.warning("post-call notifications failed for %s", call.call_id, exc_info=True)
+        if self.connectors is not None and call.kind != "blocked":
+            try:
+                name = await self._business_name(call.tenant_id, call.assistant_id)
+                await self.connectors.dispatch(
+                    payload_from_call(
+                        call, name, is_qualified_lead(call), self.connectors.public_url
+                    )
+                )
+            except Exception:
+                log.warning("connector sync failed for %s", call.call_id, exc_info=True)
         if self.compliance is not None:
             try:
                 await self.compliance.redact_call_on_close(call.tenant_id, call.call_id)
@@ -80,8 +106,8 @@ class IntegrationHub:
                 log.warning("redact-on-write failed for %s", call.call_id, exc_info=True)
 
     async def on_ticket(self, ticket: Ticket) -> None:
+        cfg: AssistantConfig | None = None
         try:
-            cfg = None
             if ticket.call_id:
                 call = await self.store.get_call(ticket.call_id)
                 if call is not None:
@@ -93,6 +119,21 @@ class IntegrationHub:
                 await self.sms.on_ticket_created(ticket, cfg)
         except Exception:
             log.warning("ticket SMS failed for %s", ticket.id, exc_info=True)
+        if self.connectors is not None:
+            try:
+                name = cfg.business_name if cfg else await self._business_name(ticket.tenant_id)
+                await self.connectors.dispatch(payload_from_ticket(ticket, name))
+            except Exception:
+                log.warning("connector sync failed for ticket %s", ticket.id, exc_info=True)
+
+    async def on_booking(self, booking: Booking) -> None:
+        if self.connectors is None:
+            return
+        try:
+            name = await self._business_name(booking.tenant_id)
+            await self.connectors.dispatch(payload_from_booking(booking, name))
+        except Exception:
+            log.warning("connector sync failed for booking %s", booking.id, exc_info=True)
 
     async def notify(self, ev: NotificationEvent) -> None:
         try:
