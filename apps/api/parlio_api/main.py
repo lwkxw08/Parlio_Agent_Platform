@@ -6,6 +6,7 @@ from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager, suppress
 from typing import cast
 
+import httpx
 import uvicorn
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
@@ -32,6 +33,7 @@ from parlio_api.calendar import (
     SimulatedBackend,
 )
 from parlio_api.compliance import ComplianceService
+from parlio_api.connectors import ConnectorService, RetryLoop, build_backends
 from parlio_api.db.engine import make_engine, migrate
 from parlio_api.db.postgres import PostgresStore
 from parlio_api.integrations import IntegrationHub
@@ -45,7 +47,7 @@ from parlio_api.notifications import (
 )
 from parlio_api.observability import AuditLog, RateLimiter, Telemetry, build_tracer
 from parlio_api.postcall import Analyser, HeuristicAnalyser, OpenAIAnalyser, PostCallProcessor
-from parlio_api.routes import account, dashboard, integrations, platform, worker
+from parlio_api.routes import account, connectors, dashboard, integrations, platform, worker
 from parlio_api.settings import Settings, get_settings
 from parlio_api.sip import SimulatedProvisioner, SimulatedRegistrar, SipProvisioner, SipService
 from parlio_api.sip_livekit import LiveKitProvisioner
@@ -244,8 +246,23 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         trial_days=settings.trial_days,
     )
     app.state.billing = billing
-    hub = IntegrationHub(store, sms, notifications, sip, telemetry, compliance)
+    connectors_http = httpx.AsyncClient(timeout=15.0)
+    connectors = ConnectorService(
+        store,
+        vault,
+        build_backends(
+            connectors_http,
+            google_client_id=settings.google_client_id,
+            google_client_secret=settings.google_client_secret,
+        ),
+        public_url=settings.public_api_url,
+    )
+    app.state.connectors = connectors
+    retry_loop = RetryLoop(connectors, settings.connector_retry_interval_s)
+    retry_loop.start()
+    hub = IntegrationHub(store, sms, notifications, sip, telemetry, compliance, connectors)
     app.state.hub = hub
+    calendar.on_booked = hub.on_booking
 
     postcall = PostCallProcessor(
         store, build_analyser(settings), settings.postcall_concurrency, on_done=hub.on_postcall
@@ -283,6 +300,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         await postcall.close()
         await sla.aclose()
         await compliance.stop()
+        await retry_loop.stop()
+        await connectors_http.aclose()
         await notifications.aclose()
         if redis is not None:
             await redis.aclose()
@@ -307,6 +326,9 @@ def create_app() -> FastAPI:
     app.include_router(integrations.router)
     app.include_router(integrations.public)
     app.include_router(integrations.worker)
+    app.include_router(connectors.router)
+    app.include_router(connectors.public)
+    app.include_router(connectors.inbound)
     app.include_router(platform.router)
     app.include_router(platform.public)
     app.include_router(platform.ops)

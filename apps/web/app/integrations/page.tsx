@@ -1,30 +1,38 @@
 import Link from "next/link";
 import {
+  fetchApiKeys,
   fetchAssistants,
   fetchBookings,
   fetchConnections,
+  fetchConnectors,
   fetchMe,
   fetchMessages,
   fetchNotificationLog,
+  fetchProviders,
   fetchRules,
+  fetchSyncJobs,
   fetchSyncLog,
 } from "@/lib/api";
 import Integrations from "./integrations";
 
 export const dynamic = "force-dynamic";
 
-export default async function Page({ searchParams }: { searchParams: Promise<{ tenant?: string; tab?: string }> }) {
+export default async function Page({ searchParams }: { searchParams: Promise<{ tenant?: string; tab?: string; connector?: string; reason?: string }> }) {
   const sp = await searchParams;
   const me = await fetchMe();
   if (!me.ok) return <><h1>Integrations</h1><p className="muted">{me.status === 401 ? <Link href="/login">Sign in</Link> : "API unreachable"}</p></>;
   const active = me.data.memberships.filter((m) => m.status === "active");
   const tenant = sp.tenant ?? active[0]?.tenant_id;
   if (!tenant) return <><h1>Integrations</h1><p className="muted">No organisation yet — <Link href="/onboarding">set one up</Link>.</p></>;
-  const [messages, rules, log, connections, bookings, sync, assistants] = await Promise.all([
+  const role = me.data.memberships.find((m) => m.tenant_id === tenant)?.role ?? "viewer";
+  const canManage = role === "owner" || role === "admin";
+  const [messages, rules, log, connections, bookings, sync, assistants, providers, connectors, jobs, apiKeys] = await Promise.all([
     fetchMessages(tenant), fetchRules(tenant), fetchNotificationLog(tenant),
     fetchConnections(tenant), fetchBookings(tenant), fetchSyncLog(tenant), fetchAssistants(tenant),
+    fetchProviders(), fetchConnectors(tenant), fetchSyncJobs(tenant), canManage ? fetchApiKeys(tenant) : Promise.resolve([]),
   ]);
-  const role = me.data.memberships.find((m) => m.tenant_id === tenant)?.role ?? "viewer";
+  const banner = sp.connector === "connected" ? "Connected — send a sample to check it works."
+    : sp.connector === "error" ? `Connection failed (${sp.reason ?? "unknown"}). Try again.` : null;
   return (
     <>
       <h1>Integrations</h1>
@@ -35,8 +43,8 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ t
       )}
       <Integrations
         tenant={tenant}
-        tab={sp.tab ?? "notifications"}
-        canManage={role === "owner" || role === "admin"}
+        tab={sp.tab ?? "connectors"}
+        canManage={canManage}
         messages={messages ?? []}
         rules={rules ?? []}
         log={log ?? []}
@@ -44,6 +52,12 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ t
         bookings={bookings ?? []}
         sync={sync ?? []}
         assistants={assistants ?? []}
+        providers={providers?.providers ?? []}
+        payloadFields={providers?.payload_fields ?? []}
+        connectors={connectors ?? []}
+        jobs={jobs ?? []}
+        apiKeys={apiKeys ?? []}
+        banner={banner}
       />
     </>
   );

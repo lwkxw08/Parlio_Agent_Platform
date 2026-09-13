@@ -8,6 +8,7 @@ from fastapi import Depends, Header, HTTPException, Request, status
 from parlio_api.billing import BillingService
 from parlio_api.calendar import CalendarService
 from parlio_api.compliance import ComplianceService
+from parlio_api.connectors import ConnectorService, TenantApiKey
 from parlio_api.integrations import IntegrationHub
 from parlio_api.messaging import MessageService
 from parlio_api.notifications import NotificationService
@@ -79,11 +80,17 @@ def get_compliance(request: Request) -> ComplianceService:
     return c
 
 
+def get_connectors(request: Request) -> ConnectorService:
+    c: ConnectorService = request.app.state.connectors
+    return c
+
+
 StoreDep = Annotated[CallStore, Depends(get_store)]
 BillingDep = Annotated[BillingService, Depends(get_billing)]
 TelemetryDep = Annotated[Telemetry, Depends(get_telemetry)]
 AuditDep = Annotated[AuditLog, Depends(get_audit)]
 ComplianceDep = Annotated[ComplianceService, Depends(get_compliance)]
+ConnectorsDep = Annotated[ConnectorService, Depends(get_connectors)]
 SmsDep = Annotated[MessageService, Depends(get_sms)]
 NotificationsDep = Annotated[NotificationService, Depends(get_notifications)]
 CalendarDep = Annotated[CalendarService, Depends(get_calendar)]
@@ -107,3 +114,23 @@ async def require_worker_key(
     if await store.verify_worker_key(x_worker_key):
         return
     raise HTTPException(status.HTTP_401_UNAUTHORIZED, "invalid worker key")
+
+
+async def require_tenant_api_key(
+    connectors: ConnectorsDep,
+    authorization: Annotated[str | None, Header()] = None,
+    x_api_key: Annotated[str | None, Header()] = None,
+) -> TenantApiKey:
+    """Customer-facing inbound API: `Authorization: Bearer pk_...` or `X-Api-Key`."""
+    raw = x_api_key
+    if not raw and authorization and authorization.lower().startswith("bearer "):
+        raw = authorization[7:].strip()
+    if not raw:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "missing API key")
+    key = await connectors.resolve_api_key(raw)
+    if key is None:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "invalid API key")
+    return key
+
+
+ApiKeyDep = Annotated[TenantApiKey, Depends(require_tenant_api_key)]

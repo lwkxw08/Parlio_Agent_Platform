@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import logging
 import secrets
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, time, timedelta
 from enum import StrEnum
 from typing import Any, Protocol
@@ -491,6 +492,7 @@ class CalendarService:
         self.store = store
         self.vault = vault
         self.backends = backends or {}
+        self.on_booked: Callable[[Booking], Awaitable[None]] | None = None
 
     # connections
     async def connections(self, tenant_id: str) -> list[CalendarConnection]:
@@ -671,4 +673,6 @@ class CalendarService:
             raise
         await self.store.put_doc(booking.to_doc())
         await self._log(conn, "book", True, f"{booking.name} @ {booking.start.isoformat()}")
+        if self.on_booked is not None:
+            await self.on_booked(booking)
         return booking

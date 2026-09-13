@@ -7,17 +7,22 @@ import {
   type Booking,
   type CalendarConnection,
   type CalendarProvider,
+  type Connector,
   type Message,
   type Notification,
   type NotificationRule,
   type NotifyChannel,
+  type ProviderInfo,
+  type SyncJob,
   type SyncLogEntry,
+  type TenantApiKey,
   del,
   post,
   put,
   request,
   when,
 } from "@/lib/api";
+import Connectors from "./connectors";
 
 const EVENTS: [string, string][] = [
   ["ticket.created", "Ticket created"],
@@ -36,7 +41,9 @@ const CHANNELS: [NotifyChannel, string, string][] = [
   ["slack", "Slack", "https://hooks.slack.com/services/..."],
   ["webhook", "Webhook", "https://example.com/hook"],
 ];
-const TABS = [["notifications", "Notifications"], ["sms", "SMS log"], ["calendar", "Calendar & bookings"]] as const;
+const TABS = [
+  ["connectors", "Connected apps"], ["notifications", "Notifications"], ["sms", "SMS log"], ["calendar", "Calendar & bookings"],
+] as const;
 
 type Props = {
   tenant: string;
@@ -49,6 +56,12 @@ type Props = {
   bookings: Booking[];
   sync: SyncLogEntry[];
   assistants: Assistant[];
+  providers: ProviderInfo[];
+  payloadFields: string[];
+  connectors: Connector[];
+  jobs: SyncJob[];
+  apiKeys: TenantApiKey[];
+  banner: string | null;
 };
 
 const statusPill = (s: string) => <span className={`pill ${s === "sent" || s === "connected" || s === "confirmed" ? "ok" : s === "failed" || s === "error" ? "bad" : "warn"}`}>{s}</span>;
@@ -60,6 +73,12 @@ export default function Integrations(p: Props) {
       <div className="tabs">
         {TABS.map(([id, label]) => <button key={id} className={tab === id ? "active" : ""} onClick={() => setTab(id)}>{label}</button>)}
       </div>
+      {tab === "connectors" && (
+        <>
+          {p.banner && <p className="hint">{p.banner}</p>}
+          <Connectors tenant={p.tenant} canManage={p.canManage} providers={p.providers} payloadFields={p.payloadFields} connectors={p.connectors} jobs={p.jobs} apiKeys={p.apiKeys} />
+        </>
+      )}
       {tab === "notifications" && <Notifications {...p} />}
       {tab === "sms" && <SmsLog messages={p.messages} assistants={p.assistants} />}
       {tab === "calendar" && <Calendar {...p} />}

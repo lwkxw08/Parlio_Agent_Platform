@@ -55,6 +55,9 @@ class Settings(BaseSettings):
     microsoft_client_id: str | None = None
     microsoft_client_secret: str | None = None
 
+    # Phase 7 connectors: failed pushes are re-driven on this cadence (back-off per job).
+    connector_retry_interval_s: float = 60.0
+
     # Phase 6: billing, observability, compliance
     billing_provider: Literal["simulated", "stripe"] = "simulated"
     stripe_secret_key: str | None = None
