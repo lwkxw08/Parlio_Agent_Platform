@@ -15,8 +15,10 @@ Flow per inbound call:
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import time
+from contextlib import suppress
 from uuid import uuid4
 
 from dotenv import load_dotenv
@@ -37,6 +39,7 @@ from livekit.plugins.turn_detector.multilingual import MultilingualModel
 from redis.asyncio import Redis
 
 from parlio_voice import providers
+from parlio_voice.audio_quality import AudioQualityMonitor
 from parlio_voice.config_client import ConfigClient
 from parlio_voice.events import EventPublisher
 from parlio_voice.latency import LatencyTracker
@@ -262,6 +265,25 @@ async def entrypoint(ctx: JobContext) -> None:
     def _on_metrics(ev: MetricsCollectedEvent) -> None:
         latency.ingest(ev.metrics)
 
+    audio = AudioQualityMonitor()
+    for pub in participant.track_publications.values():
+        if pub.track is not None:
+            audio.attach(pub.track)
+
+    @ctx.room.on("track_subscribed")
+    def _on_track(
+        track: rtc.Track, _pub: rtc.RemoteTrackPublication, p: rtc.RemoteParticipant
+    ) -> None:
+        if p.identity == participant.identity:
+            audio.attach(track)
+
+    async def _sample_audio() -> None:
+        while True:
+            await asyncio.sleep(5)
+            await audio.sample()
+
+    audio_task = asyncio.create_task(_sample_audio())
+
     @session.on("conversation_item_added")
     def _on_item(ev: ConversationItemAddedEvent) -> None:
         if ev.item.type != "message":
@@ -343,6 +365,10 @@ async def entrypoint(ctx: JobContext) -> None:
             inferred = "booked" if tools.booking_id else "ticketed" if tools.ticket_id else None
             if inferred:
                 await reporter.record(inferred, "inferred from call actions")
+        audio_task.cancel()
+        with suppress(asyncio.CancelledError):
+            await audio_task
+        await audio.sample()
         await recorder.stop()
         try:
             await core_api.release(call_id)
@@ -360,7 +386,7 @@ async def entrypoint(ctx: JobContext) -> None:
             {
                 "reason": reason,
                 "duration_s": round(time.perf_counter() - t_job, 1),
-                "latency": latency.summary(),
+                "latency": {**latency.summary(), "audio": audio.summary()},
                 "turns": [t.model_dump() for t in latency.completed],
                 "transcript": history,
                 "recordings": recorder.object_keys,
