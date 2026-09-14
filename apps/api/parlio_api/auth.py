@@ -19,12 +19,15 @@ import hashlib
 import hmac
 import json
 import time
+from contextlib import suppress
 from typing import Annotated, Any
 
-from fastapi import Depends, Header, HTTPException, status
+from fastapi import Depends, Header, HTTPException, Request, status
 from pydantic import BaseModel, Field
 
-from parlio_api.deps import SettingsDep, StoreDep
+from parlio_api.deps import SecurityDep, SettingsDep, StoreDep
+from parlio_api.security import SecurityService
+from parlio_api.settings import Settings
 from parlio_api.store import CallStore, Member
 
 DEV_USER_EMAIL = "owner@demo.parlio.local"
@@ -37,6 +40,11 @@ class Principal(BaseModel):
     name: str | None = None
     memberships: list[Member] = Field(default_factory=list)
     mode: str = "dev"
+    mfa_verified: bool = False
+    mfa_session_id: str | None = None
+    mfa_required: list[str] = Field(
+        default_factory=list, description="tenants whose policy needs a verified MFA session"
+    )
 
     @property
     def tenant_ids(self) -> list[str]:
@@ -48,6 +56,12 @@ class Principal(BaseModel):
     def require_tenant(self, tenant_id: str) -> None:
         if tenant_id not in self.tenant_ids:
             raise HTTPException(status.HTTP_403_FORBIDDEN, "not a member of this organisation")
+        if tenant_id in self.mfa_required and not self.mfa_verified:
+            raise HTTPException(
+                status.HTTP_403_FORBIDDEN,
+                "two-factor verification required",
+                headers={"X-Parlio-MFA-Required": "1"},
+            )
 
     def require_admin(self, tenant_id: str) -> None:
         self.require_tenant(tenant_id)
@@ -110,11 +124,43 @@ async def _activate_invites(store: CallStore, email: str) -> list[Member]:
     return out
 
 
+async def with_mfa(
+    p: Principal, security: SecurityService, request: Request | None, token: str | None
+) -> Principal:
+    session = await security.check_mfa(p.user_id, token)
+    p.mfa_verified = session is not None
+    p.mfa_session_id = session.id if session else None
+    for m in p.memberships:
+        if m.status == "active" and await security.mfa_required(m.tenant_id, m.role, p.user_id):
+            p.mfa_required.append(m.tenant_id)
+    if session is None and p.memberships and request is not None:
+        with suppress(Exception):
+            await security.touch(
+                p.user_id,
+                request.headers.get("user-agent"),
+                request.client.host if request.client else None,
+            )
+    return p
+
+
 async def current_user(
+    request: Request,
     store: StoreDep,
     settings: SettingsDep,
+    security: SecurityDep,
     authorization: Annotated[str | None, Header()] = None,
     x_parlio_user: Annotated[str | None, Header()] = None,
+    x_parlio_mfa: Annotated[str | None, Header()] = None,
+) -> Principal:
+    p = await resolve_user(store, settings, authorization, x_parlio_user)
+    return await with_mfa(p, security, request, x_parlio_mfa)
+
+
+async def resolve_user(
+    store: CallStore,
+    settings: Settings,
+    authorization: str | None,
+    x_parlio_user: str | None,
 ) -> Principal:
     if settings.auth_mode == "dev":
         email = (x_parlio_user or DEV_USER_EMAIL).lower()

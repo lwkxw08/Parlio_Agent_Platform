@@ -86,6 +86,15 @@ from parlio_api.payments import (
     StripePayments,
 )
 from parlio_api.postcall import Analyser, HeuristicAnalyser, OpenAIAnalyser, PostCallProcessor
+from parlio_api.qa import (
+    HeuristicScorer,
+    OpenAIScorer,
+    QAScorer,
+    QAService,
+    SimulatedCloneProvider,
+    SimulationService,
+    VoiceCloneService,
+)
 from parlio_api.routes import (
     account,
     connectors,
@@ -106,6 +115,13 @@ from parlio_api.routes import (
 from parlio_api.routes import (
     payments as payment_routes,
 )
+from parlio_api.routes import (
+    quality as quality_routes,
+)
+from parlio_api.routes import (
+    value as value_routes,
+)
+from parlio_api.security import SecurityService
 from parlio_api.settings import Settings, get_settings
 from parlio_api.sip import SimulatedProvisioner, SimulatedRegistrar, SipProvisioner, SipService
 from parlio_api.sip_livekit import LiveKitProvisioner
@@ -113,7 +129,9 @@ from parlio_api.store import CallStore, MemoryStore
 from parlio_api.telephony.base import TelephonyProvider
 from parlio_api.telephony.telnyx import TelnyxProvider
 from parlio_api.tickets import Notifier, SlaMonitor, TicketService
+from parlio_api.value import DigestService, ValueService
 from parlio_api.vault import LocalVault
+from parlio_api.whitelabel import WhiteLabelService
 from parlio_voice.config_client import DEMO_CONFIG
 from parlio_voice.models import CallEvent, CallEventType
 
@@ -285,6 +303,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         await store.upsert_assistant(DEMO_CONFIG, [settings.demo_number])
 
     vault = LocalVault(settings.vault_key)
+    app.state.security = SecurityService(store, vault, settings.vault_key)
     app.state.vault = vault
     if settings.env != "dev" and settings.vault_key == "dev-only-change-me":
         log.error("PARLIO_VAULT_KEY is the dev default in env=%s; set a real key", settings.env)
@@ -411,6 +430,26 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     senders[Channel.WHATSAPP] = WhatsAppSender(inbox.whatsapp)
     app.state.inbox = inbox
     hub.inbox = inbox
+
+    scorer: QAScorer = HeuristicScorer()
+    if settings.postcall_analyser == "openai" and settings.openai_api_key:
+        scorer = OpenAIScorer(settings.openai_api_key, settings.openai_model)
+    qa = QAService(store, scorer, notifications, settings.dashboard_url)
+    app.state.qa = qa
+    hub.qa = qa
+    app.state.simulation = SimulationService(store, text_agent, scorer)
+    app.state.voice_clones = VoiceCloneService(store, SimulatedCloneProvider())
+    value = ValueService(store)
+    app.state.value = value
+    digest = DigestService(store, value, notifications)
+    app.state.digest = digest
+    digest.start()
+    app.state.whitelabel = WhiteLabelService(
+        store,
+        billing,
+        dashboard_host=settings.dashboard_url.split("://", 1)[-1].split("/")[0],
+        verify_salt=settings.vault_key,
+    )
     inbox_sla = InboxSlaLoop(inbox, settings.inbox_sweep_interval_s)
     inbox_sla.start()
 
@@ -440,6 +479,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         await postcall.close()
         await sla.aclose()
         await inbox_sla.aclose()
+        await digest.stop()
         await compliance.stop()
         await retry_loop.stop()
         await outbound_loop.stop()
@@ -467,6 +507,10 @@ def create_app() -> FastAPI:
     app.include_router(dashboard.router)
     app.include_router(account.router)
     app.include_router(account.public)
+    app.include_router(quality_routes.router)
+    app.include_router(value_routes.router)
+    app.include_router(value_routes.public)
+    app.include_router(value_routes.scim)
     app.include_router(integrations.router)
     app.include_router(integrations.public)
     app.include_router(integrations.worker)

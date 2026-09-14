@@ -2,6 +2,7 @@ export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000
 export const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
 export const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
 export const TOKEN_COOKIE = "parlio_token";
+export const MFA_COOKIE = "parlio_mfa";
 
 export type CallKind = "answered" | "missed" | "transferred" | "ticketed" | "blocked" | "active";
 
@@ -324,7 +325,19 @@ async function authHeaders(): Promise<Record<string, string>> {
       .find((c) => c.startsWith(`${TOKEN_COOKIE}=`))
       ?.slice(TOKEN_COOKIE.length + 1);
   }
-  return token ? { authorization: `Bearer ${decodeURIComponent(token)}` } : {};
+  const h: Record<string, string> = token ? { authorization: `Bearer ${decodeURIComponent(token)}` } : {};
+  const mfa = await readCookie(MFA_COOKIE);
+  if (mfa) h["x-parlio-mfa"] = mfa;
+  return h;
+}
+
+async function readCookie(name: string): Promise<string | undefined> {
+  if (typeof window === "undefined") {
+    const { cookies } = await import("next/headers");
+    return (await cookies()).get(name)?.value;
+  }
+  const raw = document.cookie.split("; ").find((c) => c.startsWith(`${name}=`))?.slice(name.length + 1);
+  return raw ? decodeURIComponent(raw) : undefined;
 }
 
 export type Message = {
@@ -595,8 +608,9 @@ export const fetchSyncJobs = (tenant_id: string) => get<SyncJob[]>(`/v1/connecto
 export const fetchApiKeys = (tenant_id: string) => get<TenantApiKey[]>(`/v1/api-keys${qs({ tenant_id })}`);
 
 /** Browser-only: fetch a CSV export with auth headers and trigger a file download. */
-export async function downloadCsv(what: "calls" | "contacts" | "tickets", tenant_id: string): Promise<string | null> {
-  const res = await fetch(`${API_URL}/v1/export/${what}.csv${qs({ tenant_id })}`, { headers: await authHeaders() });
+export async function downloadCsv(what: "calls" | "contacts" | "tickets" | "audit", tenant_id: string): Promise<string | null> {
+  const path = what === "audit" ? "/v1/compliance/audit.csv" : `/v1/export/${what}.csv`;
+  const res = await fetch(`${API_URL}${path}${qs({ tenant_id })}`, { headers: await authHeaders() });
   if (!res.ok) return res.statusText;
   const url = URL.createObjectURL(await res.blob());
   const a = Object.assign(document.createElement("a"), { href: url, download: `parlio-${what}.csv` });
@@ -759,3 +773,89 @@ export type ChatMessage = { id: string; direction: string; author: string; autho
 export const fetchChatConfig = (token: string) => get<ChatConfig>(`/v1/public/chat/${token}`);
 export const sendChat = (token: string, visitor: string, text: string, name?: string) => post<ChatMessage[]>(`/v1/public/chat/${token}/messages`, { visitor, text, name });
 export const pollChat = (token: string, visitor: string) => get<ChatMessage[]>(`/v1/public/chat/${token}/messages${qs({ visitor })}`);
+
+// -- Phase 13: quality, insights, simulation, voice cloning --------------------------------------
+export type QAFlag = "hallucination" | "unanswered" | "rude" | "escalated" | "long_silence" | "unresolved" | string;
+export type QAScore = {
+  call_id: string; tenant_id: string; assistant_id: string; resolution: number; tone: number; accuracy: number;
+  hallucination_risk: number; overall: number; flags: QAFlag[]; unanswered: string[]; notes: string[]; scorer: string; created_at: string;
+};
+export type QASettings = { tenant_id: string; enabled: boolean; alert_below: number; alert_on_hallucination: boolean; min_turns: number };
+export type QAStats = {
+  scored: number; avg_overall: number | null; avg_resolution: number | null; avg_tone: number | null; avg_accuracy: number | null;
+  avg_hallucination_risk: number | null; low_score_calls: number; flagged_hallucinations: number; unanswered_questions: number;
+};
+export type Insight = {
+  id: string; tenant_id: string; assistant_id: string; kind: "faq" | "rule"; question: string; examples: string[]; call_ids: string[]; count: number;
+  suggested_answer: string | null; suggested_rule: string | null; status: "open" | "applied" | "dismissed"; applied_version: number | null; created_at: string; updated_at: string;
+};
+export type QAOverview = { settings: QASettings; stats: QAStats; recent: QAScore[]; insights: Insight[] };
+export type Expectation = { mentions: string[]; avoids: string[]; handoff: boolean | null; ticket: boolean | null; min_overall: number };
+export type Scenario = { id: string; tenant_id: string; name: string; persona: string; goal: string; turns: string[]; expect: Expectation; created_at: string };
+export type SimTurn = { caller: string; assistant: string; handoff: boolean; ticket: boolean };
+export type SimulationResult = {
+  scenario_id: string; scenario_name: string; label: string; config_source: string; turns: SimTurn[]; score: QAScore; passed: boolean; failures: string[]; agent: string;
+};
+export type SimulationRun = { id: string; tenant_id: string; assistant_id: string; results: SimulationResult[]; winner: string | null; created_at: string };
+export type VoiceClone = {
+  id: string; tenant_id: string; assistant_id: string; name: string; consent_by: string; consent_statement: string; consent_at: string; sample_seconds: number;
+  provider: string; provider_voice_id: string | null; status: "pending" | "ready" | "active" | "failed" | string; error: string | null; created_at: string;
+};
+export type VoiceCloneView = { consent_statement: string; provider: string; live: boolean; clones: VoiceClone[] };
+export const fetchQuality = (tenant_id: string) => get<QAOverview>(`/v1/quality/overview${qs({ tenant_id })}`);
+export const fetchCallScore = (tenant_id: string, call_id: string) => get<QAScore>(`/v1/quality/calls/${call_id}${qs({ tenant_id })}`);
+export const fetchScenarios = (tenant_id: string) => get<Scenario[]>(`/v1/quality/scenarios${qs({ tenant_id })}`);
+export const fetchSimRuns = (tenant_id: string) => get<SimulationRun[]>(`/v1/quality/simulate/runs${qs({ tenant_id })}`);
+export const fetchVoiceClones = (tenant_id: string) => get<VoiceCloneView>(`/v1/quality/voice-clones${qs({ tenant_id })}`);
+
+// -- Phase 14: value, white-label, compliance pack, security ---------------------------------------
+export type LeadScore = { call_id: string; score: number; grade: "hot" | "warm" | "cold" | string; intent: string | null; reasons: string[] };
+export type ValueSettings = {
+  tenant_id: string; currency: string; avg_job_value_pence: number; booking_value_pence: number | null; lead_to_sale_rate: number;
+  missed_call_lead_rate: number; digest_enabled: boolean; digest_weekday: number; digest_hour: number;
+};
+export type TrackingNumber = { id: string; tenant_id: string; e164: string; channel: string; campaign: string | null; monthly_cost_pence: number; created_at: string };
+export type ChannelValue = { channel: string; calls: number; leads: number; bookings: number; attributed_pence: number; cost_pence: number; cost_per_lead_pence: number | null };
+export type ValueReport = {
+  tenant_id: string; period_start: string; period_end: string; currency: string; calls: number; answered: number; missed: number; qualified_leads: number; hot_leads: number;
+  bookings: number; attributed_pence: number; pipeline_pence: number; missed_revenue_pence: number; recovered_by_ai_pence: number; intents: Record<string, number>;
+  channels: ChannelValue[]; top_leads: LeadScore[]; generated_at: string;
+};
+export type DigestRecord = { id: string; tenant_id: string; title: string; body: string; report: Record<string, unknown>; sent_at: string };
+export type ValueOverview = { settings: ValueSettings; report: ValueReport; tracking_numbers: TrackingNumber[]; digests: DigestRecord[] };
+export type Branding = {
+  tenant_id: string; brand_name: string; logo_url: string | null; icon_url: string | null; primary_colour: string; accent_colour: string; support_email: string | null;
+  support_url: string | null; hide_powered_by: boolean; custom_domain: string | null; domain_verified: boolean; updated_at: string;
+};
+export type DomainInstructions = { domain: string; cname_target: string; txt_name: string; txt_value: string; verified: boolean };
+export type TenantLink = { id: string; parent_tenant_id: string; child_tenant_id: string; client_name: string; inherit_branding: boolean; notes: string | null; created_at: string };
+export type ClientSummary = { link: TenantLink; usage: UsageSummary | null; members: number; assistants: number };
+export type BrandingView = { branding: Branding; domain: DomainInstructions | null; is_agency: boolean; parent: TenantLink | null };
+export type SsoConfig = {
+  provider: "none" | "microsoft_entra" | "google_workspace" | "okta" | "saml" | "oidc"; protocol: string; domains: string[]; issuer: string | null; client_id: string | null;
+  metadata_url: string | null; enforce: boolean; supabase_provider_id: string | null;
+};
+export type ScimConfig = { enabled: boolean; default_role: string; token_hint: string | null; issued_at: string | null };
+export type SecurityPolicy = { tenant_id: string; require_2fa: "off" | "admins" | "all"; session_hours: number; sso: SsoConfig; scim: ScimConfig; updated_at: string };
+export type SecurityView = { policy: SecurityPolicy; sso_status: string; scim_endpoint: string; members_without_2fa: string[] };
+export type AssistantRegion = {
+  assistant_id: string; name: string; region_profile: string; stt: string[]; llm: string[]; tts: string[]; consent_announcement: boolean; recording_enabled: boolean;
+};
+export type CompliancePack = {
+  tenant_id: string; generated_at: string; data_residency: string; assistants: AssistantRegion[]; retention: RetentionPolicy; security: SecurityPolicy;
+  sub_processors: Record<string, string>[]; consent: Record<string, unknown>; audit_entries: number; notes: string[];
+};
+export type TwoFactorStatus = { enrolled: boolean; confirmed: boolean; recovery_codes_left: number; mfa_verified: boolean };
+export type UserSession = {
+  id: string; user_id: string; label: string; ip: string | null; mfa: boolean; created_at: string; last_seen_at: string; expires_at: string; revoked_at: string | null; current: boolean;
+};
+export type MfaToken = { token: string; session_id: string; expires_at: string };
+export const fetchValue = (tenant_id: string, days = 7) => get<ValueOverview>(`/v1/value${qs({ tenant_id, days })}`);
+export const fetchWhiteLabel = (tenant_id: string) => get<BrandingView>(`/v1/whitelabel${qs({ tenant_id })}`);
+export const fetchClients = (tenant_id: string) => get<ClientSummary[]>(`/v1/whitelabel/clients${qs({ tenant_id })}`);
+export const fetchCompliancePack = (tenant_id: string) => get<CompliancePack>(`/v1/compliance/pack${qs({ tenant_id })}`);
+export const fetchSecurity = (tenant_id: string) => request<SecurityView>(`/v1/security${qs({ tenant_id })}`);
+export const fetchTwoFactor = () => get<TwoFactorStatus>("/v1/account/2fa");
+export const fetchSessions = () => get<UserSession[]>("/v1/account/sessions");
+export const money = (pence: number, currency = "GBP") =>
+  new Intl.NumberFormat("en-GB", { style: "currency", currency, maximumFractionDigits: 0 }).format(pence / 100);

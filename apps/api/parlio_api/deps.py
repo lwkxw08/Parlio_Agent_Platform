@@ -19,10 +19,14 @@ from parlio_api.observability import AuditLog, Telemetry
 from parlio_api.outbound import OutboundService
 from parlio_api.payments import PaymentService
 from parlio_api.postcall import PostCallProcessor
+from parlio_api.qa import QAService, SimulationService, VoiceCloneService
+from parlio_api.security import SecurityService
 from parlio_api.settings import Settings, get_settings
 from parlio_api.sip import SipService
 from parlio_api.store import CallStore
 from parlio_api.tickets import TicketService
+from parlio_api.value import DigestService, ValueService
+from parlio_api.whitelabel import WhiteLabelService
 
 
 def get_store(request: Request) -> CallStore:
@@ -78,6 +82,41 @@ def get_telemetry(request: Request) -> Telemetry:
 def get_audit(request: Request) -> AuditLog:
     a: AuditLog = request.app.state.audit
     return a
+
+
+def get_qa(request: Request) -> QAService:
+    svc: QAService = request.app.state.qa
+    return svc
+
+
+def get_simulation(request: Request) -> SimulationService:
+    svc: SimulationService = request.app.state.simulation
+    return svc
+
+
+def get_voice_clones(request: Request) -> VoiceCloneService:
+    svc: VoiceCloneService = request.app.state.voice_clones
+    return svc
+
+
+def get_security(request: Request) -> SecurityService:
+    svc: SecurityService = request.app.state.security
+    return svc
+
+
+def get_value(request: Request) -> ValueService:
+    svc: ValueService = request.app.state.value
+    return svc
+
+
+def get_digest(request: Request) -> DigestService:
+    svc: DigestService = request.app.state.digest
+    return svc
+
+
+def get_whitelabel(request: Request) -> WhiteLabelService:
+    svc: WhiteLabelService = request.app.state.whitelabel
+    return svc
 
 
 def get_compliance(request: Request) -> ComplianceService:
@@ -146,6 +185,13 @@ HubDep = Annotated[IntegrationHub, Depends(get_hub)]
 TicketsDep = Annotated[TicketService, Depends(get_tickets)]
 PostCallDep = Annotated[PostCallProcessor, Depends(get_postcall)]
 SettingsDep = Annotated[Settings, Depends(get_settings)]
+QADep = Annotated[QAService, Depends(get_qa)]
+SimulationDep = Annotated[SimulationService, Depends(get_simulation)]
+VoiceCloneDep = Annotated[VoiceCloneService, Depends(get_voice_clones)]
+SecurityDep = Annotated[SecurityService, Depends(get_security)]
+ValueDep = Annotated[ValueService, Depends(get_value)]
+DigestDep = Annotated[DigestService, Depends(get_digest)]
+WhiteLabelDep = Annotated[WhiteLabelService, Depends(get_whitelabel)]
 
 
 async def require_worker_key(
