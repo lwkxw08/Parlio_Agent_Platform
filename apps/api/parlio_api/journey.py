@@ -164,7 +164,7 @@ def recommend_plan(q: Questionnaire, plans: list[Plan], trial_days: int) -> Plan
         needed_entitlements=need,
         estimated_minutes=minutes,
         options=options,
-        trial_days=trial_days,
+        trial_days=plan.trial_days if plan.trial_days is not None else trial_days,
     )
 
 

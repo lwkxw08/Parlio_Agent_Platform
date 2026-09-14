@@ -523,6 +523,15 @@ async def plans(user: StaffDep, admin: AdminDep) -> list[Plan]:
     return admin.plans()
 
 
+class PlanDefaults(BaseModel):
+    trial_days: int
+
+
+@router.get("/plans/defaults", response_model=PlanDefaults)
+async def plan_defaults(user: StaffDep, billing: BillingDep) -> PlanDefaults:
+    return PlanDefaults(trial_days=billing.trial_days)
+
+
 @router.put("/plans/{plan_id}", response_model=Plan)
 async def save_plan(
     plan_id: str, body: Plan, request: Request, user: StaffDep, admin: AdminDep, audit: AuditDep
