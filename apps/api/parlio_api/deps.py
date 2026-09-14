@@ -13,6 +13,7 @@ from parlio_api.browser_voice import BrowserVoiceService
 from parlio_api.calendar import CalendarService
 from parlio_api.compliance import ComplianceService
 from parlio_api.connectors import ConnectorService, TenantApiKey
+from parlio_api.drafting import Drafter
 from parlio_api.inbox import InboxService
 from parlio_api.integrations import IntegrationHub
 from parlio_api.live import ApprovalService, LiveCallHub, SupervisorService
@@ -55,6 +56,11 @@ def get_postcall(request: Request) -> PostCallProcessor:
 def get_tickets(request: Request) -> TicketService:
     svc: TicketService = request.app.state.tickets
     return svc
+
+
+def get_drafter(request: Request) -> Drafter:
+    d: Drafter = request.app.state.drafter
+    return d
 
 
 def get_sms(request: Request) -> MessageService:
@@ -233,6 +239,7 @@ CalendarDep = Annotated[CalendarService, Depends(get_calendar)]
 SipDep = Annotated[SipService, Depends(get_sip)]
 HubDep = Annotated[IntegrationHub, Depends(get_hub)]
 TicketsDep = Annotated[TicketService, Depends(get_tickets)]
+DrafterDep = Annotated[Drafter, Depends(get_drafter)]
 PostCallDep = Annotated[PostCallProcessor, Depends(get_postcall)]
 SettingsDep = Annotated[Settings, Depends(get_settings)]
 QADep = Annotated[QAService, Depends(get_qa)]
