@@ -290,8 +290,8 @@ def build_sip_provisioner(settings: Settings) -> SipProvisioner:
 
 
 def build_analyser(settings: Settings) -> Analyser:
-    if settings.postcall_analyser == "openai" and settings.openai_api_key:
-        return OpenAIAnalyser(settings.openai_api_key, model=settings.openai_model)
+    if (key := settings.llm_key) is not None:
+        return OpenAIAnalyser(key, model=settings.openai_model)
     return HeuristicAnalyser()
 
 
@@ -441,15 +441,15 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     rules = RuleTextAgent(booking_url)
     text_agent: TextAgent = rules
-    if settings.postcall_analyser == "openai" and settings.openai_api_key:
-        text_agent = OpenAITextAgent(settings.openai_api_key, settings.openai_model, fallback=rules)
+    if (key := settings.llm_key) is not None:
+        text_agent = OpenAITextAgent(key, settings.openai_model, fallback=rules)
     senders: dict[Channel, ChannelSender] = {
         Channel.SMS: SmsSender(sms),
         Channel.WEBCHAT: StoreOnlySender(),
     }
     scorer: QAScorer = HeuristicScorer()
-    if settings.postcall_analyser == "openai" and settings.openai_api_key:
-        scorer = OpenAIScorer(settings.openai_api_key, settings.openai_model)
+    if (key := settings.llm_key) is not None:
+        scorer = OpenAIScorer(key, settings.openai_model)
     ops = OpsService(store, billing, sip, SimulationService(store, text_agent, scorer), HttpPager())
     app.state.ops = ops
     tracker = (

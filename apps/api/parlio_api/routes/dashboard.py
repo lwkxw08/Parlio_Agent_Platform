@@ -362,8 +362,8 @@ async def query_analytics(
             f" vs {q.compare.describe()}" if q.compare else ""
         )
     elif body.question:
-        if settings.openai_api_key and settings.postcall_analyser == "openai":
-            parser = LlmQuestionParser(settings.openai_api_key, model=settings.openai_model)
+        if (key := settings.llm_key) is not None:
+            parser = LlmQuestionParser(key, model=settings.openai_model)
             q = await parser.parse(body.question, today)
         else:
             q = parse_question(body.question, today)
