@@ -6,7 +6,7 @@
   --field: #f7f8fe; --hover: #eef1ff; --shadow: 0 6px 18px rgba(59, 123, 255, .08);
   --ok-bg: #dcfce7; --ok-fg: #15803d; --bad-bg: #fee2e2; --bad-fg: #b91c1c; --warn-bg: #fef3c7; --warn-fg: #b45309;
   --bubble-user: #eef1ff; --bubble-assistant: #e8e5ff; --ask: #6a3df5;
-  --side-bg: rgba(255, 255, 255, .78); --side-w: 64px; --side-w-open: 208px;
+  --side-bg: rgba(255, 255, 255, .78); --side-w: 64px; --side-w-open: 232px;
   --page-bg:
     radial-gradient(900px 600px at 15% 10%, rgba(59, 123, 255, .28), transparent 60%),
     radial-gradient(800px 600px at 90% 20%, rgba(106, 61, 245, .22), transparent 60%),
@@ -44,6 +44,16 @@ main { padding: 1.5rem 2rem 2rem calc(var(--side-w) + 2rem); max-width: calc(160
 .side:hover .nav-item span, .side:focus-within .nav-item span { opacity: 1; }
 .side .nav-item:hover { background: var(--hover); color: var(--fg); }
 .side .nav-item.active { background: var(--accent-grad); color: #fff; box-shadow: 0 6px 14px rgba(106, 61, 245, .25); }
+.side .nav-group { display: flex; flex-direction: column; gap: 2px; position: relative; flex: none; }
+.side .nav-group-head { position: relative; }
+.side .nav-group-head .chev { width: 14px; height: 14px; margin-left: auto; opacity: 0; transition: transform .15s, opacity .12s; }
+.side:hover .nav-group-head .chev, .side:focus-within .nav-group-head .chev { opacity: .7; }
+.side .nav-group.open .nav-group-head .chev { transform: rotate(90deg); }
+.side .nav-group.current .nav-group-head { color: var(--fg); font-weight: 600; }
+.side .nav-children { display: none; flex-direction: column; gap: 2px; margin-left: 14px; padding-left: 8px; border-left: 1px solid var(--line); }
+.side .nav-children .nav-item { height: 36px; font-size: .86rem; }
+.side .nav-children .nav-item svg { width: 18px; height: 18px; }
+.side:hover .nav-group.open .nav-children, .side:focus-within .nav-group.open .nav-children { display: flex; }
 .side-foot { display: flex; flex-direction: column; gap: 4px; border-top: 1px solid var(--line); padding-top: 8px; }
 h1 { font-size: 1.4rem; margin: 0 0 1rem; }
 .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1rem; margin-bottom: 1.5rem; }

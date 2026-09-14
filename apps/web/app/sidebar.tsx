@@ -39,28 +39,63 @@ const I = {
 
 export const NAV: Item[] = [
   { href: "/", label: "Overview", icon: I.home },
-  { href: "/calls", label: "Calls", icon: I.calls },
-  { href: "/live", label: "Live", icon: I.live },
-  { href: "/inbox", label: "Inbox", icon: I.inbox },
-  { href: "/analytics", label: "Analytics", icon: I.analytics },
-  { href: "/contacts", label: "Contacts", icon: I.contacts },
-  { href: "/tickets", label: "Tickets", icon: I.tickets },
-  { href: "/handoff", label: "Transfers", icon: I.transfers },
-  { href: "/outbound", label: "Outbound", icon: I.outbound },
-  { href: "/assistant", label: "Assistant", icon: I.assistant },
-  { href: "/integrations", label: "Integrations", icon: I.integrations },
-  { href: "/telephony", label: "Telephony", icon: I.telephony },
-  { href: "/quality", label: "Quality", icon: I.quality },
-  { href: "/value", label: "Value", icon: I.value },
-  { href: "/billing", label: "Billing", icon: I.billing },
-  { href: "/compliance", label: "Compliance", icon: I.compliance },
-  { href: "/health", label: "Health", icon: I.health },
-  { href: "/support", label: "Support", icon: I.support },
-  { href: "/settings", label: "Settings", icon: I.settings },
-  { href: "/team", label: "Team", icon: I.team },
   { href: "/setup", label: "Setup", icon: I.setup },
-  { href: "/launch", label: "Launch", icon: I.launch },
 ];
+
+export type Group = { key: string; label: string; icon: React.ReactNode; items: Item[] };
+
+export const GROUPS: Group[] = [
+  {
+    key: "conversations",
+    label: "Conversations",
+    icon: I.calls,
+    items: [
+      { href: "/calls", label: "Calls", icon: I.calls },
+      { href: "/live", label: "Live", icon: I.live },
+      { href: "/inbox", label: "Inbox", icon: I.inbox },
+      { href: "/tickets", label: "Tickets", icon: I.tickets },
+      { href: "/handoff", label: "Transfers", icon: I.transfers },
+      { href: "/outbound", label: "Outbound", icon: I.outbound },
+      { href: "/contacts", label: "Contacts", icon: I.contacts },
+    ],
+  },
+  {
+    key: "assistant",
+    label: "Assistant",
+    icon: I.assistant,
+    items: [
+      { href: "/assistant", label: "Assistant Studio", icon: I.assistant },
+      { href: "/quality", label: "Quality & simulate", icon: I.quality },
+      { href: "/integrations", label: "Integrations", icon: I.integrations },
+      { href: "/telephony", label: "Telephony", icon: I.telephony },
+      { href: "/launch", label: "Launch guide", icon: I.launch },
+    ],
+  },
+  {
+    key: "insights",
+    label: "Insights",
+    icon: I.analytics,
+    items: [
+      { href: "/analytics", label: "Analytics", icon: I.analytics },
+      { href: "/value", label: "Value", icon: I.value },
+      { href: "/health", label: "Health", icon: I.health },
+    ],
+  },
+  {
+    key: "account",
+    label: "Account",
+    icon: I.contacts,
+    items: [
+      { href: "/billing", label: "Billing", icon: I.billing },
+      { href: "/compliance", label: "Compliance", icon: I.compliance },
+      { href: "/support", label: "Support", icon: I.support },
+      { href: "/settings", label: "Settings", icon: I.settings },
+      { href: "/team", label: "Team", icon: I.team },
+    ],
+  },
+];
+
+const OPEN_KEY = "parlio-nav-open";
 
 export type Account =
   | { kind: "user"; name: string; email: string; dev: boolean; staff: boolean; viewAs: string | null }
@@ -89,23 +124,59 @@ function ThemeToggle() {
   );
 }
 
+function loadOpen(): Record<string, boolean> {
+  try {
+    const raw = localStorage.getItem(OPEN_KEY);
+    return raw ? (JSON.parse(raw) as Record<string, boolean>) : {};
+  } catch {
+    return {};
+  }
+}
+
 export default function Sidebar({ account }: { account: Account }) {
   const path = usePathname();
   const isActive = (href: string) => (href === "/" ? path === "/" : path.startsWith(href));
+  const activeGroup = GROUPS.find((g) => g.items.some((it) => isActive(it.href)))?.key ?? null;
+  const [open, setOpen] = useState<Record<string, boolean>>({});
+  useEffect(() => setOpen(loadOpen()), []);
+  useEffect(() => {
+    if (activeGroup) setOpen((o) => (o[activeGroup] ? o : { ...o, [activeGroup]: true }));
+  }, [activeGroup]);
+  const toggle = (key: string) =>
+    setOpen((o) => {
+      const next = { ...o, [key]: !o[key] };
+      localStorage.setItem(OPEN_KEY, JSON.stringify(next));
+      return next;
+    });
   if (path.startsWith("/chat/")) return null;
   const staff = account.kind === "user" && account.staff;
+  const link = (it: Item) => (
+    <Link key={it.href} href={it.href} className={`nav-item${isActive(it.href) ? " active" : ""}`} title={it.label}>
+      {it.icon}
+      <span>{it.label}</span>
+    </Link>
+  );
   return (
     <aside className="side">
       <Link href="/" className="logo" aria-label="Parlio home">
         <Image src="/logo-icon.png" alt="Parlio" width={40} height={40} priority />
       </Link>
       <nav>
-        {NAV.map((it) => (
-          <Link key={it.href} href={it.href} className={`nav-item${isActive(it.href) ? " active" : ""}`} title={it.label}>
-            {it.icon}
-            <span>{it.label}</span>
-          </Link>
-        ))}
+        {NAV.map(link)}
+        {GROUPS.map((g) => {
+          const isOpen = !!open[g.key];
+          const current = activeGroup === g.key;
+          return (
+            <div key={g.key} className={`nav-group${isOpen ? " open" : ""}${current ? " current" : ""}`}>
+              <button type="button" className={`nav-item nav-group-head${current && !isOpen ? " active" : ""}`} onClick={() => toggle(g.key)} aria-expanded={isOpen} title={g.label}>
+                {g.icon}
+                <span>{g.label}</span>
+                <svg className="chev" viewBox="0 0 24 24" {...S} aria-hidden><path d="M9 6l6 6-6 6" /></svg>
+              </button>
+              <div className="nav-children">{g.items.map(link)}</div>
+            </div>
+          );
+        })}
         {staff && (
           <Link href="/admin" className={`nav-item${isActive("/admin") ? " active" : ""}`} title="Platform admin">
             {I.admin}
