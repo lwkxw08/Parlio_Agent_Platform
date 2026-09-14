@@ -224,3 +224,10 @@ html.embed body { background: var(--panel); }
 .health-healthy { color: var(--ok-fg); } .health-watch { color: var(--warn-fg); } .health-at_risk { color: var(--bad-fg); } .health-inactive { color: var(--muted); }
 .kv { display: grid; grid-template-columns: max-content 1fr; gap: 0.3rem 1rem; font-size: 0.9rem; margin: 0; }
 .kv dt { color: var(--muted); } .kv dd { margin: 0; }
+
+/* Guided onboarding choice cards */
+.card.choice { text-align: left; cursor: pointer; font: inherit; color: inherit; transition: border-color 0.15s, box-shadow 0.15s; }
+.card.choice:hover { border-color: var(--accent); }
+.card.choice.selected { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft, rgba(37, 99, 235, 0.25)); }
+.chips button { display: inline-block; padding: 0.25rem 0.7rem; border-radius: 999px; background: var(--line); color: var(--muted); border: 0; font-size: 0.8rem; margin-right: 0.3rem; cursor: pointer; }
+.chips button.active { background: var(--accent-grad); color: #fff; }

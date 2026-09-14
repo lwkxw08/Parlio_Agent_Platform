@@ -56,6 +56,7 @@ from parlio_api.inbox import (
     WhatsAppSender,
 )
 from parlio_api.integrations import IntegrationHub
+from parlio_api.journey import CheckInLoop
 from parlio_api.live import (
     ApprovalService,
     LiveCallHub,
@@ -109,6 +110,7 @@ from parlio_api.routes import admin as admin_routes
 from parlio_api.routes import (
     inbox as inbox_routes,
 )
+from parlio_api.routes import journey as journey_routes
 from parlio_api.routes import (
     live as live_routes,
 )
@@ -502,6 +504,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     inbox_sla.start()
     ops_loop = OpsLoop(ops, settings.ops_sweep_interval_s)
     ops_loop.start()
+    checkins = CheckInLoop(store, billing, sip, calendar, notifications)
+    checkins.start()
 
     stop = asyncio.Event()
     consumer: asyncio.Task[None] | None = None
@@ -530,6 +534,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         await sla.aclose()
         await inbox_sla.aclose()
         await ops_loop.stop()
+        await checkins.stop()
         await digest.stop()
         await compliance.stop()
         await retry_loop.stop()
@@ -558,6 +563,8 @@ def create_app() -> FastAPI:
     app.include_router(dashboard.router)
     app.include_router(account.router)
     app.include_router(account.public)
+    app.include_router(journey_routes.router)
+    app.include_router(journey_routes.public)
     app.include_router(quality_routes.router)
     app.include_router(value_routes.router)
     app.include_router(value_routes.public)

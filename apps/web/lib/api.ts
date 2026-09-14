@@ -1023,3 +1023,34 @@ export const fetchOpsTenant = (tenant_id: string) => get<HealthView>(`/v1/admin/
 export const fetchIncidents = () => get<Incident[]>("/v1/admin/ops/incidents");
 export const fetchDeskTickets = (open_only = false) => get<SupportTicket[]>(`/v1/admin/ops/support/tickets${qs({ open_only: open_only ? "true" : undefined })}`);
 export const fetchTagReview = (days = 7) => get<TagReview>(`/v1/admin/ops/support/tag-review${qs({ days })}`);
+
+// -- Phase 19: guided journey, setup checklist, explainability, trust centre --------------------
+export type CallVolume = "0-50" | "50-200" | "200-500" | "500+";
+export type JourneyTask = "faqs" | "book" | "transfer" | "messages" | "info" | "qualify" | "payments" | "outbound" | "webchat";
+export type JourneyChannel = "phone" | "sms" | "whatsapp" | "webchat";
+export type Vertical = "trades" | "salon" | "hospitality" | "professional" | "dental" | "legal" | "property" | "general";
+export type Questionnaire = {
+  monthly_calls: CallVolume; tasks: JourneyTask[]; team_size: number; channels: JourneyChannel[]; languages: string[];
+  integrations: string[]; vertical: Vertical; sovereign_uk: boolean; locations: number;
+};
+export type PlanOption = { plan_id: string; name: string; monthly_pence: number; included_minutes: number; fits: boolean; missing: string[]; estimated_monthly_pence: number };
+export type PlanRecommendation = { plan_id: string; reasons: string[]; needed_entitlements: string[]; estimated_minutes: number; options: PlanOption[]; trial_days: number };
+export type VerticalPlaybook = { id: Vertical; name: string; tagline: string; greeting: string; faqs: Faq[]; rules: BusinessRule[]; required_fields: string[]; suggested_tasks: JourneyTask[] };
+export type ChecklistItem = { key: string; title: string; detail: string; done: boolean; href: string; optional: boolean };
+export type SetupChecklist = {
+  tenant_id: string; items: ChecklistItem[]; completed: number; total: number; live: boolean; trial_ends_at: string | null; plan_id: string; next_step: ChecklistItem | null;
+};
+export type QuestionnaireOut = { tenant_id: string; questionnaire: Questionnaire | null; recommended_plan_id: string | null };
+export type Evidence = { kind: "faq" | "rule" | "business" | "hours" | "greeting" | "instructions" | "none"; label: string; text: string; score: number };
+export type ExplainedTurn = { index: number; text: string; evidence: Evidence[] };
+export type CallExplanation = { call_id: string; assistant_id: string; assistant_version: number | null; turns: ExplainedTurn[]; note: string };
+export type TrustSection = { id: string; title: string; body: string };
+export type TrustCentre = { updated_at: string; data_residency: string; sub_processors: Record<string, string>[]; sections: TrustSection[]; status_url: string };
+export type OnboardingResult = { tenant_id: string; assistant: Assistant; member: Member; plan_id: string | null; trial_ends_at: string | null };
+
+export const recommendPlan = (q: Questionnaire) => request<PlanRecommendation>("/v1/onboarding/recommend", { method: "POST", body: JSON.stringify(q) });
+export const fetchVerticals = () => get<VerticalPlaybook[]>("/v1/onboarding/verticals");
+export const fetchChecklist = (tenant_id: string) => get<SetupChecklist>(`/v1/setup/checklist${qs({ tenant_id })}`);
+export const fetchQuestionnaire = (tenant_id: string) => get<QuestionnaireOut>(`/v1/setup/questionnaire${qs({ tenant_id })}`);
+export const fetchExplanation = (call_id: string) => request<CallExplanation>(`/v1/calls/${call_id}/explain`);
+export const fetchTrustCentre = () => get<TrustCentre>("/v1/public/trust");

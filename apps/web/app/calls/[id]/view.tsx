@@ -2,9 +2,9 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { type CallRecord, ms, post, secs, when } from "@/lib/api";
+import { type CallExplanation, type CallRecord, fetchExplanation, ms, post, secs, when } from "@/lib/api";
 
-const TABS = ["overview", "recording", "transfers", "transcript", "all"] as const;
+const TABS = ["overview", "recording", "transfers", "transcript", "why", "all"] as const;
 type Tab = (typeof TABS)[number];
 
 const FEEDBACK = [
@@ -22,6 +22,8 @@ export default function CallView({ initial }: { initial: CallRecord }) {
   const [fbNote, setFbNote] = useState("");
   const [toast, setToast] = useState<string | null>(null);
   const [shareUrl, setShareUrl] = useState<string | null>(null);
+  const [why, setWhy] = useState<CallExplanation | null>(null);
+  const [whyError, setWhyError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!call.read) post<CallRecord>(`/v1/calls/${call.call_id}/read`, { read: true }).then((c) => c && setCall(c));
@@ -60,6 +62,12 @@ export default function CallView({ initial }: { initial: CallRecord }) {
   const showRecording = tab === "recording" || tab === "all";
   const showTransfers = tab === "transfers" || tab === "all";
   const showTranscript = tab === "transcript" || tab === "all";
+  const showWhy = tab === "why" || tab === "all";
+
+  useEffect(() => {
+    if (!showWhy || why || whyError) return;
+    fetchExplanation(call.call_id).then((r) => (r.ok ? setWhy(r.data) : setWhyError(r.error)));
+  }, [showWhy, why, whyError, call.call_id]);
 
   return (
     <>
@@ -81,7 +89,7 @@ export default function CallView({ initial }: { initial: CallRecord }) {
       <div className="tabs">
         {TABS.map((t) => (
           <button key={t} className={tab === t ? "active" : ""} onClick={() => setTab(t)}>
-            {t === "all" ? "Everything" : t[0].toUpperCase() + t.slice(1)}
+            {t === "all" ? "Everything" : t === "why" ? "Why did it say that?" : t[0].toUpperCase() + t.slice(1)}
           </button>
         ))}
       </div>
@@ -178,6 +186,31 @@ export default function CallView({ initial }: { initial: CallRecord }) {
             ))}
             {!call.transcript.length && <p className="muted">No transcript.</p>}
           </div>
+        </div>
+      )}
+
+      {showWhy && (
+        <div className="section">
+          <h2>Why did the AI say this?</h2>
+          {whyError && <p className="muted small">{whyError}</p>}
+          {!why && !whyError && <p className="muted small">Matching each answer to your assistant configuration…</p>}
+          {why && (
+            <>
+              <p className="hint">{why.note}{why.assistant_version != null && ` Configuration: ${why.assistant_id} v${why.assistant_version}.`}</p>
+              {!why.turns.length && <p className="muted">No assistant turns in this call.</p>}
+              {why.turns.map((t) => (
+                <div key={t.index} className="card" style={{ marginBottom: "0.8rem" }}>
+                  <div className="bubble assistant" style={{ marginBottom: "0.5rem" }}>{t.text}</div>
+                  {t.evidence.map((e, i) => (
+                    <div key={i} className="small" style={{ display: "flex", gap: 8, alignItems: "baseline", margin: "0.2rem 0" }}>
+                      <span className={`pill ${e.kind === "none" ? "" : e.score >= 0.5 ? "ok" : "warn"}`}>{e.kind}</span>
+                      <span><strong>{e.label}</strong>{e.text && <> — <span className="muted">{e.text}</span></>}{e.kind !== "none" && e.kind !== "greeting" && <span className="muted"> · match {Math.round(e.score * 100)}%</span>}</span>
+                    </div>
+                  ))}
+                </div>
+              ))}
+            </>
+          )}
         </div>
       )}
 
