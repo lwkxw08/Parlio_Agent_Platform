@@ -1,5 +1,5 @@
 import Link from "next/link";
-import type { SeriesPoint, SubscriptionStatus, TenantHealth } from "@/lib/api";
+import type { SeriesPoint, SubscriptionStatus, TenantHealthGrade } from "@/lib/api";
 
 export const pct = (v: number | null | undefined) => (v == null ? "—" : `${v.toFixed(1)}%`);
 export const num = (v: number | null | undefined, dp = 0) => (v == null ? "—" : v.toLocaleString("en-GB", { maximumFractionDigits: dp }));
@@ -52,7 +52,7 @@ export function StatusPill({ s }: { s: SubscriptionStatus }) {
   return <span className={`pill ${cls}`}>{s.replace("_", " ")}</span>;
 }
 
-export function HealthPill({ h }: { h: TenantHealth }) {
+export function HealthPill({ h }: { h: TenantHealthGrade }) {
   const cls = h === "healthy" ? "ok" : h === "watch" ? "warn" : h === "at_risk" ? "bad" : "";
   return <span className={`pill ${cls}`}>{h.replace("_", " ")}</span>;
 }

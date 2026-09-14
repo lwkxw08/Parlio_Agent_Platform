@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { type PlatformStatus, type PlatformStatusLevel, put, when } from "@/lib/api";
@@ -60,7 +61,7 @@ export default function Status({ status: initial, canEdit }: { status: PlatformS
           </div>
         )}
         <h2 style={{ marginTop: "1rem" }}>Live health</h2>
-        <p className="small muted">Service health, latency and vendor status panels arrive with Phase 17 (monitoring). Until then use the Overview latency/margin cards and the API <code>/metrics</code> endpoint.</p>
+        <p className="small muted">Component health, incidents and tenant health scores live on the <Link href="/admin/ops">Ops</Link> tab; the public view is <Link href="/status">/status</Link>.</p>
       </div>
     </div>
   );
