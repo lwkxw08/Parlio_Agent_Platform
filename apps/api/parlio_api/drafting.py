@@ -146,12 +146,19 @@ def template_draft(
     services = list(b.services) if b else []
     area = b.address if b and b.address else None
     if req.field == "description":
-        s = (b.description if b and b.description else req.brief).strip().rstrip(".")
-        out = f"{name} — {s}."
+        if b and b.description:
+            out = f"{name} — {b.description.strip().rstrip('.')}."
+        else:
+            out = (
+                f"{name} is a friendly, professional business that puts customers first. Our team"
+                " handles enquiries promptly, gives clear straightforward advice and takes pride"
+                " in reliable, high-quality work."
+            )
         if services:
             out += " Services include " + ", ".join(services[:6]) + "."
         if area:
             out += f" Based at {area}."
+        out += " Callers can leave their details and we'll get back to them as soon as possible."
         return out
     if req.field == "services":
         return "\n".join(services[:15]) if services else req.brief
@@ -217,6 +224,11 @@ class Drafter:
                 site = None
         text = await self._llm(req, cfg, site) if self._client else None
         if text is None:
+            notes.append(
+                "AI drafting isn't configured on this server (no OpenAI key) - basic template used."
+                if self._client is None
+                else "The AI model didn't respond - basic template used; try again."
+            )
             return Draft(
                 field=req.field,
                 text=template_draft(req, cfg, site),

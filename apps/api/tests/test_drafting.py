@@ -36,6 +36,10 @@ def test_template_fallback_uses_site_facts() -> None:
     req = DraftRequest(field="description", brief="describe Parlio Demo Plumbing")
     text = template_draft(req, DEMO_CONFIG, site)
     assert "Parlio Demo Plumbing" in text and "24/7" in text
+    generic = template_draft(
+        DraftRequest(field="description", brief="help me write a description"), DEMO_CONFIG, None
+    )
+    assert "help me write" not in generic and DEMO_CONFIG.business_name in generic
     services = template_draft(
         DraftRequest(field="services", brief="list services"), DEMO_CONFIG, site
     )

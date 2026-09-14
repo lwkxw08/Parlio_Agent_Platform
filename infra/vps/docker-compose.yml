@@ -85,6 +85,7 @@ services:
       PARLIO_DATABASE_URL: postgresql+asyncpg://parlio_app:${POSTGRES_APP_PASSWORD}@postgres:5432/parlio
       PARLIO_DASHBOARD_URL: ${DASHBOARD_URL}
       PARLIO_CORS_ORIGINS: '["${DASHBOARD_URL}"]'
+      PARLIO_OPENAI_API_KEY: ${OPENAI_API_KEY:-}
     depends_on:
       redis: { condition: service_healthy }
       postgres: { condition: service_healthy }

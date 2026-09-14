@@ -29,7 +29,7 @@ export default function AskAi({ assistantId, field, current, onInsert, website, 
     setBusy(false);
     if (!r.ok) return setError(r.error);
     setDraft(r.data.text);
-    setNotes([...(r.data.website_used ? [`Used ${r.data.website_used}`] : []), ...r.data.notes, ...(r.data.source === "template" ? ["Drafted without an AI model (no OpenAI key configured) — edit as needed."] : [])]);
+    setNotes([...(r.data.website_used ? [`Used ${r.data.website_used}`] : []), ...r.data.notes]);
   };
   const insert = (mode: "replace" | "append") => {
     if (draft == null) return;
