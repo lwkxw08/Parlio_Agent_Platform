@@ -90,6 +90,8 @@ class Thread(BaseModel):
     status: ThreadStatus = ThreadStatus.OPEN
     assigned_to: str | None = None
     ai_enabled: bool = True
+    handoff_department: str | None = None
+    callback_ticket_id: str | None = None
     unread: int = 0
     message_count: int = 0
     last_preview: str = ""
@@ -125,6 +127,7 @@ class InboxMessage(BaseModel):
     text: str
     call_id: str | None = None
     ticket_id: str | None = None
+    handoff: bool = False
     status: str = "sent"  # sent | failed | skipped | received
     error: str | None = None
     provider_ref: str | None = None
@@ -224,7 +227,20 @@ class WhatsAppAccount(BaseModel):
 class AgentTurn(BaseModel):
     reply: str
     handoff: bool = False  # human needed: pause AI, mark thread waiting, notify team
+    department: str | None = None
     ticket: TicketIntake | None = None
+
+
+def _departments_section(cfg: AssistantConfig) -> str:
+    depts = cfg.transfer.departments()
+    if not cfg.transfer.enabled or not depts:
+        return "There are no departments to transfer to; a handoff goes to the general team."
+    now = datetime.now(UTC)
+    lines = []
+    for d in depts:
+        open_now = bool(cfg.transfer.candidates(d, now))
+        lines.append(f"- {d} ({'available now' if open_now else 'closed now - callback'})")
+    return "Departments a human handoff can go to:\n" + "\n".join(lines)
 
 
 class TextAgent(Protocol):
@@ -314,6 +330,18 @@ class RuleTextAgent:
         )
 
 
+def _handoff_ticket(thread: Thread) -> TicketIntake:
+    return TicketIntake(
+        caller_number=thread.identity if thread.channel != Channel.WEBCHAT else None,
+        caller_name=thread.contact_name,
+        reason=f"{thread.channel} customer asked for a person and nobody picked up: "
+        f"{thread.last_preview}",
+        category=thread.handoff_department or "callback",
+        priority=TicketPriority.HIGH,
+        source="ai_intake",
+    )
+
+
 def _message_ticket(thread: Thread, text: str, category: str | None) -> TicketIntake:
     return TicketIntake(
         caller_number=thread.identity if thread.channel != Channel.WEBCHAT else None,
@@ -359,6 +387,9 @@ class OpenAITextAgent:
     async def respond(
         self, cfg: AssistantConfig, thread: Thread, history: list[InboxMessage]
     ) -> AgentTurn:
+        already_handed_off = any(
+            m.direction == Direction.OUT and m.author == Author.AI and m.handoff for m in history
+        )
         system = "\n".join(
             [
                 cfg.rendered_instructions(),
@@ -366,10 +397,24 @@ class OpenAITextAgent:
                 f"{cfg.business_name}. Keep replies short (1-3 sentences), plain text, "
                 "no markdown.",
                 *cfg.knowledge_sections(),
+                _departments_section(cfg),
                 'Return JSON: {"reply": <text to send>, "handoff": <true if a human must take '
-                'over>, "ticket": null | {"reason": <what the customer needs>, "category": '
-                '<string|null>, "priority": "low"|"normal"|"high"|"urgent"}}. Raise a ticket '
-                "whenever you cannot fully resolve the request yourself. Never invent facts.",
+                'over>, "department": <department name or null>, "ticket": null | '
+                '{"reason": <what the customer needs>, "category": <string|null>, '
+                '"priority": "low"|"normal"|"high"|"urgent"}}.',
+                "Handoff policy: if the customer asks for a person, a human, a manager, or to be "
+                "transferred, set handoff=true, choose the department that matches their topic "
+                "(e.g. invoices/payments -> accounts) and tell them you are connecting them to "
+                "that team. Once you have offered a handoff, keep handoff=true on every later "
+                "turn - do not switch to raising a ticket instead; a callback ticket is raised "
+                "automatically if nobody picks up. Only set a ticket yourself when no handoff is "
+                "wanted and you cannot fully resolve the request. Never invent facts.",
+                (
+                    "A handoff to a human is already in progress on this conversation; "
+                    "acknowledge briefly, keep handoff=true and do not raise a ticket."
+                    if already_handed_off
+                    else ""
+                ),
             ]
         )
         msgs: list[dict[str, str]] = [{"role": "system", "content": system}]
@@ -392,7 +437,8 @@ class OpenAITextAgent:
             content = r.json()["choices"][0]["message"]["content"]
             raw = _LlmTurn.model_validate_json(content)
             ticket: TicketIntake | None = None
-            if raw.ticket is not None:
+            handoff = raw.handoff or already_handed_off
+            if raw.ticket is not None and not handoff:
                 ticket = TicketIntake(
                     caller_number=thread.identity if thread.channel != Channel.WEBCHAT else None,
                     caller_name=thread.contact_name,
@@ -401,7 +447,12 @@ class OpenAITextAgent:
                     priority=raw.ticket.priority,
                     source="ai_intake",
                 )
-            return AgentTurn(reply=raw.reply.strip(), handoff=raw.handoff, ticket=ticket)
+            return AgentTurn(
+                reply=raw.reply.strip(),
+                handoff=handoff,
+                department=raw.department,
+                ticket=ticket,
+            )
         except Exception:
             log.warning("LLM text reply failed for %s; using rules", thread.id, exc_info=True)
             return await self._fallback.respond(cfg, thread, history)
@@ -416,6 +467,7 @@ class _LlmTicket(BaseModel):
 class _LlmTurn(BaseModel):
     reply: str
     handoff: bool = False
+    department: str | None = None
     ticket: _LlmTicket | None = None
 
 
@@ -774,8 +826,12 @@ class InboxService:
             except Exception:
                 log.warning("inbox ticket creation failed for %s", t.id, exc_info=True)
         if turn.handoff:
+            reply.handoff = True
+            await self.store.put_doc(reply.to_doc())
             t.ai_enabled = False
             t.status = ThreadStatus.WAITING
+            t.handoff_department = turn.department
+            t.callback_ticket_id = reply.ticket_id
             t.sla_due_at = datetime.now(UTC) + self.sla
             await self.store.put_doc(t.to_doc())
             self._publish("inbox.thread", t)
@@ -955,6 +1011,17 @@ class InboxService:
                 continue
             if t.sla_due_at <= now:
                 t.sla_breached = True
+                if (
+                    t.status == ThreadStatus.WAITING
+                    and not t.ai_enabled
+                    and t.callback_ticket_id is None
+                    and self.on_ticket is not None
+                ):
+                    try:
+                        ticket = await self.on_ticket(t.tenant_id, t.company_id, _handoff_ticket(t))
+                        t.callback_ticket_id = ticket.id
+                    except Exception:
+                        log.warning("handoff callback ticket failed for %s", t.id, exc_info=True)
                 await self.store.put_doc(t.to_doc())
                 self._publish("inbox.thread", t)
                 await self._notify(

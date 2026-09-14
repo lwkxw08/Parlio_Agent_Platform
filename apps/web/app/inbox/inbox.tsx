@@ -258,7 +258,8 @@ export default function Inbox(p: Props) {
                       <span className="pill">{CHANNEL_LABEL[t.channel]}</span>
                       <span className={`pill ${STATUS_PILL[t.status]}`}>{t.status}</span>
                       {t.unread > 0 && <span className="pill accent">{t.unread} new</span>}
-                      {!t.ai_enabled && <span className="pill warn">human</span>}
+                      {!t.ai_enabled && <span className="pill warn">{t.handoff_department ? `for ${t.handoff_department}` : "human"}</span>}
+                      {t.callback_ticket_id && <span className="pill">callback ticket</span>}
                       {sla && <span className={`pill ${sla.cls}`}>{sla.text}</span>}
                       {t.assigned_to && <span className="muted">→ {t.assigned_to === p.me ? "you" : t.assigned_to.split("@")[0]}</span>}
                     </span>

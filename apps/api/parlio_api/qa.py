@@ -906,6 +906,7 @@ class SimulationService:
                     direction=Direction.OUT,
                     author=Author.AI,
                     text=turn.reply,
+                    handoff=turn.handoff,
                 )
             )
             transcript.append({"role": "assistant", "text": turn.reply})
