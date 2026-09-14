@@ -11,6 +11,7 @@ from typing import Any
 
 import httpx
 import pytest
+from fastapi import FastAPI
 from httpx import AsyncClient
 
 from parlio_api import qa as qa_mod
@@ -18,6 +19,7 @@ from parlio_api.auth import DEV_TENANT
 from parlio_api.calendar import BOOKING_KIND, Booking
 from parlio_api.inbox import AgentTurn, Thread
 from parlio_api.notifications import NotificationEvent, NotifyEvent
+from parlio_api.postcall import PostCallProcessor
 from parlio_api.qa import (
     Expectation,
     HeuristicScorer,
@@ -214,7 +216,7 @@ def test_unanswered_extraction_and_clustering() -> None:
     assert set(ids) == {"c1", "c2", "c3"} and len(examples) == 3 and "gas" in rep.lower()
 
 
-async def test_insights_rebuild_apply_and_persist(client: AsyncClient) -> None:
+async def test_insights_rebuild_apply_and_persist(client: AsyncClient, app: FastAPI) -> None:
     for i in range(3):
         cid = f"qa-{i}"
         for e in [
@@ -228,6 +230,8 @@ async def test_insights_rebuild_apply_and_persist(client: AsyncClient) -> None:
         ]:
             r = await client.post("/v1/worker/events", json=e, headers=HEADERS)
             assert r.status_code in (200, 202), r.text
+    proc: PostCallProcessor = app.state.postcall
+    await proc.drain()
     r = await client.get("/v1/quality/overview", params=Q)
     assert r.status_code == 200, r.text
     assert r.json()["stats"]["scored"] == 3
