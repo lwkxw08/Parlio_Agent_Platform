@@ -324,7 +324,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     store, engine = await build_store(settings, redis)
     app.state.store = store
     if settings.seed_demo_assistant:
-        await store.upsert_assistant(DEMO_CONFIG, [settings.demo_number])
+        existing = await store.get_assistant(DEMO_CONFIG.assistant_id)
+        if existing is None or not existing.business.description:
+            await store.upsert_assistant(DEMO_CONFIG.model_copy(deep=True), [settings.demo_number])
 
     vault = LocalVault(settings.vault_key)
     app.state.security = SecurityService(store, vault, settings.vault_key)

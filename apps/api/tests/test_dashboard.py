@@ -166,6 +166,7 @@ async def test_assistant_versions_and_rollback(client: AsyncClient) -> None:
     r = await client.get("/v1/assistants/demo/versions")
     assert [v["version"] for v in r.json()] == [1]
     cfg = AssistantConfig.model_validate((await client.get("/v1/assistants")).json()[0])
+    n_rules, n_faqs = len(cfg.rules), len(cfg.faqs)
     cfg.greeting = "Hello from v2"
     cfg.rules.append(BusinessRule(name="No prices", instruction="Never quote prices."))
     cfg.faqs.append(Faq(question="Parking?", answer="Free parking on site."))
@@ -176,7 +177,7 @@ async def test_assistant_versions_and_rollback(client: AsyncClient) -> None:
     versions = (await client.get("/v1/assistants/demo/versions")).json()
     assert [v["version"] for v in versions] == [2, 1]  # newest first
     assert versions[0]["greeting"] == "Hello from v2"
-    assert versions[0]["rule_count"] == 1 and versions[0]["faq_count"] == 1
+    assert versions[0]["rule_count"] == n_rules + 1 and versions[0]["faq_count"] == n_faqs + 1
     live = (await client.get("/v1/assistants")).json()[0]
     assert live["assistant_version"] == 2 and live["blocked_numbers"] == ["+447700900999"]
     assert "Never quote prices" in AssistantConfig.model_validate(live).rendered_instructions()
@@ -185,7 +186,7 @@ async def test_assistant_versions_and_rollback(client: AsyncClient) -> None:
     assert r.status_code == 200
     live = (await client.get("/v1/assistants")).json()[0]
     assert live["assistant_version"] == 3
-    assert live["greeting"] != "Hello from v2" and live["rules"] == []
+    assert live["greeting"] != "Hello from v2" and len(live["rules"]) == n_rules
     versions = (await client.get("/v1/assistants/demo/versions")).json()
     assert [v["version"] for v in versions] == [3, 2, 1]
     assert (await client.get("/v1/assistants/demo/versions/9")).status_code == 404
@@ -385,3 +386,50 @@ async def test_analytics_query_and_ask_ai(client: AsyncClient, app: FastAPI) -> 
     assert r.json()["compare"] is None
 
     assert (await client.post("/v1/analytics/query", json={})).status_code == 422
+
+
+async def test_create_assistant_plan_limit_clone_and_isolation(client: AsyncClient) -> None:
+    from parlio_voice.config_client import DEMO_CONFIG
+
+    assert DEMO_CONFIG.business.services and len(DEMO_CONFIG.faqs) >= 6
+    assert set(DEMO_CONFIG.hours.hours) == {"mon", "tue", "wed", "thu", "fri", "sat"}
+    assert {d.department for d in DEMO_CONFIG.transfer.destinations} >= {"general", "emergencies"}
+
+    # default tenant is on Starter (1 assistant) -> blocked with an upgrade message
+    r = await client.post("/v1/assistants", json={"name": "Aria", "business_name": "Demo Sales"})
+    assert r.status_code == 403 and "upgrade" in r.json()["detail"]
+
+    r = await client.post(
+        "/v1/billing/subscription", params={"tenant_id": DEV_TENANT}, json={"plan_id": "growth"}
+    )
+    assert r.status_code == 200, r.text
+
+    r = await client.post(
+        "/v1/assistants",
+        json={"name": "Aria", "business_name": "Demo Sales", "copy_from": "demo"},
+    )
+    assert r.status_code == 201, r.text
+    created = r.json()
+    assert created["assistant_id"] != "demo" and created["tenant_id"] == DEV_TENANT
+    assert created["assistant_version"] == 1 and created["name"] == "Aria"
+    assert created["business"]["services"] == DEMO_CONFIG.business.services  # cloned
+    ids = {a["assistant_id"] for a in (await client.get("/v1/assistants")).json()}
+    assert created["assistant_id"] in ids
+
+    # viewers cannot create; strangers cannot target the tenant
+    await client.post(
+        f"/v1/organisations/{DEV_TENANT}/members",
+        json={"email": "viewer@example.com", "role": "viewer"},
+    )
+    r = await client.post(
+        "/v1/assistants",
+        json={"name": "X", "business_name": "Y"},
+        headers={"X-Parlio-User": "viewer@example.com"},
+    )
+    assert r.status_code == 403
+    r = await client.post(
+        "/v1/assistants",
+        json={"name": "X", "business_name": "Y", "tenant_id": DEV_TENANT},
+        headers={"X-Parlio-User": "stranger@example.com"},
+    )
+    assert r.status_code == 403
