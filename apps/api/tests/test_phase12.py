@@ -358,9 +358,12 @@ async def test_verification_flow_redacted(
 
     # raw answers are nowhere: not in stored docs, not in logs, not in the identity response
     store = app.state.store
+    # random hex (ids, salt, hmac digests) and timestamps can coincidentally contain the digit
+    # runs below, so only the human-readable fields are scanned for leaked raw answers
+    opaque = {"id", "created_at", "updated_at", "call_id", "contact_id", "salt", "hashes"}
     blob = json.dumps(
         [
-            d.model_dump(mode="json")
+            {key: v for key, v in d.data.items() if key not in opaque}
             for k in ("contact_identity", "verification_attempt")
             for d in await store.list_docs(k, DEV_TENANT, 1000)
         ],
