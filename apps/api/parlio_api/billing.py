@@ -102,6 +102,8 @@ class Plan(BaseModel):
     features: list[str] = Field(default_factory=list)
     entitlements: list[str] = Field(default_factory=list)
     enterprise: bool = False
+    # Free-trial length for new tenants on this plan; ``None`` uses the platform default.
+    trial_days: int | None = Field(default=None, ge=0, le=365)
     # Channel bundle (Phase 11b): web chat / WhatsApp inbound messages; browser-voice minutes
     # draw from ``included_minutes`` like phone calls (no telephony cost -> higher margin).
     included_chat_messages: int = 500
@@ -657,6 +659,12 @@ class BillingService:
         self.sip_uri = sip_uri
         self.trial_days = trial_days
 
+    def trial_days_for(self, plan_id: str) -> int:
+        plan = PLAN_BY_ID.get(plan_id)
+        if plan is not None and plan.trial_days is not None:
+            return plan.trial_days
+        return self.trial_days
+
     # subscriptions
     async def subscription(self, tenant_id: str) -> Subscription:
         doc = await self.store.get_doc(self.KIND, tenant_id)
@@ -667,13 +675,15 @@ class BillingService:
             return sub
         now = datetime.now(UTC)
         start, end = _period(now)
-        trial_end = now + timedelta(days=self.trial_days)
+        days = self.trial_days_for("starter")
+        trial_end = now + timedelta(days=days)
         sub = Subscription(
             tenant_id=tenant_id,
             period_start=start,
             period_end=max(end, trial_end),
             provider=self.provider.name,
-            trial_ends_at=trial_end,
+            status=SubscriptionStatus.TRIALING if days > 0 else SubscriptionStatus.ACTIVE,
+            trial_ends_at=trial_end if days > 0 else None,
         )
         await self._save(sub)
         return sub
@@ -769,6 +779,15 @@ class BillingService:
             )
         sub = await self.subscription(tenant_id)
         upd: dict[str, Any] = {"plan_id": plan_id}
+        if sub.status == SubscriptionStatus.TRIALING and sub.plan_id != plan_id:
+            days = self.trial_days_for(plan_id)
+            trial_end = sub.created_at + timedelta(days=days)
+            if days <= 0 or trial_end <= datetime.now(UTC):
+                upd["status"] = SubscriptionStatus.ACTIVE
+                upd["trial_ends_at"] = None
+            else:
+                upd["trial_ends_at"] = trial_end
+                upd["period_end"] = max(sub.period_end, trial_end)
         if coupon_code is not None:
             c = self.coupon(coupon_code, plan_id)
             if c is None:

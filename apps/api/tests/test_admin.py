@@ -410,3 +410,49 @@ async def test_plan_entitlements_gate_features(client: AsyncClient, app: FastAPI
         await client.put("/v1/admin/plans/starter", json=starter, headers=OWNER)
         await billing.set_status(DEV_TENANT, SubscriptionStatus.TRIALING)
     assert "outbound" not in PLAN_BY_ID["starter"].entitlements
+
+
+async def test_plan_trial_days(client: AsyncClient, app: FastAPI) -> None:
+    from datetime import timedelta
+
+    billing: BillingService = app.state.billing
+    d = (await client.get("/v1/admin/plans/defaults", headers=OWNER)).json()
+    assert d["trial_days"] == billing.trial_days
+    plans = (await client.get("/v1/admin/plans", headers=OWNER)).json()
+    starter = next(p for p in plans if p["id"] == "starter")
+    growth = next(p for p in plans if p["id"] == "growth")
+    assert starter["trial_days"] is None  # falls back to the platform default
+    assert billing.trial_days_for("starter") == billing.trial_days
+    try:
+        r = await client.put(
+            "/v1/admin/plans/starter", json={**starter, "trial_days": 400}, headers=OWNER
+        )
+        assert r.status_code == 422
+        r = await client.put(
+            "/v1/admin/plans/starter", json={**starter, "trial_days": 30}, headers=OWNER
+        )
+        assert r.status_code == 200 and r.json()["trial_days"] == 30
+        assert billing.trial_days_for("starter") == 30
+        r = await client.put(
+            "/v1/admin/plans/growth", json={**growth, "trial_days": 0}, headers=OWNER
+        )
+        assert r.status_code == 200
+        # new tenants get the starter plan's trial length
+        sub = await billing.subscription("trial-tenant")
+        assert sub.status == SubscriptionStatus.TRIALING and sub.trial_ends_at is not None
+        assert abs((sub.trial_ends_at - sub.created_at) - timedelta(days=30)) < timedelta(minutes=1)
+        # switching to a plan with no trial during the trial ends it
+        sub = await billing.change_plan("trial-tenant", "growth")
+        assert sub.status == SubscriptionStatus.ACTIVE and sub.trial_ends_at is None
+        # onboarding recommendation reflects the plan's trial length
+        r = await client.post("/v1/onboarding/recommend", json={"monthly_calls": "50-200"})
+        assert r.status_code == 200
+        rec = r.json()
+        plan = PLAN_BY_ID[rec["plan_id"]]
+        assert rec["trial_days"] == (
+            plan.trial_days if plan.trial_days is not None else billing.trial_days
+        )
+    finally:
+        await client.put("/v1/admin/plans/starter", json=starter, headers=OWNER)
+        await client.put("/v1/admin/plans/growth", json=growth, headers=OWNER)
+    assert PLAN_BY_ID["starter"].trial_days is None
