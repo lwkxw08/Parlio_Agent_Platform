@@ -43,6 +43,51 @@ def is_browser_call(call: CallRecord) -> bool:
 # -- catalogue --------------------------------------------------------------------------------
 
 
+FLAGS_KIND = "feature_flags"
+
+# Functional entitlements a plan can switch on; enforced via ``BillingService.entitled`` and the
+# ``require_feature`` route dependency. Per-tenant feature flags (admin console) override these.
+ENTITLEMENTS: dict[str, str] = {
+    "calendar_booking": "Calendar booking (Google / Microsoft / booking links)",
+    "warm_transfers": "Warm (announced) transfers",
+    "departments": "Departments & on-call routing",
+    "ask_ai": "Analytics Ask AI natural-language queries",
+    "languages": "Additional languages beyond English",
+    "sms_scenarios": "SMS follow-ups & scenarios",
+    "whatsapp": "WhatsApp channel in the Inbox",
+    "browser_voice": "Click-to-talk browser voice",
+    "outbound": "Outbound dialer & speed-to-lead",
+    "live_takeover": "Live listen / whisper / take over",
+    "approvals": "Human-in-the-loop approvals",
+    "payments": "Mid-call payment links",
+    "connectors": "CRM / Zapier / webhook connectors",
+    "byo_sip": "BYO SIP trunk / PBX",
+    "qa_insights": "QA scoring & insight engine",
+    "simulation": "Simulation sandbox & prompt A/B",
+    "value_reports": "Lead scoring & value attribution",
+    "white_label": "White-label branding & agency accounts",
+    "sso": "SSO / SCIM",
+    "priority_support": "Priority support (P1 24x7)",
+    "sovereign_uk": "UK-sovereign deployment",
+}
+_ENT_STARTER = ["sms_scenarios", "browser_voice", "approvals", "qa_insights"]
+_ENT_GROWTH = [
+    *_ENT_STARTER,
+    "calendar_booking",
+    "warm_transfers",
+    "departments",
+    "ask_ai",
+    "languages",
+    "whatsapp",
+    "live_takeover",
+    "connectors",
+    "value_reports",
+    "priority_support",
+]
+_ENT_SCALE = [*_ENT_GROWTH, "outbound", "payments", "byo_sip", "simulation", "white_label"]
+_ENT_ENTERPRISE = list(ENTITLEMENTS)
+
+
 class Plan(BaseModel):
     id: str
     name: str
@@ -55,6 +100,7 @@ class Plan(BaseModel):
     max_assistants: int
     max_concurrent_calls: int
     features: list[str] = Field(default_factory=list)
+    entitlements: list[str] = Field(default_factory=list)
     enterprise: bool = False
     # Channel bundle (Phase 11b): web chat / WhatsApp inbound messages; browser-voice minutes
     # draw from ``included_minutes`` like phone calls (no telephony cost -> higher margin).
@@ -84,6 +130,7 @@ PLANS: list[Plan] = [
             "Web chat + browser voice",
         ],
         included_chat_messages=300,
+        entitlements=_ENT_STARTER,
     ),
     Plan(
         id="growth",
@@ -97,6 +144,7 @@ PLANS: list[Plan] = [
         max_assistants=3,
         max_concurrent_calls=5,
         features=["3 assistants", "Calendar booking", "Warm transfers", "Analytics Ask AI"],
+        entitlements=_ENT_GROWTH,
         included_chat_messages=1500,
         channels=["phone", "sms", "webchat", "browser_voice", "whatsapp"],
     ),
@@ -112,6 +160,7 @@ PLANS: list[Plan] = [
         max_assistants=10,
         max_concurrent_calls=15,
         features=["10 assistants", "BYO SIP / PBX", "Slack & webhooks", "Priority support"],
+        entitlements=_ENT_SCALE,
         included_chat_messages=5000,
         chat_overage_pence=1,
         channels=["phone", "sms", "webchat", "browser_voice", "whatsapp"],
@@ -128,6 +177,7 @@ PLANS: list[Plan] = [
         max_assistants=100,
         max_concurrent_calls=100,
         features=["UK-sovereign deployment", "SSO", "Custom SLAs", "Dedicated capacity"],
+        entitlements=_ENT_ENTERPRISE,
         enterprise=True,
         included_chat_messages=0,
         chat_overage_pence=1,
@@ -627,6 +677,26 @@ class BillingService:
         )
         await self._save(sub)
         return sub
+
+    async def entitlements(self, tenant_id: str) -> dict[str, bool]:
+        """Plan entitlements with per-tenant feature-flag overrides (flag true/false wins).
+
+        Trials unlock every entitlement so prospects can evaluate the whole product; the plan's
+        own set applies once the subscription converts.
+        """
+        sub = await self.subscription(tenant_id)
+        trial = sub.status == SubscriptionStatus.TRIALING
+        out = {k: trial or k in sub.plan.entitlements for k in ENTITLEMENTS}
+        doc = await self.store.get_doc(FLAGS_KIND, tenant_id)
+        if doc is not None:
+            flags = doc.data.get("flags", {})
+            for k, v in flags.items():
+                if k in out and isinstance(v, bool):
+                    out[k] = v
+        return out
+
+    async def entitled(self, tenant_id: str, key: str) -> bool:
+        return (await self.entitlements(tenant_id)).get(key, False)
 
     async def all_subscriptions(self) -> list[Subscription]:
         docs = await self.store.list_docs(self.KIND, None, limit=100000)

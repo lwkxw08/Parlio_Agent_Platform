@@ -480,8 +480,9 @@ export type ProviderGuide = { id: string; name: string; mode: TrunkMode; summary
 export type Plan = {
   id: string; name: string; monthly_pence: number; included_minutes: number; overage_pence_per_minute: number;
   included_numbers: number; included_sms: number; sms_overage_pence: number; max_assistants: number; max_concurrent_calls: number;
-  features: string[]; enterprise: boolean;
+  features: string[]; entitlements: string[]; enterprise: boolean;
 };
+export type Entitlements = { catalogue: Record<string, string>; enabled: Record<string, boolean> };
 export type SubscriptionStatus = "trialing" | "active" | "past_due" | "paused" | "suspended" | "cancelled";
 export type Subscription = {
   tenant_id: string; plan_id: string; status: SubscriptionStatus; period_start: string; period_end: string; trial_ends_at?: string | null;
@@ -888,11 +889,11 @@ export type PlatformStatus = {
 };
 export type PublicStatus = { level: string; title: string; message: string; link: string | null; active: boolean };
 export type ViewAsGrant = { token: string; tenant_id: string; staff_email: string; expires_at: string; read_only: boolean };
-export type TenantHealth = "healthy" | "watch" | "at_risk" | "inactive";
+export type TenantHealthGrade = "healthy" | "watch" | "at_risk" | "inactive";
 export type TenantSummary = {
   tenant_id: string; name: string; created_at: string; plan_id: string; plan_name: string; status: SubscriptionStatus; trial_ends_at: string | null;
   assistants: number; members: number; numbers: number; calls_period: number; minutes_period: number; minutes_included: number;
-  estimated_total_pence: number; credit_balance_pence: number; last_call_at: string | null; flags: string[]; health: TenantHealth;
+  estimated_total_pence: number; credit_balance_pence: number; last_call_at: string | null; flags: string[]; health: TenantHealthGrade;
 };
 export type AssistantBrief = { id: string; name: string; business_name: string; version: number | null; updated_at: string | null };
 export type TenantDetail = {
@@ -928,6 +929,8 @@ export const fetchAdminTenants = (params: { q?: string; sub_status?: string; pla
 export const fetchAdminTenant = (tenant_id: string) => request<TenantDetail>(`/v1/admin/tenants/${tenant_id}`);
 export const fetchFeatureFlagCatalogue = () => get<Record<string, string>>("/v1/admin/feature-flags");
 export const fetchAdminPlans = () => get<Plan[]>("/v1/admin/plans");
+export const fetchEntitlementCatalogue = () => get<Record<string, string>>("/v1/admin/entitlements");
+export const fetchEntitlements = (tenantId: string) => get<Entitlements>(`/v1/billing/entitlements?tenant_id=${encodeURIComponent(tenantId)}`);
 export const fetchAdminCoupons = () => get<Coupon[]>("/v1/admin/coupons");
 export const fetchStaff = () => get<Member[]>("/v1/admin/staff");
 export const fetchStaffSettings = () => get<StaffSettings>("/v1/admin/staff/settings");
@@ -942,3 +945,81 @@ export async function fetchAdminCsv(what: "tenants" | "analytics", days = 30): P
     return null;
   }
 }
+
+// -- Phase 17/18: ops health, status page, support desk -----------------------------------------
+export type HealthSignal = { key: string; label: string; value: number | null; unit: string; ok: boolean; weight: number; detail: string };
+export type TenantHealth = {
+  tenant_id: string; name: string; score: number; grade: "healthy" | "watch" | "at_risk" | "critical" | "inactive";
+  signals: HealthSignal[]; open_alerts: number; calls_period: number; days: number; computed_at: string;
+};
+export type OpsAlert = {
+  id: string; tenant_id: string; kind: string; severity: "info" | "warning" | "critical"; title: string; detail: string;
+  evidence: Record<string, unknown>; opened_at: string; resolved_at: string | null; acknowledged_by: string | null; acknowledged_at: string | null; paged: boolean;
+};
+export type SyntheticRun = {
+  id: string; tenant_id: string; assistant_id: string; trigger: string; mode: string; passed: boolean;
+  checks: { path: string; passed: boolean; detail: string }[]; ticket_id: string | null; duration_ms: number; created_at: string;
+};
+export type ForwardingHealth = {
+  tenant_id: string; status: "ok" | "no_baseline" | "quiet" | "forwarding_may_be_off" | "outside_hours";
+  expected_calls_per_open_hour: number; hours_since_last_inbound: number | null; open_now: boolean; detail: string; guide_id: string;
+};
+export type TrunkHealth = {
+  trunk_id: string; name: string; mode: string; status: string; registration: string; registration_detail: string | null;
+  options_ping_ok: boolean | null; options_rtt_ms: number | null; invites: number; invite_failures: number; auth_failures: number; invite_failure_pct: number | null;
+  audio: { calls: number; mos_avg: number | null; jitter_ms_avg: number | null; packet_loss_pct_avg: number | null; one_way_audio: number; codec_mismatch: number; dtmf_mismatch: number };
+  healthy: boolean; issues: string[]; remediation: string[];
+};
+export type FaultReport = {
+  id: string; tenant_id: string; subject: string; attribution: "parlio" | "carrier" | "customer_provider" | "customer_config" | "unknown"; confidence: number;
+  headline: string; explanation: string; next_steps: string[]; evidence: Record<string, unknown>; provider_report: string; created_at: string;
+};
+export type HealthView = { health: TenantHealth; forwarding: ForwardingHealth; trunks: TrunkHealth[]; alerts: OpsAlert[]; synthetic: SyntheticRun[]; faults: FaultReport[] };
+export type ComponentState = "operational" | "degraded" | "partial_outage" | "major_outage" | "maintenance";
+export type ComponentStatus = { id: string; name: string; state: ComponentState; detail: string; source: string };
+export type IncidentUpdate = { at: string; status: "investigating" | "identified" | "monitoring" | "resolved"; message: string; by: string | null };
+export type Incident = {
+  id: string; title: string; severity: "p1" | "p2" | "p3"; components: string[]; impact: ComponentState; status: IncidentUpdate["status"];
+  updates: IncidentUpdate[]; started_at: string; resolved_at: string | null; rca_due_at: string | null; rca: string | null; created_by: string | null;
+};
+export type StatusPage = { overall: ComponentState; components: ComponentStatus[]; incidents: Incident[]; uptime_30d_pct: number; generated_at: string };
+export type OnCallConfig = { provider: "none" | "pagerduty" | "opsgenie" | "webhook"; routing_key: string | null; webhook_url: string | null; page_on: string[]; rota: string[]; updated_by: string | null; updated_at: string };
+export type FailoverState = { primary_carrier: string; secondary_carrier: string; active: string; auto: boolean; region: string; last_switch_at: string | null; reason: string | null; updated_by: string | null };
+export type OpsOverview = {
+  board: TenantHealth[]; alerts: Record<string, number>; open_alerts: OpsAlert[]; status: StatusPage; oncall: OnCallConfig; failover: FailoverState;
+  canary_ok: boolean; canary_reasons: string[]; open_tickets: number; breached_tickets: number;
+};
+export type SupportPriority = "p1" | "p2" | "p3" | "p4";
+export type SupportStatus = "open" | "in_progress" | "waiting_customer" | "waiting_provider" | "resolved" | "closed";
+export type SupportEvent = { at: string; type: string; by: string; text: string; public: boolean };
+export type SupportTicket = {
+  id: string; tenant_id: string; requester: string; channel: string; subject: string; body: string; priority: SupportPriority; status: SupportStatus;
+  tags: string[]; assignee: string | null; sla_due_at: string | null; sla_breached: boolean; first_response_at: string | null; fault: FaultReport | null;
+  provider_email: string | null; provider_consent: boolean; provider_emailed_at: string | null; engineering_ref: string | null;
+  csat_score: number | null; csat_comment: string | null; events: SupportEvent[]; created_at: string; updated_at: string; resolved_at: string | null;
+};
+export type KbArticle = { id: string; title: string; body: string; tags: string[]; url: string | null };
+export type TagReview = {
+  days: number; tickets: number; resolved: number; csat_avg: number | null; csat_responses: number; sla_breaches: number; median_first_response_min: number | null;
+  by_tag: Record<string, number>; by_priority: Record<string, number>; by_channel: Record<string, number>;
+};
+
+export const fetchHealthView = (tenant_id: string) => get<HealthView>(`/v1/health/overview${qs({ tenant_id })}`);
+export const runSynthetic = (tenant_id: string) => request<SyntheticRun>(`/v1/health/synthetic${qs({ tenant_id })}`, { method: "POST" });
+export const diagnoseCall = (tenant_id: string, call_id: string) => request<FaultReport>(`/v1/health/calls/${call_id}/diagnose${qs({ tenant_id })}`, { method: "POST" });
+export const diagnoseTrunk = (tenant_id: string, trunk_id: string) => request<FaultReport>(`/v1/health/trunks/${trunk_id}/diagnose${qs({ tenant_id })}`, { method: "POST" });
+export const diagnoseForwarding = (tenant_id: string) => request<FaultReport>(`/v1/health/forwarding/diagnose${qs({ tenant_id })}`, { method: "POST" });
+export const fetchSupportTickets = (tenant_id: string) => get<SupportTicket[]>(`/v1/support/tickets${qs({ tenant_id })}`);
+export const openSupportTicket = (tenant_id: string, body: { subject: string; body: string; priority: SupportPriority }) =>
+  request<SupportTicket>(`/v1/support/tickets${qs({ tenant_id })}`, { method: "POST", body: JSON.stringify(body) });
+export const replySupportTicket = (tenant_id: string, id: string, text: string) =>
+  request<SupportTicket>(`/v1/support/tickets/${id}/reply${qs({ tenant_id })}`, { method: "POST", body: JSON.stringify({ text }) });
+export const rateSupportTicket = (tenant_id: string, id: string, score: number, comment?: string) =>
+  request<SupportTicket>(`/v1/support/tickets/${id}/csat${qs({ tenant_id })}`, { method: "POST", body: JSON.stringify({ score, comment }) });
+export const fetchKb = (tenant_id: string, q = "") => get<KbArticle[]>(`/v1/support/kb${qs({ tenant_id, q })}`);
+export const fetchPublicStatusPage = () => get<StatusPage>("/v1/public/status-page");
+export const fetchOpsOverview = () => get<OpsOverview>("/v1/admin/ops/overview");
+export const fetchOpsTenant = (tenant_id: string) => get<HealthView>(`/v1/admin/ops/tenants/${tenant_id}`);
+export const fetchIncidents = () => get<Incident[]>("/v1/admin/ops/incidents");
+export const fetchDeskTickets = (open_only = false) => get<SupportTicket[]>(`/v1/admin/ops/support/tickets${qs({ open_only: open_only ? "true" : undefined })}`);
+export const fetchTagReview = (days = 7) => get<TagReview>(`/v1/admin/ops/support/tag-review${qs({ days })}`);

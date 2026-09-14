@@ -15,6 +15,7 @@ from pydantic import BaseModel, Field
 
 from parlio_api.auth import UserDep
 from parlio_api.billing import (
+    ENTITLEMENTS,
     PLANS,
     CheckoutSession,
     Coupon,
@@ -83,6 +84,17 @@ async def list_plans() -> list[Plan]:
 async def get_subscription(user: UserDep, billing: BillingDep, tenant_id: str) -> Subscription:
     user.require_tenant(tenant_id)
     return await billing.subscription(tenant_id)
+
+
+class Entitlements(BaseModel):
+    catalogue: dict[str, str]
+    enabled: dict[str, bool]
+
+
+@router.get("/billing/entitlements", response_model=Entitlements)
+async def get_entitlements(user: UserDep, billing: BillingDep, tenant_id: str) -> Entitlements:
+    user.require_tenant(tenant_id)
+    return Entitlements(catalogue=ENTITLEMENTS, enabled=await billing.entitlements(tenant_id))
 
 
 class PlanChange(BaseModel):

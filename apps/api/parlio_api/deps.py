@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import secrets
+from collections.abc import Awaitable, Callable
 from typing import Annotated
 
 from fastapi import Depends, Header, HTTPException, Request, status
 
 from parlio_api.admin import AdminService
-from parlio_api.billing import BillingService
+from parlio_api.billing import ENTITLEMENTS, BillingService
 from parlio_api.browser_voice import BrowserVoiceService
 from parlio_api.calendar import CalendarService
 from parlio_api.compliance import ComplianceService
@@ -17,6 +18,7 @@ from parlio_api.live import ApprovalService, LiveCallHub, SupervisorService
 from parlio_api.messaging import MessageService
 from parlio_api.notifications import NotificationService
 from parlio_api.observability import AuditLog, Telemetry
+from parlio_api.ops import OpsService
 from parlio_api.outbound import OutboundService
 from parlio_api.payments import PaymentService
 from parlio_api.postcall import PostCallProcessor
@@ -25,6 +27,7 @@ from parlio_api.security import SecurityService
 from parlio_api.settings import Settings, get_settings
 from parlio_api.sip import SipService
 from parlio_api.store import CallStore
+from parlio_api.support import SupportDesk
 from parlio_api.tickets import TicketService
 from parlio_api.value import DigestService, ValueService
 from parlio_api.whitelabel import WhiteLabelService
@@ -76,6 +79,16 @@ def get_sip(request: Request) -> SipService:
 def get_hub(request: Request) -> IntegrationHub:
     hub: IntegrationHub = request.app.state.hub
     return hub
+
+
+def get_ops(request: Request) -> OpsService:
+    svc: OpsService = request.app.state.ops
+    return svc
+
+
+def get_support(request: Request) -> SupportDesk:
+    svc: SupportDesk = request.app.state.support
+    return svc
 
 
 def get_billing(request: Request) -> BillingService:
@@ -178,6 +191,23 @@ InboxDep = Annotated[InboxService, Depends(get_inbox)]
 BrowserVoiceDep = Annotated[BrowserVoiceService, Depends(get_browser_voice)]
 PaymentsDep = Annotated[PaymentService, Depends(get_payments)]
 BillingDep = Annotated[BillingService, Depends(get_billing)]
+OpsDep = Annotated[OpsService, Depends(get_ops)]
+SupportDep = Annotated[SupportDesk, Depends(get_support)]
+
+
+def require_feature(key: str) -> Callable[[str, BillingService], Awaitable[None]]:
+    """Route dependency: 403 unless the tenant's plan (or a flag override) includes ``key``."""
+
+    async def _dep(tenant_id: str, billing: BillingDep) -> None:
+        if not await billing.entitled(tenant_id, key):
+            raise HTTPException(
+                status.HTTP_403_FORBIDDEN,
+                f"'{ENTITLEMENTS.get(key, key)}' is not included in your plan",
+            )
+
+    return _dep
+
+
 TelemetryDep = Annotated[Telemetry, Depends(get_telemetry)]
 AuditDep = Annotated[AuditLog, Depends(get_audit)]
 ComplianceDep = Annotated[ComplianceService, Depends(get_compliance)]

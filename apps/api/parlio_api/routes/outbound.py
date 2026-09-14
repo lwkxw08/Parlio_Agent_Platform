@@ -17,7 +17,14 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, Field
 
 from parlio_api.auth import UserDep
-from parlio_api.deps import ApiKeyDep, AuditDep, OutboundDep, StoreDep, require_worker_key
+from parlio_api.deps import (
+    ApiKeyDep,
+    AuditDep,
+    OutboundDep,
+    StoreDep,
+    require_feature,
+    require_worker_key,
+)
 from parlio_api.observability import AuditEntry
 from parlio_api.outbound import (
     JURISDICTIONS,
@@ -142,7 +149,11 @@ async def list_leads(
     return await svc.leads(tenant_id, limit)
 
 
-@router.post("/leads", status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/leads",
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_feature("outbound"))],
+)
 async def create_lead(
     request: Request,
     user: UserDep,
@@ -182,7 +193,12 @@ async def list_calls(
     return [j for j in jobs if status_filter is None or j.status == status_filter]
 
 
-@router.post("/calls", response_model=OutboundCall, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/calls",
+    response_model=OutboundCall,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_feature("outbound"))],
+)
 async def schedule_call(
     request: Request,
     user: UserDep,

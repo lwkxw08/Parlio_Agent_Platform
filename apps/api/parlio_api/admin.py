@@ -26,6 +26,8 @@ from pydantic import BaseModel, Field
 
 from .billing import (
     COUPONS,
+    ENTITLEMENTS,
+    FLAGS_KIND,
     PLAN_BY_ID,
     PLANS,
     BillingService,
@@ -56,7 +58,6 @@ STAFF_ROLES: tuple[StaffRole, ...] = ("owner", "support", "finance", "readonly")
 
 PLAN_KIND = "plan_override"
 COUPON_KIND = "coupon"
-FLAGS_KIND = "feature_flags"
 NOTE_KIND = "support_note"
 STATUS_KIND = "platform_status"
 STAFF_SETTINGS_KIND = "staff_settings"
@@ -65,13 +66,8 @@ BUILTIN_PLANS: dict[str, Plan] = {p.id: p.model_copy(deep=True) for p in PLANS}
 BUILTIN_COUPONS: dict[str, Coupon] = {c.code: c.model_copy(deep=True) for c in COUPONS.values()}
 
 FEATURE_FLAGS: dict[str, str] = {
-    "browser_voice": "Click-to-talk on the chat widget",
-    "outbound": "Outbound dialer & speed-to-lead",
-    "live_takeover": "Live listen / whisper / take over",
-    "payments": "Mid-call payment links",
+    **ENTITLEMENTS,
     "voice_clone": "Voice cloning (consent-gated)",
-    "white_label": "White-label branding & agency accounts",
-    "sovereign_uk": "UK-region model providers (Phase 15)",
     "beta_insights": "Beta insight engine features",
 }
 
@@ -566,6 +562,10 @@ class AdminService:
         return list(PLANS)
 
     async def save_plan(self, plan: Plan) -> Plan:
+        unknown = sorted(set(plan.entitlements) - set(ENTITLEMENTS))
+        if unknown:
+            raise ValueError(f"unknown entitlement(s): {', '.join(unknown)}")
+        plan.entitlements = sorted(set(plan.entitlements))
         _apply_plan(plan)
         await self._put(PLAN_KIND, plan.id, PLATFORM_TENANT, plan)
         return plan

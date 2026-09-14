@@ -95,6 +95,13 @@ class Settings(BaseSettings):
     inbox_sla_minutes: int = 15
     inbox_sweep_interval_s: float = 60.0
 
+    # Phase 17/18 ops & support. Sweep computes health/alerts/SLA; 0 disables. Pager routes via
+    # the admin on-call config; Linear escalation is a seam (unset = log only).
+    ops_sweep_interval_s: float = 300.0
+    support_number: str | None = None  # E.164 support line answered by the support assistant
+    linear_api_key: str | None = None
+    linear_team_id: str | None = None
+
     # Phase 5b BYO SIP. "simulated" keeps trunks fully testable without a SIP edge.
     sip_provisioner: Literal["simulated", "livekit"] = "simulated"
     sip_domain: str = "sip.parlio.local"

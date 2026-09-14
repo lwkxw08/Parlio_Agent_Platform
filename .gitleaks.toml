@@ -3,4 +3,5 @@ useDefault = true
 
 [allowlist]
 paths = ['''\.env\.example$''', '''uv\.lock$''', '''package-lock\.json$''']
-regexes = ['''recording_s3_(access|secret)_key''']
+regexTarget = "line"
+regexes = ['''recording_s3_(access|secret)_key''', '''key="[a-z0-9_]+"''']

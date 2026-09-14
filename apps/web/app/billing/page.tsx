@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { fetchAssistants, fetchLatency, fetchMe, fetchNumbers, fetchPlans, fetchSubscription, fetchUsage } from "@/lib/api";
+import { fetchAssistants, fetchEntitlements, fetchLatency, fetchMe, fetchNumbers, fetchPlans, fetchSubscription, fetchUsage } from "@/lib/api";
 import Billing from "./billing";
 
 export const dynamic = "force-dynamic";
@@ -11,8 +11,8 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ t
   const active = me.data.memberships.filter((m) => m.status === "active");
   const tenant = sp.tenant ?? active[0]?.tenant_id;
   if (!tenant) return <><h1>Billing & usage</h1><p className="muted">No organisation yet — <Link href="/onboarding">set one up</Link>.</p></>;
-  const [plans, sub, usage, numbers, latency, assistants] = await Promise.all([
-    fetchPlans(), fetchSubscription(tenant), fetchUsage(tenant), fetchNumbers(tenant), fetchLatency(tenant, 7), fetchAssistants(tenant),
+  const [plans, sub, usage, numbers, latency, assistants, entitlements] = await Promise.all([
+    fetchPlans(), fetchSubscription(tenant), fetchUsage(tenant), fetchNumbers(tenant), fetchLatency(tenant, 7), fetchAssistants(tenant), fetchEntitlements(tenant),
   ]);
   const role = me.data.memberships.find((m) => m.tenant_id === tenant)?.role ?? "viewer";
   return (
@@ -32,6 +32,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ t
           initialTab={sp.tab ?? "usage"}
           plans={plans ?? []}
           subscription={sub}
+          entitlements={entitlements}
           usage={usage}
           numbers={numbers ?? []}
           latency={latency}
