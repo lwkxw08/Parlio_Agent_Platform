@@ -24,7 +24,7 @@ from fastapi import (
 )
 from pydantic import BaseModel, Field
 
-from parlio_api.auth import UserDep, current_user
+from parlio_api.auth import UserDep, resolve_user, with_mfa
 from parlio_api.deps import (
     ApprovalsDep,
     AuditDep,
@@ -42,6 +42,7 @@ from parlio_api.live import (
     LiveCallHub,
 )
 from parlio_api.observability import AuditEntry
+from parlio_api.security import SecurityService
 from parlio_api.settings import get_settings
 from parlio_api.store import CallStore
 
@@ -91,6 +92,7 @@ async def live_stream(
     tenant_id: str,
     token: str | None = None,
     user: str | None = None,
+    mfa: str | None = None,
 ) -> None:
     """Streams a snapshot then every call event / approval for the tenant.
 
@@ -100,12 +102,14 @@ async def live_stream(
     store: CallStore = ws.app.state.store
     live: LiveCallHub = ws.app.state.live
     try:
-        principal = await current_user(
+        principal = await resolve_user(
             store,
             get_settings(),
             authorization=f"Bearer {token}" if token else None,
             x_parlio_user=user,
         )
+        security: SecurityService = ws.app.state.security
+        principal = await with_mfa(principal, security, None, mfa)
         principal.require_tenant(tenant_id)
     except HTTPException as e:
         await ws.close(code=4401 if e.status_code == 401 else 4403, reason=str(e.detail))

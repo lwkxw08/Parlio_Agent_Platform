@@ -30,6 +30,7 @@ from parlio_api.notifications import (
 )
 from parlio_api.observability import Telemetry
 from parlio_api.outbound import OutboundService
+from parlio_api.qa import QAService
 from parlio_api.sip import SipService
 from parlio_api.store import CallRecord, CallStore, Ticket
 from parlio_voice.models import AssistantConfig, CallEvent, CallEventType
@@ -60,6 +61,7 @@ class IntegrationHub:
         self.outbound = outbound
         self.live = live
         self.inbox: InboxService | None = None
+        self.qa: QAService | None = None
 
     async def _business_name(self, tenant_id: str, assistant_id: str | None = None) -> str:
         cfg = await self.store.get_assistant(assistant_id) if assistant_id else None
@@ -125,6 +127,11 @@ class IntegrationHub:
                 )
             except Exception:
                 log.warning("connector sync failed for %s", call.call_id, exc_info=True)
+        if self.qa is not None and call.kind != "blocked":
+            try:
+                await self.qa.score_call(call)
+            except Exception:
+                log.warning("QA scoring failed for %s", call.call_id, exc_info=True)
         if self.compliance is not None:
             try:
                 await self.compliance.redact_call_on_close(call.tenant_id, call.call_id)

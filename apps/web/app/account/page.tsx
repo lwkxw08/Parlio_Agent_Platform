@@ -1,5 +1,6 @@
 import Link from "next/link";
-import { fetchMe } from "@/lib/api";
+import { fetchMe, fetchSessions, fetchTwoFactor } from "@/lib/api";
+import AccountSecurity from "./security";
 import SignOut from "./signout";
 
 export const dynamic = "force-dynamic";
@@ -10,6 +11,7 @@ export default async function Account() {
     return <p className="muted">{me.status === 401 ? <Link href="/login">Sign in</Link> : "API unreachable"}</p>;
   }
   const u = me.data;
+  const [twofa, sessions] = await Promise.all([fetchTwoFactor(), fetchSessions()]);
   return (
     <>
       <h1>Your account</h1>
@@ -39,12 +41,10 @@ export default async function Account() {
           </tbody>
         </table>
       </div>
+      <AccountSecurity status={twofa} sessions={sessions ?? []} />
       <div className="section">
-        <h2>Security</h2>
-        <p className="hint">
-          Passwords, Google sign-in and password resets are managed by the identity provider. Two-factor authentication
-          and session management arrive with the Supabase MFA rollout; sign out below to end this session on this device.
-        </p>
+        <h2>Sign-in</h2>
+        <p className="hint">Passwords, Google sign-in and password resets are managed by the identity provider. Sign out below to end this session on this device.</p>
         <SignOut mode={u.mode} />
       </div>
     </>
