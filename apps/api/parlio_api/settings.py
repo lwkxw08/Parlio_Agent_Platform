@@ -23,10 +23,19 @@ class Settings(BaseSettings):
     db_auto_migrate: bool = True  # dev/staging convenience; prod runs `alembic upgrade` in CD
     db_pool_size: int = 10
 
-    postcall_analyser: Literal["heuristic", "openai"] = "heuristic"
+    # "auto" = OpenAI whenever a key is configured, otherwise the offline heuristics.
+    postcall_analyser: Literal["auto", "heuristic", "openai"] = "auto"
     postcall_concurrency: int = 4
     openai_api_key: str | None = None
     openai_model: str = "gpt-4o-mini"
+
+    @property
+    def llm_key(self) -> str | None:
+        """OpenAI key to use for LLM features, or None when heuristics should be used."""
+        if self.postcall_analyser == "heuristic":
+            return None
+        return self.openai_api_key or None
+
     # TTS provider keys for Studio voice previews (the worker has its own copies).
     cartesia_api_key: str | None = None
     elevenlabs_api_key: str | None = None
