@@ -134,7 +134,7 @@ export default function Ops({ overview: initial, incidents: initialInc, canAct }
           <h2>Open alerts</h2>
           {o.open_alerts.length === 0 ? <p className="muted small">All clear.</p> : (
             <table>
-              <thead><tr><th>Severity</th><th>Tenant</th><th>Alert</th><th>Opened</th><th>Ack</th>{canAct && <th />}</tr></thead>
+              <thead><tr><th>Severity</th><th>Tenant</th><th>Alert</th><th>Opened</th><th>Acknowledged by</th>{canAct && <th />}</tr></thead>
               <tbody>
                 {o.open_alerts.map((a) => (
                   <tr key={a.id}>
@@ -144,7 +144,7 @@ export default function Ops({ overview: initial, incidents: initialInc, canAct }
                     <td className="small">{when(a.opened_at)}</td>
                     <td className="small">{a.acknowledged_by ?? "—"}</td>
                     {canAct && <td className="row">
-                      {!a.acknowledged_by && <button className="ghost" disabled={busy} onClick={() => act(`/v1/admin/ops/alerts/${a.id}/ack`)}>Ack</button>}
+                      {!a.acknowledged_by && <button className="ghost" disabled={busy} onClick={() => act(`/v1/admin/ops/alerts/${a.id}/ack`)}>Acknowledge</button>}
                       <button className="ghost" disabled={busy} onClick={() => act(`/v1/admin/ops/alerts/${a.id}/resolve`)}>Resolve</button>
                     </td>}
                   </tr>

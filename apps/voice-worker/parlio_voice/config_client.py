@@ -229,6 +229,12 @@ DEMO_CONFIG = AssistantConfig(
         ),
     ],
     transfer=TransferConfig(
+        department_notes={
+            "general": "anything else, new enquiries, general questions",
+            "bookings": "booking, moving or cancelling an appointment; engineer ETAs",
+            "accounts": "invoices, payments, quotes, refunds, statements",
+            "emergencies": "gas leaks, burst pipes, flooding, no heating or hot water",
+        },
         urgent_keywords=[
             "emergency",
             "burst",
