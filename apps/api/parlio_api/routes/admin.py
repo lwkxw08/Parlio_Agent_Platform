@@ -31,6 +31,7 @@ from parlio_api.admin import (
 )
 from parlio_api.auth import Principal, UserDep
 from parlio_api.billing import (
+    ENTITLEMENTS,
     Coupon,
     Credit,
     Invoice,
@@ -171,6 +172,11 @@ class FlagsUpdate(BaseModel):
 @router.get("/feature-flags", response_model=dict[str, str])
 async def feature_flag_catalogue(user: StaffDep) -> dict[str, str]:
     return FEATURE_FLAGS
+
+
+@router.get("/entitlements", response_model=dict[str, str])
+async def entitlement_catalogue(user: StaffDep) -> dict[str, str]:
+    return ENTITLEMENTS
 
 
 @router.put("/tenants/{tenant_id}/flags", response_model=FeatureFlags)
@@ -524,7 +530,10 @@ async def save_plan(
     user.require_staff("finance")
     if body.id != plan_id:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "plan id mismatch")
-    out = await admin.save_plan(body)
+    try:
+        out = await admin.save_plan(body)
+    except ValueError as e:
+        raise _fail(e) from e
     await _audit(
         audit,
         request,

@@ -10,7 +10,7 @@ from httpx import AsyncClient
 
 from parlio_api.admin import PLATFORM_TENANT, AdminService
 from parlio_api.auth import DEV_TENANT
-from parlio_api.billing import PLAN_BY_ID, BillingService
+from parlio_api.billing import PLAN_BY_ID, BillingService, SubscriptionStatus
 from parlio_api.observability import RateLimiter
 from parlio_api.store import Member
 
@@ -354,3 +354,59 @@ async def test_cross_tenant_analytics(client: AsyncClient, app: FastAPI) -> None
     assert len(a["demand"]["calls_by_hour"]) == 24
     csv = await client.get("/v1/admin/export/analytics.csv", params={"days": 7}, headers=OWNER)
     assert csv.status_code == 200 and csv.text.splitlines()[0].startswith("day,")
+
+
+async def test_plan_entitlements_gate_features(client: AsyncClient, app: FastAPI) -> None:
+    billing: BillingService = app.state.billing
+    plans = (await client.get("/v1/admin/plans", headers=OWNER)).json()
+    starter = next(p for p in plans if p["id"] == "starter")
+    assert "outbound" not in starter["entitlements"]
+    growth = next(p for p in plans if p["id"] == "growth")
+    assert {"calendar_booking", "warm_transfers", "ask_ai", "languages"} <= set(
+        growth["entitlements"]
+    )
+    # unknown keys are rejected
+    r = await client.put(
+        "/v1/admin/plans/starter",
+        json={**starter, "entitlements": ["teleport"]},
+        headers=OWNER,
+    )
+    assert r.status_code == 400 and "teleport" in r.text
+    # trials unlock everything; a converted starter tenant is gated
+    ent = (await client.get("/v1/billing/entitlements", params=Q)).json()
+    assert ent["enabled"]["outbound"] is True and "outbound" in ent["catalogue"]
+    await billing.set_status(DEV_TENANT, SubscriptionStatus.ACTIVE)
+    try:
+        ent = (await client.get("/v1/billing/entitlements", params=Q)).json()
+        assert ent["enabled"]["outbound"] is False and ent["enabled"]["browser_voice"] is True
+        r = await client.post(
+            "/v1/outbound/leads", params=Q, json={"phone": "+447700900123", "source": "web"}
+        )
+        assert r.status_code == 403 and "not included in your plan" in r.text
+        r = await client.post("/v1/connectors", params=Q, json={"provider": "hubspot"})
+        assert r.status_code == 403
+        # owner adds outbound to Starter -> unlocked
+        r = await client.put(
+            "/v1/admin/plans/starter",
+            json={**starter, "entitlements": [*starter["entitlements"], "outbound"]},
+            headers=OWNER,
+        )
+        assert r.status_code == 200 and "outbound" in r.json()["entitlements"]
+        assert await billing.entitled(DEV_TENANT, "outbound") is True
+        # per-tenant flag override switches it off again / turns on another
+        r = await client.put(
+            f"/v1/admin/tenants/{DEV_TENANT}/flags",
+            json={"flags": {"outbound": False, "simulation": True}},
+            headers=OWNER,
+        )
+        assert r.status_code == 200
+        ent = await billing.entitlements(DEV_TENANT)
+        assert ent["outbound"] is False and ent["simulation"] is True
+        # tenant users cannot edit plans
+        r = await client.put("/v1/admin/plans/starter", json=starter, headers=TENANT_USER)
+        assert r.status_code == 403
+    finally:
+        await client.put(f"/v1/admin/tenants/{DEV_TENANT}/flags", json={"flags": {}}, headers=OWNER)
+        await client.put("/v1/admin/plans/starter", json=starter, headers=OWNER)
+        await billing.set_status(DEV_TENANT, SubscriptionStatus.TRIALING)
+    assert "outbound" not in PLAN_BY_ID["starter"].entitlements

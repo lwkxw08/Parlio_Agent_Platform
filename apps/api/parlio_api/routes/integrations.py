@@ -32,6 +32,7 @@ from parlio_api.deps import (
     SipDep,
     SmsDep,
     StoreDep,
+    require_feature,
     require_worker_key,
 )
 from parlio_api.messaging import Message, SendSmsRequest
@@ -200,7 +201,11 @@ async def list_connections(user: UserDep, cal: CalendarDep, tenant_id: str) -> l
     return [c.public() for c in await cal.connections(tenant_id)]
 
 
-@router.post("/calendar/connections", status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/calendar/connections",
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_feature("calendar_booking"))],
+)
 async def create_connection(
     user: UserDep, cal: CalendarDep, store: StoreDep, tenant_id: str, body: ConnectionInput
 ) -> dict[str, Any]:
@@ -283,7 +288,12 @@ async def availability(
     )
 
 
-@router.post("/calendar/bookings", response_model=Booking, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/calendar/bookings",
+    response_model=Booking,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_feature("calendar_booking"))],
+)
 async def create_booking(
     user: UserDep, cal: CalendarDep, tenant_id: str, req: BookingRequest
 ) -> Booking:
@@ -360,7 +370,12 @@ async def list_trunks(user: UserDep, sip: SipDep, tenant_id: str) -> list[dict[s
     return [t.public() for t in await sip.trunks(tenant_id)]
 
 
-@router.post("/telephony/trunks", response_model=TrunkView, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/telephony/trunks",
+    response_model=TrunkView,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_feature("byo_sip"))],
+)
 async def create_trunk(
     user: UserDep, sip: SipDep, store: StoreDep, tenant_id: str, body: TrunkInput
 ) -> TrunkView:

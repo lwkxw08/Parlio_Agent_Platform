@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import secrets
+from collections.abc import Awaitable, Callable
 from typing import Annotated
 
 from fastapi import Depends, Header, HTTPException, Request, status
 
 from parlio_api.admin import AdminService
-from parlio_api.billing import BillingService
+from parlio_api.billing import ENTITLEMENTS, BillingService
 from parlio_api.browser_voice import BrowserVoiceService
 from parlio_api.calendar import CalendarService
 from parlio_api.compliance import ComplianceService
@@ -178,6 +179,21 @@ InboxDep = Annotated[InboxService, Depends(get_inbox)]
 BrowserVoiceDep = Annotated[BrowserVoiceService, Depends(get_browser_voice)]
 PaymentsDep = Annotated[PaymentService, Depends(get_payments)]
 BillingDep = Annotated[BillingService, Depends(get_billing)]
+
+
+def require_feature(key: str) -> Callable[[str, BillingService], Awaitable[None]]:
+    """Route dependency: 403 unless the tenant's plan (or a flag override) includes ``key``."""
+
+    async def _dep(tenant_id: str, billing: BillingDep) -> None:
+        if not await billing.entitled(tenant_id, key):
+            raise HTTPException(
+                status.HTTP_403_FORBIDDEN,
+                f"'{ENTITLEMENTS.get(key, key)}' is not included in your plan",
+            )
+
+    return _dep
+
+
 TelemetryDep = Annotated[Telemetry, Depends(get_telemetry)]
 AuditDep = Annotated[AuditLog, Depends(get_audit)]
 ComplianceDep = Annotated[ComplianceService, Depends(get_compliance)]

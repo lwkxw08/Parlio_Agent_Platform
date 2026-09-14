@@ -9,11 +9,11 @@ type PlanForm = Plan & { included_chat_messages?: number; chat_overage_pence?: n
 
 const blankPlan = (): PlanForm => ({
   id: "", name: "", monthly_pence: 9900, included_minutes: 300, overage_pence_per_minute: 15, included_numbers: 1, included_sms: 200,
-  sms_overage_pence: 6, max_assistants: 1, max_concurrent_calls: 3, features: [], enterprise: false, included_chat_messages: 500, chat_overage_pence: 2,
+  sms_overage_pence: 6, max_assistants: 1, max_concurrent_calls: 3, features: [], entitlements: [], enterprise: false, included_chat_messages: 500, chat_overage_pence: 2,
 });
 const blankCoupon = (): Coupon & { expires_at?: string | null } => ({ code: "", percent_off: 10, amount_off_pence: null, months: 3, plans: [], expires_at: null });
 
-export default function Plans({ plans: initialPlans, coupons: initialCoupons, canEdit }: { plans: Plan[]; coupons: Coupon[]; canEdit: boolean }) {
+export default function Plans({ plans: initialPlans, coupons: initialCoupons, catalogue, canEdit }: { plans: Plan[]; coupons: Coupon[]; catalogue: Record<string, string>; canEdit: boolean }) {
   const [plans, setPlans] = useState<Plan[]>(initialPlans);
   const [coupons, setCoupons] = useState<Coupon[]>(initialCoupons);
   const [editing, setEditing] = useState<PlanForm | null>(null);
@@ -65,7 +65,7 @@ export default function Plans({ plans: initialPlans, coupons: initialCoupons, ca
           {canEdit && <button type="button" className="primary" onClick={() => setEditing(blankPlan())}>New plan</button>}
         </div>
         <table>
-          <thead><tr><th>Plan</th><th>Monthly</th><th>Minutes</th><th>Overage /min</th><th>Numbers</th><th>SMS</th><th>Assistants</th><th>Concurrent</th><th>Features</th>{canEdit && <th />}</tr></thead>
+          <thead><tr><th>Plan</th><th>Monthly</th><th>Minutes</th><th>Overage /min</th><th>Numbers</th><th>SMS</th><th>Assistants</th><th>Concurrent</th><th>Functionality</th>{canEdit && <th />}</tr></thead>
           <tbody>
             {plans.map((p) => (
               <tr key={p.id}>
@@ -77,7 +77,7 @@ export default function Plans({ plans: initialPlans, coupons: initialCoupons, ca
                 <td>{p.included_sms} <span className="muted small">+{p.sms_overage_pence}p</span></td>
                 <td>{p.max_assistants}</td>
                 <td>{p.max_concurrent_calls}</td>
-                <td className="small">{p.features.join(", ")}</td>
+                <td className="small">{p.entitlements.length}/{Object.keys(catalogue).length} <span className="muted">· {p.features.join(", ")}</span></td>
                 {canEdit && (
                   <td className="row">
                     <button type="button" className="ghost" onClick={() => setEditing({ ...p })}>Edit</button>
@@ -105,7 +105,27 @@ export default function Plans({ plans: initialPlans, coupons: initialCoupons, ca
               {numField("included_chat_messages", "Included chat messages")}
               {numField("chat_overage_pence", "Chat overage (pence)")}
             </div>
-            <label>Features (comma separated)<input value={editing.features.join(", ")} onChange={(e) => setEditing({ ...editing, features: e.target.value.split(",").map((s) => s.trim()).filter(Boolean) })} /></label>
+            <label>Marketing bullets (comma separated, shown on the pricing card)<input value={editing.features.join(", ")} onChange={(e) => setEditing({ ...editing, features: e.target.value.split(",").map((s) => s.trim()).filter(Boolean) })} /></label>
+            <fieldset style={{ border: 0, padding: 0, margin: 0 }}>
+              <div className="row between">
+                <div><strong>Included functionality</strong><p className="hint">Enforced by the API for every tenant on this plan (trials get everything; per-tenant feature flags override).</p></div>
+                <div className="row">
+                  <button type="button" className="ghost" onClick={() => setEditing({ ...editing, entitlements: Object.keys(catalogue) })}>All</button>
+                  <button type="button" className="ghost" onClick={() => setEditing({ ...editing, entitlements: [] })}>None</button>
+                </div>
+              </div>
+              <div className="two" style={{ marginBottom: "0.8rem" }}>
+                {Object.entries(catalogue).map(([key, desc]) => {
+                  const on = editing.entitlements.includes(key);
+                  return (
+                    <label key={key} className="check" style={{ display: "flex", gap: "0.5rem", alignItems: "center", padding: "0.2rem 0" }}>
+                      <input type="checkbox" checked={on} onChange={(e) => setEditing({ ...editing, entitlements: e.target.checked ? [...editing.entitlements, key] : editing.entitlements.filter((k) => k !== key) })} />
+                      <span>{desc} <code className="muted small">{key}</code></span>
+                    </label>
+                  );
+                })}
+              </div>
+            </fieldset>
             <label className="check"><input type="checkbox" checked={editing.enterprise} onChange={(e) => setEditing({ ...editing, enterprise: e.target.checked })} /> Enterprise (staff-assigned only, hidden from self-serve)</label>
             <div className="row"><button type="submit" className="primary">Save plan</button><button type="button" className="ghost" onClick={() => setEditing(null)}>Cancel</button></div>
           </form>

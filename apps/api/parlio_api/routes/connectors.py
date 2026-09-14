@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import PlainTextResponse, RedirectResponse
 from pydantic import BaseModel, Field
 
@@ -22,7 +22,14 @@ from parlio_api.connectors import (
     contacts_csv,
     tickets_csv,
 )
-from parlio_api.deps import ApiKeyDep, ConnectorsDep, SettingsDep, StoreDep, TicketsDep
+from parlio_api.deps import (
+    ApiKeyDep,
+    ConnectorsDep,
+    SettingsDep,
+    StoreDep,
+    TicketsDep,
+    require_feature,
+)
 from parlio_api.store import CallStore, ContactUpdate
 from parlio_voice.models import TicketIntake, TicketPriority
 
@@ -94,7 +101,11 @@ async def list_connectors(user: UserDep, cx: ConnectorsDep, tenant_id: str) -> l
     return [c.public() for c in await cx.list_all(tenant_id)]
 
 
-@router.post("/connectors", status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/connectors",
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_feature("connectors"))],
+)
 async def create_connector(
     user: UserDep, cx: ConnectorsDep, store: StoreDep, tenant_id: str, body: ConnectorInput
 ) -> dict[str, Any]:

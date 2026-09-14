@@ -24,7 +24,7 @@ from parlio_api.analytics_query import (
     parse_question,
 )
 from parlio_api.auth import UserDep, current_user
-from parlio_api.deps import SettingsDep, StoreDep, TicketsDep
+from parlio_api.deps import BillingDep, SettingsDep, StoreDep, TicketsDep
 from parlio_api.onboarding import suggest_faqs
 from parlio_api.store import (
     AssistantVersion,
@@ -40,7 +40,14 @@ from parlio_api.store import (
     TransferRecord,
     TransferStats,
 )
-from parlio_voice.models import AssistantConfig, Destination, Faq, TicketIntake, TransferConfig
+from parlio_voice.models import (
+    AssistantConfig,
+    Destination,
+    Faq,
+    TicketIntake,
+    TransferConfig,
+    TransferMode,
+)
 
 router = APIRouter(prefix="/v1", tags=["dashboard"], dependencies=[Depends(current_user)])
 
@@ -242,9 +249,11 @@ class AnalyticsQuery(BaseModel):
 
 @router.post("/analytics/query", response_model=ComparisonAnalytics)
 async def query_analytics(
-    body: AnalyticsQuery, store: StoreDep, settings: SettingsDep
+    body: AnalyticsQuery, store: StoreDep, settings: SettingsDep, billing: BillingDep
 ) -> ComparisonAnalytics:
     today = datetime.now(ZoneInfo(body.timezone)).date()
+    if body.question and body.tenant_id and not await billing.entitled(body.tenant_id, "ask_ai"):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Ask AI is not included in your plan")
     if body.period is not None:
         q = Question(period=body.period, compare=body.compare)
         q.interpretation = q.period.describe() + (
@@ -279,12 +288,17 @@ async def get_transfer_config(assistant_id: str, store: StoreDep) -> TransferCon
 
 @router.put("/assistants/{assistant_id}/transfer", response_model=TransferConfig)
 async def put_transfer_config(
-    assistant_id: str, body: TransferConfig, store: StoreDep
+    assistant_id: str, body: TransferConfig, store: StoreDep, billing: BillingDep
 ) -> TransferConfig:
     """Destinations, departments, schedules, urgent keywords, after-hours behaviour, SLAs."""
     cfg = await store.get_assistant(assistant_id)
     if cfg is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "assistant not found")
+    ent = await billing.entitlements(cfg.tenant_id)
+    if body.mode == TransferMode.WARM and not ent["warm_transfers"]:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Warm transfers are not in your plan")
+    if body.departments() and not ent["departments"]:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Departments are not in your plan")
     ids = [d.id for d in body.destinations]
     if len(ids) != len(set(ids)):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "duplicate destination id")

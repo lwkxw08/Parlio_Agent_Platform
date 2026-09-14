@@ -480,8 +480,9 @@ export type ProviderGuide = { id: string; name: string; mode: TrunkMode; summary
 export type Plan = {
   id: string; name: string; monthly_pence: number; included_minutes: number; overage_pence_per_minute: number;
   included_numbers: number; included_sms: number; sms_overage_pence: number; max_assistants: number; max_concurrent_calls: number;
-  features: string[]; enterprise: boolean;
+  features: string[]; entitlements: string[]; enterprise: boolean;
 };
+export type Entitlements = { catalogue: Record<string, string>; enabled: Record<string, boolean> };
 export type SubscriptionStatus = "trialing" | "active" | "past_due" | "paused" | "suspended" | "cancelled";
 export type Subscription = {
   tenant_id: string; plan_id: string; status: SubscriptionStatus; period_start: string; period_end: string; trial_ends_at?: string | null;
@@ -928,6 +929,8 @@ export const fetchAdminTenants = (params: { q?: string; sub_status?: string; pla
 export const fetchAdminTenant = (tenant_id: string) => request<TenantDetail>(`/v1/admin/tenants/${tenant_id}`);
 export const fetchFeatureFlagCatalogue = () => get<Record<string, string>>("/v1/admin/feature-flags");
 export const fetchAdminPlans = () => get<Plan[]>("/v1/admin/plans");
+export const fetchEntitlementCatalogue = () => get<Record<string, string>>("/v1/admin/entitlements");
+export const fetchEntitlements = (tenantId: string) => get<Entitlements>(`/v1/billing/entitlements?tenant_id=${encodeURIComponent(tenantId)}`);
 export const fetchAdminCoupons = () => get<Coupon[]>("/v1/admin/coupons");
 export const fetchStaff = () => get<Member[]>("/v1/admin/staff");
 export const fetchStaffSettings = () => get<StaffSettings>("/v1/admin/staff/settings");

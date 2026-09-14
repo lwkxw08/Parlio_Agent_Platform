@@ -3,6 +3,7 @@
 import { useState } from "react";
 import {
   type Assistant,
+  type Entitlements,
   type AvailableNumber,
   type CheckoutSession,
   type Coupon,
@@ -31,9 +32,9 @@ const day = (iso: string) => new Date(iso).toLocaleDateString("en-GB", { day: "n
 
 export default function Billing(props: {
   tenant: string; canManage: boolean; initialTab: string; plans: Plan[]; subscription: Subscription; usage: UsageSummary;
-  numbers: TenantNumber[]; latency: LatencyReport | null; assistants: Assistant[];
+  numbers: TenantNumber[]; latency: LatencyReport | null; assistants: Assistant[]; entitlements: Entitlements | null;
 }) {
-  const { tenant, canManage, plans, assistants, latency } = props;
+  const { tenant, canManage, plans, assistants, latency, entitlements } = props;
   const [tab, setTab] = useState<Tab>(TABS.some(([t]) => t === props.initialTab) ? (props.initialTab as Tab) : "usage");
   const [sub, setSub] = useState(props.subscription);
   const [usage, setUsage] = useState(props.usage);
@@ -54,7 +55,7 @@ export default function Billing(props: {
       </div>
       {msg && <p className="small" style={{ color: "var(--accent)" }}>{msg}</p>}
       {tab === "usage" && <Usage usage={usage} sub={sub} />}
-      {tab === "plan" && <PlanTab tenant={tenant} canManage={canManage} plans={plans} sub={sub} onChange={reload} setMsg={setMsg} />}
+      {tab === "plan" && <PlanTab tenant={tenant} canManage={canManage} plans={plans} sub={sub} entitlements={entitlements} onChange={reload} setMsg={setMsg} />}
       {tab === "numbers" && (
         <Numbers tenant={tenant} canManage={canManage} numbers={numbers} setNumbers={setNumbers} usage={usage} assistants={assistants} setMsg={setMsg} onChange={reload} />
       )}
@@ -107,9 +108,10 @@ function Usage({ usage: u, sub }: { usage: UsageSummary; sub: Subscription }) {
   );
 }
 
-function PlanTab({ tenant, canManage, plans, sub, onChange, setMsg }: {
-  tenant: string; canManage: boolean; plans: Plan[]; sub: Subscription; onChange: () => Promise<void>; setMsg: (m: string | null) => void;
+function PlanTab({ tenant, canManage, plans, sub, entitlements, onChange, setMsg }: {
+  tenant: string; canManage: boolean; plans: Plan[]; sub: Subscription; entitlements: Entitlements | null; onChange: () => Promise<void>; setMsg: (m: string | null) => void;
 }) {
+  const label = (k: string) => entitlements?.catalogue[k] ?? k;
   const [code, setCode] = useState(sub.coupon ?? "");
   const [coupon, setCoupon] = useState<Coupon | null>(null);
   const q = `?tenant_id=${tenant}`;
@@ -156,6 +158,17 @@ function PlanTab({ tenant, canManage, plans, sub, onChange, setMsg }: {
           </div>
         </div>
       )}
+      {entitlements && (
+        <div className="section">
+          <h2>Your features</h2>
+          <p className="hint">{sub.status === "trialing" ? "Everything is unlocked during your trial; your plan's set applies once it converts." : "Locked features need a plan upgrade."}</p>
+          <div className="chips">
+            {Object.entries(entitlements.catalogue).map(([k, d]) => (
+              <span key={k} className={`pill ${entitlements.enabled[k] ? "ok" : ""}`} title={d}>{entitlements.enabled[k] ? "" : ""}{d}</span>
+            ))}
+          </div>
+        </div>
+      )}
       <div className="grid">
         {plans.map((p) => {
           const current = p.id === sub.plan_id;
@@ -170,6 +183,12 @@ function PlanTab({ tenant, canManage, plans, sub, onChange, setMsg }: {
                 <li>{p.max_assistants} assistant{p.max_assistants === 1 ? "" : "s"} · {p.max_concurrent_calls} concurrent calls</li>
                 {p.features.map((f) => <li key={f}>{f}</li>)}
               </ul>
+              {p.entitlements.length > 0 && (
+                <details className="small" style={{ marginTop: "0.4rem" }}>
+                  <summary className="muted">{p.entitlements.length} features included</summary>
+                  <ul className="small">{p.entitlements.map((k) => <li key={k}>{label(k)}</li>)}</ul>
+                </details>
+              )}
               {canManage && !current && (
                 p.enterprise ? <a className="small" href="mailto:sales@parlio.co.uk">Talk to us</a> : <button className="primary" style={{ marginTop: "0.6rem" }} onClick={() => choose(p)}>{sub.status === "trialing" || sub.status === "cancelled" ? "Subscribe" : "Switch"}</button>
               )}

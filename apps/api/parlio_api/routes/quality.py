@@ -4,11 +4,18 @@ from __future__ import annotations
 
 import base64
 
-from fastapi import APIRouter, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, Field
 
 from parlio_api.auth import UserDep
-from parlio_api.deps import AuditDep, QADep, SimulationDep, StoreDep, VoiceCloneDep
+from parlio_api.deps import (
+    AuditDep,
+    QADep,
+    SimulationDep,
+    StoreDep,
+    VoiceCloneDep,
+    require_feature,
+)
 from parlio_api.observability import AuditEntry
 from parlio_api.qa import (
     CONSENT_STATEMENT,
@@ -200,7 +207,11 @@ class RunInput(BaseModel):
     variant_b: AssistantConfig | None = Field(None, description="second config for A/B")
 
 
-@router.post("/simulate", response_model=SimulationRun)
+@router.post(
+    "/simulate",
+    response_model=SimulationRun,
+    dependencies=[Depends(require_feature("simulation"))],
+)
 async def simulate(
     body: RunInput, user: UserDep, sim: SimulationDep, tenant_id: str
 ) -> SimulationRun:
