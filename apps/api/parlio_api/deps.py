@@ -7,6 +7,7 @@ from typing import Annotated
 from fastapi import Depends, Header, HTTPException, Request, status
 
 from parlio_api.admin import AdminService
+from parlio_api.adoption import AnnouncementService, WhiteGloveService
 from parlio_api.billing import ENTITLEMENTS, BillingService
 from parlio_api.browser_voice import BrowserVoiceService
 from parlio_api.calendar import CalendarService
@@ -136,6 +137,16 @@ def get_digest(request: Request) -> DigestService:
     return svc
 
 
+def get_whiteglove(request: Request) -> WhiteGloveService:
+    svc: WhiteGloveService = request.app.state.whiteglove
+    return svc
+
+
+def get_announcements(request: Request) -> AnnouncementService:
+    svc: AnnouncementService = request.app.state.announcements
+    return svc
+
+
 def get_whitelabel(request: Request) -> WhiteLabelService:
     svc: WhiteLabelService = request.app.state.whitelabel
     return svc
@@ -231,6 +242,8 @@ SecurityDep = Annotated[SecurityService, Depends(get_security)]
 ValueDep = Annotated[ValueService, Depends(get_value)]
 DigestDep = Annotated[DigestService, Depends(get_digest)]
 WhiteLabelDep = Annotated[WhiteLabelService, Depends(get_whitelabel)]
+WhiteGloveDep = Annotated[WhiteGloveService, Depends(get_whiteglove)]
+AnnouncementsDep = Annotated[AnnouncementService, Depends(get_announcements)]
 
 
 async def require_worker_key(

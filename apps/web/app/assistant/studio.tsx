@@ -14,6 +14,7 @@ import {
   put,
   when,
 } from "@/lib/api";
+import FaqImport from "./faq-import";
 
 const TABS = ["persona", "business", "hours", "rules", "faqs", "fields", "sms", "languages", "recording", "blocked", "afterhours", "versions"] as const;
 type Tab = (typeof TABS)[number];
@@ -238,6 +239,11 @@ export default function Studio({ initial, versions: initialVersions, requiredFie
               ))}
             </div>
           )}
+          <FaqImport assistant={cfg} onApplied={async (next, added) => {
+            setCfg(next); setDirty(false);
+            setVersions((await fetchVersions(cfg.assistant_id)) ?? versions);
+            flash(added ? `Added ${added} FAQ${added === 1 ? "" : "s"} — saved as version ${next.assistant_version}` : "No new FAQs to add");
+          }} />
         </div>
       )}
 

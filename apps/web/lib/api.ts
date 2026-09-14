@@ -1054,3 +1054,75 @@ export const fetchChecklist = (tenant_id: string) => get<SetupChecklist>(`/v1/se
 export const fetchQuestionnaire = (tenant_id: string) => get<QuestionnaireOut>(`/v1/setup/questionnaire${qs({ tenant_id })}`);
 export const fetchExplanation = (call_id: string) => request<CallExplanation>(`/v1/calls/${call_id}/explain`);
 export const fetchTrustCentre = () => get<TrustCentre>("/v1/public/trust");
+
+// -- Phase 19b: white-glove, first-week digest, FAQ import, announcements / roadmap / feedback ----
+export type WhiteGloveArea = "config_review" | "forwarding" | "sip" | "test_calls" | "integrations" | "team_training";
+export type WhiteGloveStatus = "requested" | "scheduled" | "in_progress" | "completed" | "cancelled";
+export type WhiteGloveRequest = {
+  id: string; tenant_id: string; requested_by: string; status: WhiteGloveStatus; assigned_to: string | null; scheduled_at: string | null;
+  contact_name: string; contact_email: string; contact_phone: string | null; areas: WhiteGloveArea[]; preferred_slots: string[]; notes: string;
+  staff_notes: { author: string; text: string; at: string }[]; created_at: string; updated_at: string;
+};
+export type WhiteGloveEligibility = { eligible: boolean; reason: string | null; open_request: WhiteGloveRequest | null };
+export type WhiteGloveRequestIn = {
+  contact_name: string; contact_email: string; contact_phone?: string | null; areas: WhiteGloveArea[]; preferred_slots: string[]; notes: string;
+};
+export const fetchWhiteGlove = (tenant_id: string) => get<WhiteGloveEligibility>(`/v1/whiteglove${qs({ tenant_id })}`);
+export const fetchWhiteGloveAreas = () => get<Record<string, string>>("/v1/whiteglove/areas");
+export const requestWhiteGlove = (tenant_id: string, body: WhiteGloveRequestIn) =>
+  request<WhiteGloveRequest>(`/v1/whiteglove${qs({ tenant_id })}`, { method: "POST", body: JSON.stringify(body) });
+export const cancelWhiteGlove = (tenant_id: string, id: string) =>
+  request<WhiteGloveRequest>(`/v1/whiteglove/${id}${qs({ tenant_id })}`, { method: "DELETE" });
+export const fetchWhiteGloveQueue = () => get<WhiteGloveRequest[]>("/v1/admin/whiteglove");
+export const updateWhiteGlove = (id: string, body: { status?: WhiteGloveStatus; assigned_to?: string; scheduled_at?: string; note?: string }) =>
+  patch<WhiteGloveRequest>(`/v1/admin/whiteglove/${id}`, body);
+
+export type FirstWeekReport = {
+  tenant_id: string; signed_up_at: string | null; days_live: number; calls: number; answered: number; missed: number; after_hours: number; minutes: number;
+  bookings: number; qualified_leads: number; attributed_pence: number; currency: string; top_intents: [string, number][];
+  checklist_completed: number; checklist_total: number; highlights: string[]; next_steps: string[]; generated_at: string;
+};
+export const fetchFirstWeek = (tenant_id: string) => get<FirstWeekReport>(`/v1/setup/first-week${qs({ tenant_id })}`);
+
+export type FaqSource = "text" | "csv" | "url";
+export type FaqImportResult = { source: FaqSource; suggested: Faq[]; duplicates: Faq[] };
+export const importFaqs = (assistant_id: string, body: { source: FaqSource; content: string; category?: string }) =>
+  request<FaqImportResult>(`/v1/assistants/${assistant_id}/faqs/import`, { method: "POST", body: JSON.stringify(body) });
+export const applyFaqs = (assistant_id: string, faqs: Faq[]) =>
+  request<{ added: number; total: number; config: Assistant }>(`/v1/assistants/${assistant_id}/faqs/apply`, { method: "POST", body: JSON.stringify({ faqs }) });
+
+export type AnnouncementKind = "feature" | "improvement" | "fix" | "notice";
+export const KIND_LABEL: Record<AnnouncementKind, string> = { feature: "New", improvement: "Improved", fix: "Fixed", notice: "Notice" };
+export type Announcement = {
+  id: string; title: string; body: string; kind: AnnouncementKind; pinned: boolean; published: boolean; link: string | null; author: string; created_at: string; updated_at: string;
+};
+export type AnnouncementIn = { title: string; body: string; kind: AnnouncementKind; pinned: boolean; published: boolean; link: string | null };
+export type AnnouncementFeed = { unread: number; items: (Announcement & { read: boolean })[] };
+export const fetchAnnouncements = (tenant_id: string) => get<AnnouncementFeed>(`/v1/announcements${qs({ tenant_id })}`);
+export const markAnnouncementsRead = (tenant_id: string, announcement_id?: string) =>
+  post<AnnouncementFeed>(`/v1/announcements/read${qs({ tenant_id })}`, { announcement_id: announcement_id ?? null });
+export const fetchChangelog = () => get<Announcement[]>("/v1/public/changelog");
+export const fetchAdminAnnouncements = () => get<Announcement[]>("/v1/admin/announcements");
+export const createAnnouncement = (body: AnnouncementIn) => request<Announcement>("/v1/admin/announcements", { method: "POST", body: JSON.stringify(body) });
+export const updateAnnouncement = (id: string, body: AnnouncementIn) => put<Announcement>(`/v1/admin/announcements/${id}`, body);
+export const deleteAnnouncement = (id: string) => del(`/v1/admin/announcements/${id}`);
+
+export type RoadmapStatus = "considering" | "planned" | "in_progress" | "shipped";
+export const ROADMAP_LABEL: Record<RoadmapStatus, string> = { considering: "Considering", planned: "Planned", in_progress: "In progress", shipped: "Shipped" };
+export type RoadmapItem = { id: string; title: string; description: string; status: RoadmapStatus; category: string; eta: string | null; votes: number; created_at: string; updated_at: string };
+export type RoadmapView = RoadmapItem & { voted: boolean };
+export type RoadmapItemIn = { title: string; description: string; status: RoadmapStatus; category: string; eta: string | null };
+export const fetchRoadmap = (tenant_id: string) => get<RoadmapView[]>(`/v1/roadmap${qs({ tenant_id })}`);
+export const fetchPublicRoadmap = () => get<RoadmapItem[]>("/v1/public/roadmap");
+export const voteRoadmap = (tenant_id: string, id: string) => post<RoadmapView>(`/v1/roadmap/${id}/vote${qs({ tenant_id })}`);
+export const fetchAdminRoadmap = () => get<RoadmapItem[]>("/v1/admin/roadmap");
+export const createRoadmapItem = (body: RoadmapItemIn) => request<RoadmapItem>("/v1/admin/roadmap", { method: "POST", body: JSON.stringify(body) });
+export const updateRoadmapItem = (id: string, body: RoadmapItemIn) => put<RoadmapItem>(`/v1/admin/roadmap/${id}`, body);
+export const deleteRoadmapItem = (id: string) => del(`/v1/admin/roadmap/${id}`);
+
+export type FeedbackKind = "idea" | "bug" | "praise" | "other";
+export type Feedback = { id: string; tenant_id: string; author: string; kind: FeedbackKind; text: string; page: string | null; roadmap_item_id: string | null; status: "new" | "reviewed" | "planned" | "closed"; created_at: string };
+export const submitFeedback = (tenant_id: string, body: { kind: FeedbackKind; text: string; page?: string | null; roadmap_item_id?: string | null }) =>
+  request<Feedback>(`/v1/feedback${qs({ tenant_id })}`, { method: "POST", body: JSON.stringify(body) });
+export const fetchAdminFeedback = () => get<Feedback[]>("/v1/admin/feedback");
+export const setFeedbackStatus = (id: string, status: Feedback["status"]) => patch<Feedback>(`/v1/admin/feedback/${id}`, { status });

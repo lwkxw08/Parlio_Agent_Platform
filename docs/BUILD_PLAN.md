@@ -222,8 +222,9 @@ Parlio owns and guarantees AI numbers, carrier, SIP edge and AI pipeline; custom
 ### Phase 19 — Onboarding, self-serve & trust (0.5 session) — PR #24
 - Guided sign-up journey (Dena-style): monthly call volume → what the assistant should do → business type/languages/team/channels/UK-sovereign → website/Google lookup → confirm details → recommended plan (smallest plan whose entitlements + minutes cover the answers, estimated cost incl. overage, Enterprise = talk to sales) → FAQs → assistant → tenant created on that plan's trial → `/setup` checklist + optional checkout.
 - In-app setup checklist (`/setup`: assistant, number, test call, alerts, calendar, team, billing; live = real answered calls), one-click test call (runs the Phase 17 synthetic caller; browser click-to-talk link when the widget has voice on), "Why did it say that?" tab on call detail (assistant turns matched to the FAQ/rule/business fact/hours/greeting of the config version live at call time — heuristic wording match, not model provenance), vertical playbooks (trades, salon, hospitality, professional, dental, legal, property, general) applied at onboarding.
-- 7-/30-day check-in automation (`CheckInLoop` → owner digest notification with checklist progress, idempotent per tenant/day). Still to do: white-glove booking workflow for Growth+, "first week" impact digest UI, guided FAQ import.
-- Still to do: docs site (forwarding + SIP guides UK/US, integrations, API), change log, in-app announcements, public roadmap/feedback board.
+- 7-/30-day check-in automation (`CheckInLoop` → owner digest notification with checklist progress, idempotent per tenant/day).
+- Phase 19b leftovers (`adoption.py`): white-glove onboarding requests for plans with `priority_support` (tenant books from `/setup`, staff queue under Platform admin → Announcements with schedule/assign/notes visible to the customer); first-week impact report (`GET /v1/setup/first-week`, card on `/setup`, embedded in the day-7 check-in email); guided FAQ import in Studio (paste text / URL / CSV → parsed + de-duplicated against existing FAQs → review/edit → apply saves a new assistant version); announcements (staff-authored, draft/published/pinned, per-user read state, tenant `/whats-new` feed, public `/changelog`), public roadmap with one vote per tenant per item (`/roadmap`), in-app feedback with staff triage. Grouped sidebar (Conversations / Assistant / Insights / Account).
+- Still to do: docs site (forwarding + SIP guides UK/US, integrations, API).
 - Trust centre (`/trust`, `GET /v1/public/trust`): data residency, DPA, recording/consent, security, incident response & breach notification, telephony demarcation, data-subject rights, certifications (Cyber Essentials in progress; ISO 27001/SOC 2 roadmap — wording needs legal review before launch), sub-processor table.
 
 ---
@@ -234,6 +235,23 @@ Parlio owns and guarantees AI numbers, carrier, SIP edge and AI pipeline; custom
 ## Part G — Enterprise-scale step-up (deferred; ~1-2 sessions when triggered)
 - Trigger: ~200 tenants or 300+ concurrent calls. Actions (config/infra only): multi-node SIP edge + RTPengine, additional LiveKit nodes, larger worker pools per region, Postgres read replicas + pgBouncer, ClickHouse for analytics read model, NATS/Kafka in place of Redis Streams, enterprise vendor tiers + full multi-vendor failover, active-active UK+US, isolated pools for Enterprise/Sovereign, chaos testing.
 - Reference capacity: 1,000 concurrent calls ~ 60-100 vCPU workers + 2-3 LiveKit nodes + SIP edge pair ~ GBP 1.5-3k/mo infra; ~1.5M minutes/mo; ~3,000 SME tenants.
+
+## Part H — Go-live checklist (after Part F; mostly configuration and business setup, ~1 session of engineering)
+**Accounts & credentials (owner creates, engineering wires in)**
+- Supabase project → `PARLIO_AUTH_MODE=supabase`, `PARLIO_PLATFORM_OWNER_EMAIL` set, owner 2FA enrolled; invite-only until happy.
+- Stripe live keys + webhook secret, live prices per plan, VAT settings; one real low-value checkout end to end.
+- Telnyx: approved number(s), number pool for per-tenant provisioning, SMS messaging profile + sender registration; `PARLIO_OUTBOUND_DIALER=livekit`.
+- Resend domain verified (DKIM/SPF), Meta WhatsApp Business number, Google/Microsoft OAuth apps verified for calendar scopes, PagerDuty/Opsgenie for on-call.
+- Custom domains (app./api./lk.parlio.co.uk) replacing the sslip.io URLs — Cloudflare for the dashboard, Caddy on the droplet.
+
+**Infrastructure hardening (engineering)**
+- Managed Postgres (DO London) with daily backups + PITR; object storage for recordings; secrets moved to a vault/env manager; staging environment; `alembic upgrade head` in CD; uptime monitoring feeding the status page; load test at target concurrency (Phase 6 script).
+
+**Legal & compliance (owner / solicitor)**
+- ICO registration, T&Cs, privacy notice, DPA + sub-processor list (Trust centre copy reviewed), recording-consent wording, Ofcom CLI rules for outbound, Cyber Essentials application, PCI SAQ-A confirmation for hosted payment links.
+
+**Operational**
+- Support inbox + on-call rota, runbooks reviewed, pricing/entitlements finalised in Platform admin → Plans, onboarding email templates, soft launch with 2–3 pilot tenants before opening self-serve sign-up.
 
 ---
 
