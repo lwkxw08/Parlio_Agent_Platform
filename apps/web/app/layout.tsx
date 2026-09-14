@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
-import { fetchMe } from "@/lib/api";
+import { fetchMe, fetchPublicStatus } from "@/lib/api";
 import Sidebar, { type Account } from "./sidebar";
+import { StatusBanner, ViewAsBanner } from "./banners";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -15,9 +16,16 @@ export const dynamic = "force-dynamic";
 const THEME_INIT = `try{var t=localStorage.getItem("parlio-theme");if(t==="dark"||t==="light")document.documentElement.dataset.theme=t}catch(e){}`;
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
-  const me = await fetchMe();
+  const [me, status] = await Promise.all([fetchMe(), fetchPublicStatus()]);
   const account: Account = me.ok
-    ? { kind: "user", name: me.data.name ?? me.data.email, email: me.data.email, dev: me.data.mode === "dev" }
+    ? {
+        kind: "user",
+        name: me.data.name ?? me.data.email,
+        email: me.data.email,
+        dev: me.data.mode === "dev",
+        staff: me.data.staff_role != null,
+        viewAs: me.data.view_as,
+      }
     : me.status === 401
       ? { kind: "signin" }
       : { kind: "offline" };
@@ -28,7 +36,11 @@ export default async function RootLayout({ children }: { children: React.ReactNo
       </head>
       <body>
         <Sidebar account={account} />
-        <main>{children}</main>
+        <main>
+          {status?.active && <StatusBanner status={status} />}
+          {account.kind === "user" && account.viewAs && <ViewAsBanner tenant={account.viewAs} />}
+          {children}
+        </main>
       </body>
     </html>
   );

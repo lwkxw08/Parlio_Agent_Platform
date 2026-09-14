@@ -36,6 +36,8 @@ class Me(BaseModel):
     mode: str
     memberships: list[Member]
     auth: dict[str, Any]
+    staff_role: str | None = None
+    view_as: str | None = None
 
 
 @router.get("/me", response_model=Me)
@@ -45,8 +47,10 @@ async def me(user: UserDep, settings: SettingsDep) -> Me:
         email=user.email,
         name=user.name,
         mode=user.mode,
-        memberships=user.memberships,
+        memberships=user.tenant_memberships,
         auth={"mode": settings.auth_mode, "supabase_url": settings.supabase_url},
+        staff_role=user.staff_role,
+        view_as=user.view_as,
     )
 
 

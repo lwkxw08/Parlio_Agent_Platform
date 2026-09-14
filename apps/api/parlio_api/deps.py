@@ -5,6 +5,7 @@ from typing import Annotated
 
 from fastapi import Depends, Header, HTTPException, Request, status
 
+from parlio_api.admin import AdminService
 from parlio_api.billing import BillingService
 from parlio_api.browser_voice import BrowserVoiceService
 from parlio_api.calendar import CalendarService
@@ -32,6 +33,14 @@ from parlio_api.whitelabel import WhiteLabelService
 def get_store(request: Request) -> CallStore:
     store: CallStore = request.app.state.store
     return store
+
+
+def get_admin(request: Request) -> AdminService:
+    svc: AdminService = request.app.state.admin
+    return svc
+
+
+AdminDep = Annotated[AdminService, Depends(get_admin)]
 
 
 def get_postcall(request: Request) -> PostCallProcessor:

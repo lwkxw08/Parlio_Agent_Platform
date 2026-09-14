@@ -77,6 +77,9 @@ class Settings(BaseSettings):
     target_turn_latency_s: float = 1.5
     rate_limit_per_minute: int = 600
     retention_sweep_interval_s: float = 3600.0
+    # Phase 16b: emails granted the platform "owner" staff role on sign-in (bootstraps /admin).
+    # Dev mode defaults to the demo owner so the console is reachable locally.
+    platform_owner_emails: list[str] = ["owner@demo.parlio.local"]
 
     # Phase 9 outbound: "simulated" records dials; "livekit" dispatches the worker to dial via
     # the platform SIP outbound trunk.
