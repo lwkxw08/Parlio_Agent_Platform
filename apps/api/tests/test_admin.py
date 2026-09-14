@@ -456,3 +456,18 @@ async def test_plan_trial_days(client: AsyncClient, app: FastAPI) -> None:
         await client.put("/v1/admin/plans/starter", json=starter, headers=OWNER)
         await client.put("/v1/admin/plans/growth", json=growth, headers=OWNER)
     assert PLAN_BY_ID["starter"].trial_days is None
+
+
+async def test_tenant_usage_hides_vendor_cost(client: AsyncClient, app: FastAPI) -> None:
+    await app.state.store.upsert_member(
+        Member(tenant_id="acme", user_id="u-acme", email="intruder@other.example", role="owner")
+    )
+    r = await client.get("/v1/billing/usage", params={"tenant_id": "acme"}, headers=TENANT_USER)
+    assert r.status_code == 200
+    body = r.json()
+    assert body["vendor_cost_pence"] == 0
+    assert body["gross_margin_pct"] is None
+    assert all(c["vendor_pence"] == 0 for c in body["top_calls"])
+    r = await client.get("/v1/billing/usage", params=Q, headers=OWNER)
+    assert r.status_code == 200
+    assert r.json()["gross_margin_pct"] is not None

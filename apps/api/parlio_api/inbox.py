@@ -779,6 +779,7 @@ class InboxService:
             t.sla_due_at = datetime.now(UTC) + self.sla
             await self.store.put_doc(t.to_doc())
             self._publish("inbox.thread", t)
+            self._publish("inbox.handoff", t, m)
             await self._notify(
                 t,
                 NotifyEvent.INBOX_HANDOFF,

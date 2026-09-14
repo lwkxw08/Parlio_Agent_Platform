@@ -122,6 +122,7 @@ from parlio_api.routes import journey as journey_routes
 from parlio_api.routes import (
     live as live_routes,
 )
+from parlio_api.routes import nav as nav_routes
 from parlio_api.routes import ops as ops_routes
 from parlio_api.routes import (
     outbound as outbound_routes,
@@ -598,6 +599,7 @@ def create_app() -> FastAPI:
     app.include_router(quality_routes.router)
     app.include_router(value_routes.router)
     app.include_router(value_routes.public)
+    app.include_router(nav_routes.router)
     app.include_router(value_routes.scim)
     app.include_router(integrations.router)
     app.include_router(integrations.public)

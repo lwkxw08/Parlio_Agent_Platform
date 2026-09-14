@@ -25,6 +25,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         dev: me.data.mode === "dev",
         staff: me.data.staff_role != null,
         viewAs: me.data.view_as,
+        tenantId: me.data.view_as ?? me.data.memberships.find((m) => m.status === "active")?.tenant_id ?? null,
       }
     : me.status === 401
       ? { kind: "signin" }

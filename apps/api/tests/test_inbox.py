@@ -538,3 +538,30 @@ async def test_service_direct_isolation(client: AsyncClient, app: FastAPI) -> No
     t = await svc.find_existing("demo", Channel.SMS, "+4471")
     assert t is not None and t.status in (ThreadStatus.OPEN, ThreadStatus.WAITING)
     assert await svc.find_existing("other", Channel.SMS, "+4471") is None
+
+
+async def test_nav_badges_and_handoff_alert(client: AsyncClient, app: FastAPI) -> None:
+    r = await client.get("/v1/nav/badges", params={"tenant_id": DEV_TENANT})
+    assert r.status_code == 200
+    assert r.json()["inbox"] == 0
+
+    live = app.state.live
+    q = live.subscribe(DEV_TENANT)
+    try:
+        r = await client.post("/v1/inbound/sms", json=telnyx_sms("I need to speak to a human"))
+        assert r.status_code == 202
+        types = []
+        while not q.empty():
+            types.append(q.get_nowait().type)
+        assert "inbox.handoff" in types
+    finally:
+        live.unsubscribe(DEV_TENANT, q)
+
+    r = await client.get("/v1/nav/badges", params={"tenant_id": DEV_TENANT})
+    body = r.json()
+    assert body["inbox"] >= 1
+    assert body["tickets"] >= 1
+    assert body["total"] >= body["inbox"] + body["tickets"]
+
+    r = await client.get("/v1/nav/badges", params={"tenant_id": "other"})
+    assert r.status_code == 403

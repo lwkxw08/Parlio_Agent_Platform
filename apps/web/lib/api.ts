@@ -767,6 +767,10 @@ const boolq = (b: boolean | undefined) => (b ? "true" : undefined);
 export const fetchThreads = (tenant_id: string, f: ThreadFilters = {}) =>
   get<InboxThread[]>(`/v1/inbox/threads${qs({ tenant_id, status: f.status, channel: f.channel, assigned_to: f.assigned_to, unassigned: boolq(f.unassigned), unread_only: boolq(f.unread_only), q: f.q })}`);
 export const fetchInboxStats = (tenant_id: string) => get<InboxStats>(`/v1/inbox/stats${qs({ tenant_id })}`);
+
+// -- sidebar activity badges ------------------------------------------------------------------------
+export type NavBadges = { live: number; inbox: number; tickets: number; transfers: number; outbound: number; support: number; total: number };
+export const fetchNavBadges = (tenant_id: string) => get<NavBadges>(`/v1/nav/badges${qs({ tenant_id })}`);
 export const fetchThread = (tenant_id: string, id: string) => get<{ thread: InboxThread; messages: InboxMessage[] }>(`/v1/inbox/threads/${id}${qs({ tenant_id })}`);
 export const replyThread = (tenant_id: string, id: string, text: string) => post<InboxMessage>(`/v1/inbox/threads/${id}/reply${qs({ tenant_id })}`, { text });
 export const noteThread = (tenant_id: string, id: string, text: string) => post<InboxMessage>(`/v1/inbox/threads/${id}/note${qs({ tenant_id })}`, { text });
