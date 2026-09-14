@@ -17,6 +17,7 @@ from redis.exceptions import ResponseError
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from parlio_api import __version__
+from parlio_api.admin import AdminService
 from parlio_api.billing import (
     BillingProvider,
     BillingService,
@@ -103,6 +104,7 @@ from parlio_api.routes import (
     platform,
     worker,
 )
+from parlio_api.routes import admin as admin_routes
 from parlio_api.routes import (
     inbox as inbox_routes,
 )
@@ -342,6 +344,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         trial_days=settings.trial_days,
     )
     app.state.billing = billing
+    admin = AdminService(store, billing, telemetry, app.state.rate_limiter, settings.vault_key)
+    await admin.load()
+    app.state.admin = admin
     connectors_http = httpx.AsyncClient(timeout=15.0)
     connectors = ConnectorService(
         store,
@@ -534,6 +539,8 @@ def create_app() -> FastAPI:
     app.include_router(platform.router)
     app.include_router(platform.public)
     app.include_router(platform.ops)
+    app.include_router(admin_routes.router)
+    app.include_router(admin_routes.public)
 
     @app.middleware("http")
     async def tenant_rate_limit(

@@ -25,7 +25,8 @@ from typing import Annotated, Any
 from fastapi import Depends, Header, HTTPException, Request, status
 from pydantic import BaseModel, Field
 
-from parlio_api.deps import SecurityDep, SettingsDep, StoreDep
+from parlio_api.admin import PLATFORM_TENANT, STAFF_ROLES
+from parlio_api.deps import AdminDep, SecurityDep, SettingsDep, StoreDep
 from parlio_api.security import SecurityService
 from parlio_api.settings import Settings
 from parlio_api.store import CallStore, Member
@@ -45,10 +46,32 @@ class Principal(BaseModel):
     mfa_required: list[str] = Field(
         default_factory=list, description="tenants whose policy needs a verified MFA session"
     )
+    view_as: str | None = Field(
+        default=None, description="tenant a platform staff member is viewing read-only"
+    )
 
     @property
     def tenant_ids(self) -> list[str]:
-        return [m.tenant_id for m in self.memberships if m.status == "active"]
+        return [
+            m.tenant_id
+            for m in self.memberships
+            if m.status == "active" and m.tenant_id != PLATFORM_TENANT
+        ]
+
+    @property
+    def staff_role(self) -> str | None:
+        return next(
+            (
+                m.role
+                for m in self.memberships
+                if m.tenant_id == PLATFORM_TENANT and m.status == "active" and m.role in STAFF_ROLES
+            ),
+            None,
+        )
+
+    @property
+    def tenant_memberships(self) -> list[Member]:
+        return [m for m in self.memberships if m.tenant_id != PLATFORM_TENANT]
 
     def role_in(self, tenant_id: str) -> str | None:
         return next((m.role for m in self.memberships if m.tenant_id == tenant_id), None)
@@ -67,6 +90,17 @@ class Principal(BaseModel):
         self.require_tenant(tenant_id)
         if self.role_in(tenant_id) not in ("owner", "admin"):
             raise HTTPException(status.HTTP_403_FORBIDDEN, "admin role required")
+
+    def require_staff(self, *roles: str) -> str:
+        """Platform staff gate; ``roles`` narrows to specific staff roles (owner always passes)."""
+        role = self.staff_role
+        if role is None:
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "platform staff only")
+        if roles and role != "owner" and role not in roles:
+            raise HTTPException(
+                status.HTTP_403_FORBIDDEN, f"requires staff role: {', '.join(roles)}"
+            )
+        return role
 
 
 class TokenError(ValueError):
@@ -148,12 +182,34 @@ async def current_user(
     store: StoreDep,
     settings: SettingsDep,
     security: SecurityDep,
+    admin: AdminDep,
     authorization: Annotated[str | None, Header()] = None,
     x_parlio_user: Annotated[str | None, Header()] = None,
     x_parlio_mfa: Annotated[str | None, Header()] = None,
+    x_parlio_view_as: Annotated[str | None, Header()] = None,
 ) -> Principal:
     p = await resolve_user(store, settings, authorization, x_parlio_user)
-    return await with_mfa(p, security, request, x_parlio_mfa)
+    if p.staff_role is None and p.email in {e.lower() for e in settings.platform_owner_emails}:
+        p.memberships.append(await admin.ensure_owner(p.email, p.user_id, p.name))
+    p = await with_mfa(p, security, request, x_parlio_mfa)
+    if x_parlio_view_as:
+        grant = admin.verify_view_as(x_parlio_view_as)
+        if grant is None or p.staff_role is None or grant.staff_email != p.email:
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "view-as grant invalid or expired")
+        if request.method not in ("GET", "HEAD", "OPTIONS"):
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "view-as-tenant is read-only")
+        p.view_as = grant.tenant_id
+        p.memberships.append(
+            Member(
+                tenant_id=grant.tenant_id,
+                user_id=p.user_id,
+                email=p.email,
+                name=p.name,
+                role="viewer",
+                status="active",
+            )
+        )
+    return p
 
 
 async def resolve_user(

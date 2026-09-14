@@ -215,3 +215,12 @@ html.embed body { background: var(--panel); }
 .chat-compose button.primary { background: var(--chat-accent, var(--accent-grad)); }
 .chat-foot { text-align: center; }
 .form input[type="color"] { padding: 0.15rem; height: 2.4rem; width: 4rem; cursor: pointer; }
+
+/* platform banners + admin */
+.banner { display: flex; gap: 0.8rem; align-items: center; flex-wrap: wrap; padding: 0.6rem 1rem; border-radius: 10px; margin-bottom: 1rem; background: var(--panel); border: 1px solid var(--line); box-shadow: var(--shadow); font-size: 0.9rem; }
+.banner.warn { background: var(--warn-bg); color: var(--warn-fg); border-color: transparent; }
+.banner.bad { background: var(--bad-bg); color: var(--bad-fg); border-color: transparent; }
+.banner button { margin-left: auto; }
+.health-healthy { color: var(--ok-fg); } .health-watch { color: var(--warn-fg); } .health-at_risk { color: var(--bad-fg); } .health-inactive { color: var(--muted); }
+.kv { display: grid; grid-template-columns: max-content 1fr; gap: 0.3rem 1rem; font-size: 0.9rem; margin: 0; }
+.kv dt { color: var(--muted); } .kv dd { margin: 0; }

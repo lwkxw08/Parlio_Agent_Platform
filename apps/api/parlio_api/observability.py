@@ -215,6 +215,7 @@ class RateLimiter:
 
     def __init__(self, per_minute: int, telemetry: Telemetry | None = None) -> None:
         self.per_minute = per_minute
+        self.overrides: dict[str, int] = {}  # per-key limits set by platform staff
         self._hits: dict[str, deque[float]] = defaultdict(deque)
         self._telemetry = telemetry
 
@@ -224,12 +225,13 @@ class RateLimiter:
         q = self._hits[key]
         while q and t - q[0] > 60:
             q.popleft()
-        if len(q) >= self.per_minute:
+        limit = self.overrides.get(key, self.per_minute)
+        if len(q) >= limit:
             if self._telemetry is not None:
                 self._telemetry.rate_limited.labels(key).inc()
             return False, 0
         q.append(t)
-        return True, self.per_minute - len(q)
+        return True, limit - len(q)
 
 
 # -- audit log -------------------------------------------------------------------------------------

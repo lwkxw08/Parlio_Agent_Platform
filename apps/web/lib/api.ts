@@ -3,6 +3,7 @@ export const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
 export const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
 export const TOKEN_COOKIE = "parlio_token";
 export const MFA_COOKIE = "parlio_mfa";
+export const VIEW_AS_COOKIE = "parlio_view_as";
 
 export type CallKind = "answered" | "missed" | "transferred" | "ticketed" | "blocked" | "active";
 
@@ -276,10 +277,11 @@ export type Member = {
   user_id: string;
   email: string;
   name: string | null;
-  role: "owner" | "admin" | "member" | "viewer";
+  role: "owner" | "admin" | "member" | "viewer" | StaffRole;
   status: "active" | "invited";
   invited_at: string | null;
 };
+export type StaffRole = "owner" | "support" | "finance" | "readonly";
 
 export type Me = {
   user_id: string;
@@ -288,6 +290,8 @@ export type Me = {
   mode: "dev" | "supabase";
   memberships: Member[];
   auth: { mode: "dev" | "supabase"; supabase_url: string | null };
+  staff_role: StaffRole | null;
+  view_as: string | null;
 };
 
 export type WebsiteAnalysis = {
@@ -328,6 +332,8 @@ async function authHeaders(): Promise<Record<string, string>> {
   const h: Record<string, string> = token ? { authorization: `Bearer ${decodeURIComponent(token)}` } : {};
   const mfa = await readCookie(MFA_COOKIE);
   if (mfa) h["x-parlio-mfa"] = mfa;
+  const viewAs = await readCookie(VIEW_AS_COOKIE);
+  if (viewAs) h["x-parlio-view-as"] = viewAs;
   return h;
 }
 
@@ -476,10 +482,21 @@ export type Plan = {
   included_numbers: number; included_sms: number; sms_overage_pence: number; max_assistants: number; max_concurrent_calls: number;
   features: string[]; enterprise: boolean;
 };
-export type SubscriptionStatus = "trialing" | "active" | "past_due" | "cancelled";
+export type SubscriptionStatus = "trialing" | "active" | "past_due" | "paused" | "suspended" | "cancelled";
 export type Subscription = {
-  tenant_id: string; plan_id: string; status: SubscriptionStatus; period_start: string; period_end: string;
+  tenant_id: string; plan_id: string; status: SubscriptionStatus; period_start: string; period_end: string; trial_ends_at?: string | null;
   coupon: string | null; coupon_months_left: number | null; provider: string; customer_ref: string | null; subscription_ref: string | null;
+  status_reason?: string | null; created_at?: string;
+};
+export type Credit = { id: string; tenant_id: string; pence: number; remaining_pence: number; reason: string; granted_by: string; created_at: string };
+export type Invoice = {
+  id: string; tenant_id: string; period_start: string; period_end: string; total_pence: number; status: string; provider: string; url: string | null; created_at: string;
+};
+export type Refund = {
+  id: string; tenant_id: string; pence: number; reason: string; invoice_id: string | null; provider: string; provider_ref: string | null; issued_by: string; created_at: string;
+};
+export type TenantLimits = {
+  tenant_id: string; max_concurrent_calls: number | null; minutes_cap: number | null; rate_limit_per_minute: number | null; note: string | null;
 };
 export type Coupon = { code: string; percent_off: number | null; amount_off_pence: number | null; months: number | null; plans: string[] };
 export type CallCost = { call_id: string; minutes: number; vendor_pence: number; billable_pence: number };
@@ -859,3 +876,69 @@ export const fetchTwoFactor = () => get<TwoFactorStatus>("/v1/account/2fa");
 export const fetchSessions = () => get<UserSession[]>("/v1/account/sessions");
 export const money = (pence: number, currency = "GBP") =>
   new Intl.NumberFormat("en-GB", { style: "currency", currency, maximumFractionDigits: 0 }).format(pence / 100);
+
+// -- platform admin (staff only) --------------------------------------------------------------
+export type StaffSettings = { ip_allowlist: string[]; view_as_ttl_minutes: number; updated_by: string | null; updated_at: string };
+export type FeatureFlags = { tenant_id: string; flags: Record<string, boolean>; updated_by: string | null; updated_at: string };
+export type SupportNote = { id: string; tenant_id: string; author: string; text: string; pinned: boolean; created_at: string };
+export type PlatformStatusLevel = "ok" | "degraded" | "incident" | "maintenance";
+export type PlatformStatus = {
+  level: PlatformStatusLevel; title: string; message: string; link: string | null; starts_at: string | null; ends_at: string | null;
+  updated_by: string | null; updated_at: string;
+};
+export type PublicStatus = { level: string; title: string; message: string; link: string | null; active: boolean };
+export type ViewAsGrant = { token: string; tenant_id: string; staff_email: string; expires_at: string; read_only: boolean };
+export type TenantHealth = "healthy" | "watch" | "at_risk" | "inactive";
+export type TenantSummary = {
+  tenant_id: string; name: string; created_at: string; plan_id: string; plan_name: string; status: SubscriptionStatus; trial_ends_at: string | null;
+  assistants: number; members: number; numbers: number; calls_period: number; minutes_period: number; minutes_included: number;
+  estimated_total_pence: number; credit_balance_pence: number; last_call_at: string | null; flags: string[]; health: TenantHealth;
+};
+export type AssistantBrief = { id: string; name: string; business_name: string; version: number | null; updated_at: string | null };
+export type TenantDetail = {
+  summary: TenantSummary; subscription: Subscription; usage: UsageSummary; limits: TenantLimits; credits: Credit[]; invoices: Invoice[]; refunds: Refund[];
+  assistants: AssistantBrief[]; members: Member[]; numbers: Record<string, unknown>[]; trunks: Record<string, unknown>[]; connectors: Record<string, unknown>[];
+  flags: FeatureFlags; notes: SupportNote[]; audit: AuditEntry[];
+};
+export type SeriesPoint = { key: string; value: number; extra: Record<string, number> };
+export type BusinessAnalytics = {
+  tenants: number; signups_period: number; trialing: number; active: number; past_due: number; paused: number; suspended: number; cancelled: number;
+  conversions_period: number; churned_period: number; trial_conversion_pct: number | null; plan_mix: Record<string, number>; mrr_pence: number; arr_pence: number;
+  overage_pence_period: number; credit_outstanding_pence: number; top_accounts: Record<string, unknown>[]; signups_by_day: SeriesPoint[]; cohorts: Record<string, unknown>[];
+};
+export type DemandAnalytics = {
+  calls: number; minutes: number; inbound: number; outbound: number; answered: number; missed: number; failed: number; transferred: number; ticketed: number;
+  channel_mix: Record<string, number>; calls_by_day: SeriesPoint[]; calls_by_hour: SeriesPoint[]; peak_concurrency: number; capacity_concurrent: number;
+  growth_pct: number | null; forecast_calls_next_period: number;
+};
+export type QualityCostAnalytics = {
+  answer_latency_p50_s: number | null; answer_latency_p95_s: number | null; turn_latency_p50_ms: number | null; turn_latency_p95_ms: number | null;
+  vendor_cost_pence: number; revenue_pence: number; gross_margin_pct: number | null; cost_per_call_pence: number | null; qa_overall_avg: number | null;
+  qa_by_day: SeriesPoint[]; low_score_calls: number; connector_jobs: number; connector_failed: number; connector_failure_pct: number | null;
+  connectors_by_provider: Record<string, number>; tenant_health: Record<string, number>;
+};
+export type PlatformAnalytics = { generated_at: string; days: number; business: BusinessAnalytics; demand: DemandAnalytics; quality: QualityCostAnalytics };
+export type AdminOverview = { status: PlatformStatus; analytics: PlatformAnalytics; staff: number; recent_audit: AuditEntry[] };
+
+export const fetchAdminOverview = (days = 30) => request<AdminOverview>(`/v1/admin/overview${qs({ days })}`);
+export const fetchAdminAnalytics = (days = 30) => get<PlatformAnalytics>(`/v1/admin/analytics${qs({ days })}`);
+export const fetchAdminActivity = (limit = 200) => get<AuditEntry[]>(`/v1/admin/activity${qs({ limit })}`);
+export const fetchAdminTenants = (params: { q?: string; sub_status?: string; plan_id?: string } = {}) =>
+  get<TenantSummary[]>(`/v1/admin/tenants${qs(params)}`);
+export const fetchAdminTenant = (tenant_id: string) => request<TenantDetail>(`/v1/admin/tenants/${tenant_id}`);
+export const fetchFeatureFlagCatalogue = () => get<Record<string, string>>("/v1/admin/feature-flags");
+export const fetchAdminPlans = () => get<Plan[]>("/v1/admin/plans");
+export const fetchAdminCoupons = () => get<Coupon[]>("/v1/admin/coupons");
+export const fetchStaff = () => get<Member[]>("/v1/admin/staff");
+export const fetchStaffSettings = () => get<StaffSettings>("/v1/admin/staff/settings");
+export const fetchPlatformStatus = () => get<PlatformStatus>("/v1/admin/status");
+export const fetchPublicStatus = () => get<PublicStatus>("/v1/public/status");
+export const adminCsvUrl = (what: "tenants" | "analytics", days = 30) => `${API_URL}/v1/admin/export/${what}.csv${qs({ days })}`;
+export async function fetchAdminCsv(what: "tenants" | "analytics", days = 30): Promise<string | null> {
+  try {
+    const res = await fetch(adminCsvUrl(what, days), { cache: "no-store", headers: await authHeaders() });
+    return res.ok ? await res.text() : null;
+  } catch {
+    return null;
+  }
+}

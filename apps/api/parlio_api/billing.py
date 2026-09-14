@@ -168,7 +168,12 @@ class SubscriptionStatus(StrEnum):
     TRIALING = "trialing"
     ACTIVE = "active"
     PAST_DUE = "past_due"
+    PAUSED = "paused"  # customer-requested hold: no charges, calls declined politely
+    SUSPENDED = "suspended"  # platform-enforced (non-payment / abuse)
     CANCELLED = "cancelled"
+
+
+SERVING_STATUSES = {SubscriptionStatus.TRIALING, SubscriptionStatus.ACTIVE}
 
 
 class Subscription(BaseModel):
@@ -182,11 +187,59 @@ class Subscription(BaseModel):
     provider: str = "simulated"
     customer_ref: str | None = None
     subscription_ref: str | None = None
+    trial_ends_at: datetime | None = None
+    status_reason: str | None = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
     @property
     def plan(self) -> Plan:
         return PLAN_BY_ID.get(self.plan_id, PLANS[0])
+
+
+class Credit(BaseModel):
+    """Account credit (pence) applied against invoices until used up."""
+
+    id: str = Field(default_factory=lambda: f"cr-{uuid4().hex[:8]}")
+    tenant_id: str
+    pence: int
+    remaining_pence: int
+    reason: str = ""
+    granted_by: str = "system"
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+
+
+class TenantLimits(BaseModel):
+    """Platform-staff overrides of the plan's caps (None = use plan / global default)."""
+
+    tenant_id: str
+    max_concurrent_calls: int | None = None
+    minutes_cap: int | None = None
+    rate_limit_per_minute: int | None = None
+    note: str | None = None
+
+
+class Invoice(BaseModel):
+    id: str
+    tenant_id: str
+    period_start: datetime
+    period_end: datetime
+    total_pence: int
+    status: str  # draft | open | paid | void | uncollectible | refunded
+    provider: str
+    url: str | None = None
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+
+
+class Refund(BaseModel):
+    id: str = Field(default_factory=lambda: f"rf-{uuid4().hex[:8]}")
+    tenant_id: str
+    pence: int
+    reason: str
+    invoice_id: str | None = None
+    provider: str
+    provider_ref: str | None = None
+    issued_by: str
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
 # -- usage / cost metering ------------------------------------------------------------------------
@@ -236,6 +289,9 @@ class UsageSummary(BaseModel):
     numbers_included: int
     base_pence: int
     discount_pence: int
+    credit_pence: int = 0
+    credit_balance_pence: int = 0
+    minutes_cap: int | None = None
     estimated_total_pence: int
     vendor_cost_pence: float
     gross_margin_pct: float | None
@@ -269,6 +325,10 @@ class BillingProvider(Protocol):
     ) -> CheckoutSession: ...
     async def report_usage(self, subscription_ref: str, overage_minutes: float) -> None: ...
     def verify_webhook(self, payload: bytes, signature: str | None) -> dict[str, Any]: ...
+    async def list_invoices(self, customer_ref: str) -> list[dict[str, Any]]: ...
+    async def refund(self, customer_ref: str, pence: int, reason: str) -> str | None: ...
+    async def set_paused(self, subscription_ref: str, paused: bool) -> None: ...
+    async def cancel(self, subscription_ref: str) -> None: ...
 
 
 class SimulatedBilling:
@@ -296,6 +356,18 @@ class SimulatedBilling:
 
     def verify_webhook(self, payload: bytes, signature: str | None) -> dict[str, Any]:
         return dict(json.loads(payload or b"{}"))
+
+    async def list_invoices(self, customer_ref: str) -> list[dict[str, Any]]:
+        return []  # BillingService synthesises period invoices from usage
+
+    async def refund(self, customer_ref: str, pence: int, reason: str) -> str | None:
+        return f"re_sim_{uuid4().hex[:10]}"
+
+    async def set_paused(self, subscription_ref: str, paused: bool) -> None:
+        return None
+
+    async def cancel(self, subscription_ref: str) -> None:
+        return None
 
 
 class StripeBilling:
@@ -371,6 +443,49 @@ class StripeBilling:
 
     def verify_webhook(self, payload: bytes, signature: str | None) -> dict[str, Any]:
         return verify_stripe_webhook(self._webhook_secret, payload, signature)
+
+    async def list_invoices(self, customer_ref: str) -> list[dict[str, Any]]:
+        r = await self._http.get("/invoices", params={"customer": customer_ref, "limit": 24})
+        r.raise_for_status()
+        return [
+            {
+                "id": inv["id"],
+                "period_start": inv.get("period_start"),
+                "period_end": inv.get("period_end"),
+                "total_pence": inv.get("total", 0),
+                "status": inv.get("status", "open"),
+                "url": inv.get("hosted_invoice_url"),
+                "created": inv.get("created"),
+            }
+            for inv in r.json().get("data", [])
+        ]
+
+    async def refund(self, customer_ref: str, pence: int, reason: str) -> str | None:
+        # Refund against the customer's most recent successful charge.
+        r = await self._http.get("/charges", params={"customer": customer_ref, "limit": 1})
+        r.raise_for_status()
+        charges = r.json().get("data", [])
+        if not charges:
+            raise ValueError("no charge to refund")
+        r = await self._http.post(
+            "/refunds",
+            data={
+                "charge": charges[0]["id"],
+                "amount": str(pence),
+                "metadata[reason]": reason[:200],
+            },
+        )
+        r.raise_for_status()
+        return str(r.json()["id"])
+
+    async def set_paused(self, subscription_ref: str, paused: bool) -> None:
+        data = {"pause_collection[behavior]": "void"} if paused else {"pause_collection": ""}
+        r = await self._http.post(f"/subscriptions/{subscription_ref}", data=data)
+        r.raise_for_status()
+
+    async def cancel(self, subscription_ref: str) -> None:
+        r = await self._http.delete(f"/subscriptions/{subscription_ref}")
+        r.raise_for_status()
 
 
 def verify_stripe_webhook(
@@ -452,6 +567,14 @@ class SimulatedNumbers(TelephonyProvider):
 # -- service -------------------------------------------------------------------------------------
 
 
+def _ts(v: Any) -> datetime:
+    if isinstance(v, int | float):
+        return datetime.fromtimestamp(v, UTC)
+    if isinstance(v, str):
+        return datetime.fromisoformat(v)
+    return datetime.now(UTC)
+
+
 def _period(now: datetime) -> tuple[datetime, datetime]:
     start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
     nxt = (start + timedelta(days=32)).replace(day=1)
@@ -461,6 +584,10 @@ def _period(now: datetime) -> tuple[datetime, datetime]:
 class BillingService:
     KIND = "subscription"
     NUMBER_KIND = "number"
+    CREDIT_KIND = "billing_credit"
+    LIMITS_KIND = "tenant_limits"
+    INVOICE_KIND = "invoice"
+    REFUND_KIND = "refund"
 
     def __init__(
         self,
@@ -490,14 +617,20 @@ class BillingService:
             return sub
         now = datetime.now(UTC)
         start, end = _period(now)
+        trial_end = now + timedelta(days=self.trial_days)
         sub = Subscription(
             tenant_id=tenant_id,
             period_start=start,
-            period_end=max(end, now + timedelta(days=self.trial_days)),
+            period_end=max(end, trial_end),
             provider=self.provider.name,
+            trial_ends_at=trial_end,
         )
         await self._save(sub)
         return sub
+
+    async def all_subscriptions(self) -> list[Subscription]:
+        docs = await self.store.list_docs(self.KIND, None, limit=100000)
+        return [Subscription.model_validate(d.data) for d in docs]
 
     async def _save(self, sub: Subscription) -> Subscription:
         await self.store.put_doc(
@@ -518,6 +651,9 @@ class BillingService:
                 await self.provider.report_usage(sub.subscription_ref, usage.minutes_overage)
             except Exception:
                 log.warning("overage report failed for %s", sub.tenant_id, exc_info=True)
+        await self._consume_credits(sub.tenant_id, usage.credit_pence)
+        if sub.status in SERVING_STATUSES:
+            await self._record_invoice(sub, usage)
         start, end = _period(datetime.now(UTC))
         left = sub.coupon_months_left
         if left is not None:
@@ -539,12 +675,17 @@ class BillingService:
         )
 
     async def change_plan(
-        self, tenant_id: str, plan_id: str, coupon_code: str | None = None
+        self,
+        tenant_id: str,
+        plan_id: str,
+        coupon_code: str | None = None,
+        *,
+        by_staff: bool = False,
     ) -> Subscription:
         if plan_id not in PLAN_BY_ID:
             raise ValueError(f"unknown plan {plan_id}")
         plan = PLAN_BY_ID[plan_id]
-        if plan.enterprise:
+        if plan.enterprise and not by_staff:
             raise ValueError("enterprise plans are set up by Parlio; contact sales")
         assistants = await self.store.list_assistants(tenant_id)
         if len(assistants) > plan.max_assistants:
@@ -616,6 +757,202 @@ class BillingService:
         else:
             return "ignored"
         return etype
+
+    # -- platform-staff operations (Phase 16b) --------------------------------------------------
+    async def set_status(
+        self, tenant_id: str, status: SubscriptionStatus, reason: str | None = None
+    ) -> Subscription:
+        sub = await self.subscription(tenant_id)
+        if sub.subscription_ref and self.provider.name != "simulated":
+            if status == SubscriptionStatus.CANCELLED:
+                await self.provider.cancel(sub.subscription_ref)
+            elif status in (SubscriptionStatus.PAUSED, SubscriptionStatus.SUSPENDED):
+                await self.provider.set_paused(sub.subscription_ref, True)
+            elif sub.status in (SubscriptionStatus.PAUSED, SubscriptionStatus.SUSPENDED):
+                await self.provider.set_paused(sub.subscription_ref, False)
+        return await self._save(sub.model_copy(update={"status": status, "status_reason": reason}))
+
+    async def extend_trial(self, tenant_id: str, days: int) -> Subscription:
+        sub = await self.subscription(tenant_id)
+        base = max(sub.trial_ends_at or sub.period_end, datetime.now(UTC))
+        new_end = base + timedelta(days=days)
+        upd: dict[str, Any] = {
+            "trial_ends_at": new_end,
+            "period_end": max(sub.period_end, new_end),
+        }
+        if sub.status in (SubscriptionStatus.PAST_DUE, SubscriptionStatus.TRIALING):
+            upd["status"] = SubscriptionStatus.TRIALING
+        return await self._save(sub.model_copy(update=upd))
+
+    async def convert_trial(self, tenant_id: str) -> Subscription:
+        """Activate without a card (invoiced / enterprise-style) - staff only."""
+        sub = await self.subscription(tenant_id)
+        return await self._save(
+            sub.model_copy(update={"status": SubscriptionStatus.ACTIVE, "trial_ends_at": None})
+        )
+
+    async def grant_credit(
+        self, tenant_id: str, pence: int, reason: str, granted_by: str
+    ) -> Credit:
+        if pence <= 0:
+            raise ValueError("credit must be positive")
+        c = Credit(
+            tenant_id=tenant_id,
+            pence=pence,
+            remaining_pence=pence,
+            reason=reason,
+            granted_by=granted_by,
+        )
+        await self.store.put_doc(
+            TenantDoc(
+                kind=self.CREDIT_KIND, id=c.id, tenant_id=tenant_id, data=c.model_dump(mode="json")
+            )
+        )
+        return c
+
+    async def credits(self, tenant_id: str) -> list[Credit]:
+        docs = await self.store.list_docs(self.CREDIT_KIND, tenant_id, limit=1000)
+        return sorted((Credit.model_validate(d.data) for d in docs), key=lambda c: c.created_at)
+
+    async def credit_balance(self, tenant_id: str) -> int:
+        return sum(c.remaining_pence for c in await self.credits(tenant_id))
+
+    async def _consume_credits(self, tenant_id: str, pence: int) -> None:
+        for c in await self.credits(tenant_id):
+            if pence <= 0:
+                break
+            take = min(c.remaining_pence, pence)
+            if take <= 0:
+                continue
+            pence -= take
+            await self.store.put_doc(
+                TenantDoc(
+                    kind=self.CREDIT_KIND,
+                    id=c.id,
+                    tenant_id=tenant_id,
+                    data=c.model_copy(
+                        update={"remaining_pence": c.remaining_pence - take}
+                    ).model_dump(mode="json"),
+                )
+            )
+
+    async def limits(self, tenant_id: str) -> TenantLimits:
+        doc = await self.store.get_doc(self.LIMITS_KIND, tenant_id)
+        return TenantLimits.model_validate(doc.data) if doc else TenantLimits(tenant_id=tenant_id)
+
+    async def set_limits(self, limits: TenantLimits) -> TenantLimits:
+        await self.store.put_doc(
+            TenantDoc(
+                kind=self.LIMITS_KIND,
+                id=limits.tenant_id,
+                tenant_id=limits.tenant_id,
+                data=limits.model_dump(mode="json"),
+            )
+        )
+        return limits
+
+    async def _record_invoice(self, sub: Subscription, usage: UsageSummary) -> Invoice:
+        inv = Invoice(
+            id=f"inv-{sub.tenant_id}-{sub.period_start:%Y%m}",
+            tenant_id=sub.tenant_id,
+            period_start=sub.period_start,
+            period_end=sub.period_end,
+            total_pence=usage.estimated_total_pence,
+            status="paid" if sub.status == SubscriptionStatus.ACTIVE else "open",
+            provider=self.provider.name,
+        )
+        await self.store.put_doc(
+            TenantDoc(
+                kind=self.INVOICE_KIND,
+                id=inv.id,
+                tenant_id=sub.tenant_id,
+                data=inv.model_dump(mode="json"),
+            )
+        )
+        return inv
+
+    async def invoices(self, tenant_id: str) -> list[Invoice]:
+        """Provider invoices when a customer ref exists, else the period invoices we recorded."""
+        sub = await self.subscription(tenant_id)
+        out: list[Invoice] = []
+        if sub.customer_ref and self.provider.name != "simulated":
+            try:
+                for raw in await self.provider.list_invoices(sub.customer_ref):
+                    out.append(
+                        Invoice(
+                            id=str(raw["id"]),
+                            tenant_id=tenant_id,
+                            period_start=_ts(raw.get("period_start")),
+                            period_end=_ts(raw.get("period_end")),
+                            total_pence=int(raw.get("total_pence") or 0),
+                            status=str(raw.get("status") or "open"),
+                            provider=self.provider.name,
+                            url=raw.get("url"),
+                            created_at=_ts(raw.get("created")),
+                        )
+                    )
+            except Exception:
+                log.warning("invoice fetch failed for %s", tenant_id, exc_info=True)
+        if not out:
+            docs = await self.store.list_docs(self.INVOICE_KIND, tenant_id, limit=100)
+            out = [Invoice.model_validate(d.data) for d in docs]
+        usage = await self._usage_for(sub)
+        out.append(
+            Invoice(
+                id=f"upcoming-{tenant_id}",
+                tenant_id=tenant_id,
+                period_start=sub.period_start,
+                period_end=sub.period_end,
+                total_pence=usage.estimated_total_pence,
+                status="draft",
+                provider=self.provider.name,
+            )
+        )
+        out.sort(key=lambda i: i.period_start, reverse=True)
+        return out
+
+    async def refund(
+        self, tenant_id: str, pence: int, reason: str, issued_by: str, invoice_id: str | None = None
+    ) -> Refund:
+        if pence <= 0:
+            raise ValueError("refund must be positive")
+        sub = await self.subscription(tenant_id)
+        ref = None
+        if sub.customer_ref and self.provider.name != "simulated":
+            ref = await self.provider.refund(sub.customer_ref, pence, reason)
+        else:
+            ref = await self.provider.refund(
+                sub.customer_ref or f"cus_sim_{tenant_id}", pence, reason
+            )
+        rf = Refund(
+            tenant_id=tenant_id,
+            pence=pence,
+            reason=reason,
+            invoice_id=invoice_id,
+            provider=self.provider.name,
+            provider_ref=ref,
+            issued_by=issued_by,
+        )
+        await self.store.put_doc(
+            TenantDoc(
+                kind=self.REFUND_KIND,
+                id=rf.id,
+                tenant_id=tenant_id,
+                data=rf.model_dump(mode="json"),
+            )
+        )
+        if invoice_id:
+            doc = await self.store.get_doc(self.INVOICE_KIND, invoice_id)
+            if doc is not None and doc.tenant_id == tenant_id:
+                doc.data["status"] = "refunded"
+                await self.store.put_doc(doc)
+        return rf
+
+    async def refunds(self, tenant_id: str) -> list[Refund]:
+        docs = await self.store.list_docs(self.REFUND_KIND, tenant_id, limit=200)
+        return sorted(
+            (Refund.model_validate(d.data) for d in docs), key=lambda r: r.created_at, reverse=True
+        )
 
     async def _by_customer(self, customer_ref: str) -> Subscription | None:
         for doc in await self.store.list_docs(self.KIND, None, limit=10000):
@@ -691,7 +1028,11 @@ class BillingService:
         discount = 0
         if sub.coupon and (cp := COUPONS.get(sub.coupon)):
             discount = base - cp.apply(base)
-        total = base - discount + overage_pence + sms_over_pence + chat_over_pence
+        gross = base - discount + overage_pence + sms_over_pence + chat_over_pence
+        balance = await self.credit_balance(sub.tenant_id)
+        credit = min(balance, gross)
+        total = gross - credit
+        limits = await self.limits(sub.tenant_id)
         margin = None if total <= 0 else round((total - vendor) / total * 100, 1)
         costs.sort(key=lambda x: x.minutes, reverse=True)
         return UsageSummary(
@@ -719,6 +1060,9 @@ class BillingService:
             numbers_included=plan.included_numbers,
             base_pence=base,
             discount_pence=discount,
+            credit_pence=credit,
+            credit_balance_pence=balance,
+            minutes_cap=limits.minutes_cap,
             estimated_total_pence=total,
             vendor_cost_pence=round(vendor, 2),
             gross_margin_pct=margin,
@@ -739,7 +1083,11 @@ class BillingService:
         return out
 
     async def concurrent_limit(self, tenant_id: str) -> int:
-        return (await self.subscription(tenant_id)).plan.max_concurrent_calls
+        sub = await self.subscription(tenant_id)
+        if sub.status not in SERVING_STATUSES:
+            return 0
+        limits = await self.limits(tenant_id)
+        return limits.max_concurrent_calls or sub.plan.max_concurrent_calls
 
     # numbers
     async def list_numbers(self, tenant_id: str) -> list[TenantNumber]:

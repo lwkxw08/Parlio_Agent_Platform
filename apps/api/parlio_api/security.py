@@ -327,6 +327,14 @@ class SecurityService:
         await self._save_enrolment(e)
         return RecoveryCodes(codes=codes)
 
+    async def reset_by_staff(self, user_id: str) -> bool:
+        """Staff-initiated 2FA reset (lost device): drop enrolment, revoke MFA sessions."""
+        had = await self.store.delete_doc(TOTP_KIND, user_id)
+        for s in await self.sessions(user_id):
+            if s.mfa:
+                await self.revoke(user_id, s.id)
+        return had
+
     async def disable(self, user_id: str, code: str) -> bool:
         e = await self.enrolment(user_id)
         if e is None:

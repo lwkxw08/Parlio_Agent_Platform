@@ -3,8 +3,9 @@
 import { useState } from "react";
 import { type Member, del, patch, post } from "@/lib/api";
 
-const ROLES: Member["role"][] = ["owner", "admin", "member", "viewer"];
-const ROLE_HELP: Record<Member["role"], string> = {
+type TenantRole = "owner" | "admin" | "member" | "viewer";
+const ROLES: TenantRole[] = ["owner", "admin", "member", "viewer"];
+const ROLE_HELP: Partial<Record<Member["role"], string>> = {
   owner: "Full control incl. billing and deleting the organisation",
   admin: "Manage assistant, team and settings",
   member: "Handle calls, tickets and contacts",
@@ -15,7 +16,7 @@ export default function Members({ tenant, initial, me, canManage }: { tenant: st
   const [members, setMembers] = useState(initial);
   const [email, setEmail] = useState("");
   const [name, setName] = useState("");
-  const [role, setRole] = useState<Member["role"]>("member");
+  const [role, setRole] = useState<TenantRole>("member");
   const [msg, setMsg] = useState<string | null>(null);
 
   const reload = async () => {
@@ -31,7 +32,7 @@ export default function Members({ tenant, initial, me, canManage }: { tenant: st
     setEmail(""); setName(""); setMsg(`Invitation recorded for ${m.email}. They join automatically on first sign-in.`);
   };
 
-  const changeRole = async (m: Member, r: Member["role"]) => {
+  const changeRole = async (m: Member, r: TenantRole) => {
     const upd = await patch<Member>(`/v1/organisations/${tenant}/members/${m.user_id}`, { role: r });
     if (upd) setMembers((ms) => ms.map((x) => (x.user_id === upd.user_id ? upd : x)));
     else setMsg("Role change refused");
@@ -57,7 +58,7 @@ export default function Members({ tenant, initial, me, canManage }: { tenant: st
                 <td>{m.email}</td>
                 <td>
                   {canManage ? (
-                    <select value={m.role} onChange={(e) => changeRole(m, e.target.value as Member["role"])} title={ROLE_HELP[m.role]}>
+                    <select value={m.role} onChange={(e) => changeRole(m, e.target.value as TenantRole)} title={ROLE_HELP[m.role]}>
                       {ROLES.map((r) => <option key={r} value={r}>{r}</option>)}
                     </select>
                   ) : <span className="pill">{m.role}</span>}
@@ -79,7 +80,7 @@ export default function Members({ tenant, initial, me, canManage }: { tenant: st
               <label>Name (optional) <input value={name} onChange={(e) => setName(e.target.value)} /></label>
             </div>
             <label>Role
-              <select value={role} onChange={(e) => setRole(e.target.value as Member["role"])}>
+              <select value={role} onChange={(e) => setRole(e.target.value as TenantRole)}>
                 {ROLES.filter((r) => r !== "owner").map((r) => <option key={r} value={r}>{r} — {ROLE_HELP[r]}</option>)}
               </select>
             </label>
