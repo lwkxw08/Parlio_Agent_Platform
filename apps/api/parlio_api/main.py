@@ -73,6 +73,7 @@ from parlio_api.notifications import (
     RuleNotifier,
 )
 from parlio_api.observability import AuditLog, RateLimiter, Telemetry, build_tracer
+from parlio_api.ops import HttpPager, OpsLoop, OpsService
 from parlio_api.outbound import (
     Dialer,
     LiveKitDialer,
@@ -111,6 +112,7 @@ from parlio_api.routes import (
 from parlio_api.routes import (
     live as live_routes,
 )
+from parlio_api.routes import ops as ops_routes
 from parlio_api.routes import (
     outbound as outbound_routes,
 )
@@ -128,6 +130,15 @@ from parlio_api.settings import Settings, get_settings
 from parlio_api.sip import SimulatedProvisioner, SimulatedRegistrar, SipProvisioner, SipService
 from parlio_api.sip_livekit import LiveKitProvisioner
 from parlio_api.store import CallStore, MemoryStore
+from parlio_api.support import (
+    SUPPORT_TENANT,
+    LinearIssueTracker,
+    LogIssueTracker,
+    SupportDesk,
+    SupportTextAgent,
+    SupportTicketIn,
+    support_assistant,
+)
 from parlio_api.telephony.base import TelephonyProvider
 from parlio_api.telephony.telnyx import TelnyxProvider
 from parlio_api.tickets import Notifier, SlaMonitor, TicketService
@@ -423,9 +434,44 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         Channel.SMS: SmsSender(sms),
         Channel.WEBCHAT: StoreOnlySender(),
     }
+    scorer: QAScorer = HeuristicScorer()
+    if settings.postcall_analyser == "openai" and settings.openai_api_key:
+        scorer = OpenAIScorer(settings.openai_api_key, settings.openai_model)
+    ops = OpsService(store, billing, sip, SimulationService(store, text_agent, scorer), HttpPager())
+    app.state.ops = ops
+    tracker = (
+        LinearIssueTracker(settings.linear_api_key, settings.linear_team_id)
+        if settings.linear_api_key and settings.linear_team_id
+        else LogIssueTracker()
+    )
+    support = SupportDesk(
+        store,
+        ops,
+        sip,
+        billing,
+        build_email(settings),
+        tracker,
+        dashboard_url=settings.dashboard_url,
+    )
+    app.state.support = support
+
+    async def _synthetic_ticket(tenant_id: str, title: str, meta: dict[str, object]) -> str | None:
+        t = await support.create_ticket(
+            tenant_id,
+            "system",
+            SupportTicketIn(subject=title, body=str(meta.get("detail", "")), priority="p2"),
+        )
+        return t.id
+
+    ops.open_ticket = _synthetic_ticket
+    if not await store.list_assistants(SUPPORT_TENANT):
+        await store.upsert_assistant(
+            support_assistant(settings.support_number),
+            [settings.support_number] if settings.support_number else [],
+        )
     inbox = InboxService(
         store,
-        text_agent,
+        SupportTextAgent(support, text_agent),
         senders,
         notifications=notifications,
         live=live,
@@ -436,13 +482,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.inbox = inbox
     hub.inbox = inbox
 
-    scorer: QAScorer = HeuristicScorer()
-    if settings.postcall_analyser == "openai" and settings.openai_api_key:
-        scorer = OpenAIScorer(settings.openai_api_key, settings.openai_model)
     qa = QAService(store, scorer, notifications, settings.dashboard_url)
     app.state.qa = qa
     hub.qa = qa
-    app.state.simulation = SimulationService(store, text_agent, scorer)
+    app.state.simulation = ops.simulation
     app.state.voice_clones = VoiceCloneService(store, SimulatedCloneProvider())
     value = ValueService(store)
     app.state.value = value
@@ -457,6 +500,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     )
     inbox_sla = InboxSlaLoop(inbox, settings.inbox_sweep_interval_s)
     inbox_sla.start()
+    ops_loop = OpsLoop(ops, settings.ops_sweep_interval_s)
+    ops_loop.start()
 
     stop = asyncio.Event()
     consumer: asyncio.Task[None] | None = None
@@ -484,6 +529,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         await postcall.close()
         await sla.aclose()
         await inbox_sla.aclose()
+        await ops_loop.stop()
         await digest.stop()
         await compliance.stop()
         await retry_loop.stop()
@@ -536,6 +582,9 @@ def create_app() -> FastAPI:
     app.include_router(payment_routes.router)
     app.include_router(payment_routes.worker)
     app.include_router(payment_routes.public)
+    app.include_router(ops_routes.router)
+    app.include_router(ops_routes.admin)
+    app.include_router(ops_routes.public)
     app.include_router(platform.router)
     app.include_router(platform.public)
     app.include_router(platform.ops)
