@@ -16,6 +16,7 @@ import {
 } from "@/lib/api";
 import AskAi from "./ask-ai";
 import FaqImport from "./faq-import";
+import VoicePicker from "./voice-picker";
 
 const TABS = ["persona", "business", "hours", "rules", "faqs", "fields", "sms", "languages", "recording", "blocked", "afterhours", "versions"] as const;
 type Tab = (typeof TABS)[number];
@@ -24,10 +25,6 @@ const LABELS: Record<Tab, string> = {
   sms: "SMS", languages: "Languages", recording: "Recording", blocked: "Blocked numbers", afterhours: "After hours", versions: "Versions",
 };
 const DAYS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
-const VOICES: Record<string, { id: string; label: string }[]> = {
-  cartesia: [{ id: "f786b574-daa5-4673-aa0c-cbe3e8534c02", label: "Parlio default (British, warm)" }],
-  elevenlabs: [],
-};
 const SMS_TRIGGERS = ["after_call", "missed_call", "booking_link", "address", "payment_link", "ticket_confirmation", "custom"];
 const LANGS = [["en", "English"], ["cy", "Welsh"], ["pl", "Polish"], ["ur", "Urdu"], ["pa", "Punjabi"], ["bn", "Bengali"], ["fr", "French"], ["es", "Spanish"], ["de", "German"], ["it", "Italian"], ["pt", "Portuguese"], ["ar", "Arabic"], ["zh", "Mandarin"], ["hi", "Hindi"]];
 
@@ -110,20 +107,9 @@ export default function Studio({ initial, versions: initialVersions, requiredFie
                 {["slow", "normal", "brisk"].map((t) => <option key={t}>{t}</option>)}
               </select>
             </label>
-            <label>Voice provider
-              <select value={cfg.voice.provider} onChange={(e) => upd({ voice: { ...cfg.voice, provider: e.target.value, voice_id: VOICES[e.target.value]?.[0]?.id ?? cfg.voice.voice_id } })}>
-                <option value="cartesia">Cartesia Sonic (lowest latency)</option>
-                <option value="elevenlabs">ElevenLabs Flash</option>
-              </select>
-            </label>
-            <label>Voice
-              <select value={cfg.voice.voice_id} onChange={(e) => upd({ voice: { ...cfg.voice, voice_id: e.target.value } })}>
-                {(VOICES[cfg.voice.provider] ?? []).map((v) => <option key={v.id} value={v.id}>{v.label}</option>)}
-                {!(VOICES[cfg.voice.provider] ?? []).some((v) => v.id === cfg.voice.voice_id) && <option value={cfg.voice.voice_id}>Custom: {cfg.voice.voice_id}</option>}
-              </select>
-            </label>
-            <label>Voice ID (paste from the provider&apos;s voice library) <input value={cfg.voice.voice_id} onChange={(e) => upd({ voice: { ...cfg.voice, voice_id: e.target.value } })} /></label>
           </div>
+          <h3 style={{ margin: "0.5rem 0 0.25rem" }}>Voice</h3>
+          <VoicePicker value={cfg.voice} businessName={cfg.business_name} onChange={(voice) => upd({ voice })} />
           <label>Speaking speed ({cfg.voice.speed ?? 1}×)
             <input type="range" min={0.8} max={1.2} step={0.05} value={cfg.voice.speed ?? 1} onChange={(e) => upd({ voice: { ...cfg.voice, speed: Number(e.target.value) } })} />
           </label>

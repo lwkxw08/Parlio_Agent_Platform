@@ -24,7 +24,14 @@ from parlio_api.analytics_query import (
     parse_question,
 )
 from parlio_api.auth import UserDep, current_user
-from parlio_api.deps import BillingDep, DrafterDep, SettingsDep, StoreDep, TicketsDep
+from parlio_api.deps import (
+    BillingDep,
+    DrafterDep,
+    SettingsDep,
+    StoreDep,
+    TicketsDep,
+    VoicePreviewDep,
+)
 from parlio_api.drafting import Draft, DraftRequest
 from parlio_api.onboarding import suggest_faqs
 from parlio_api.store import (
@@ -41,6 +48,13 @@ from parlio_api.store import (
     TransferRecord,
     TransferStats,
 )
+from parlio_api.voices import (
+    CATALOGUE,
+    Preview,
+    PreviewRequest,
+    PreviewUnavailable,
+    Voice,
+)
 from parlio_voice.models import (
     AssistantConfig,
     Destination,
@@ -48,6 +62,7 @@ from parlio_voice.models import (
     TicketIntake,
     TransferConfig,
     TransferMode,
+    TTSProvider,
 )
 
 router = APIRouter(prefix="/v1", tags=["dashboard"], dependencies=[Depends(current_user)])
@@ -154,6 +169,29 @@ async def draft_field(
     if cfg is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "assistant not found")
     return await drafter.draft(body, cfg)
+
+
+class VoiceCatalogue(BaseModel):
+    voices: list[Voice]
+    preview_available: dict[str, bool]
+
+
+@router.get("/voices", response_model=VoiceCatalogue)
+async def list_voices(previewer: VoicePreviewDep) -> VoiceCatalogue:
+    """Curated UK/Irish voice catalogue per TTS provider + whether previews work here."""
+    return VoiceCatalogue(
+        voices=CATALOGUE,
+        preview_available={p.value: previewer.available(p) for p in TTSProvider},
+    )
+
+
+@router.post("/voices/preview", response_model=Preview)
+async def preview_voice(body: PreviewRequest, previewer: VoicePreviewDep) -> Preview:
+    """Synthesise a short sample so the user can hear a voice before saving."""
+    try:
+        return await previewer.preview(body)
+    except PreviewUnavailable as e:
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, str(e)) from e
 
 
 @router.get("/assistants/{assistant_id}/required-fields", response_model=list[RequiredField])

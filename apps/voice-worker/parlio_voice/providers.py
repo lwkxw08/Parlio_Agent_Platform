@@ -25,7 +25,7 @@ log = logging.getLogger("parlio.providers")
 _STT_LANG = {"en": "en-GB", "es": "es", "fr": "fr", "de": "de", "pt": "pt", "it": "it"}
 
 # Neutral British voices used when a vendor is only a fallback (voice ids are vendor-specific).
-_CARTESIA_FALLBACK_VOICE = "f786b574-daa5-4673-aa0c-cbe3e8534c02"
+_CARTESIA_FALLBACK_VOICE = "c46cf1f6-49a1-4d67-9a57-ff859a4046d3"  # Cora (British)
 _ELEVENLABS_FALLBACK_VOICE = "JBFqnCBsd6RMkjVDRZzb"
 
 _DEFAULT_LLM_MODEL = {

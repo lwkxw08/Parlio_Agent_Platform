@@ -27,6 +27,9 @@ class Settings(BaseSettings):
     postcall_concurrency: int = 4
     openai_api_key: str | None = None
     openai_model: str = "gpt-4o-mini"
+    # TTS provider keys for Studio voice previews (the worker has its own copies).
+    cartesia_api_key: str | None = None
+    elevenlabs_api_key: str | None = None
 
     # Dashboard auth: "dev" trusts X-Parlio-User / seeded demo owner; "supabase" verifies JWTs.
     auth_mode: Literal["dev", "supabase"] = "dev"
