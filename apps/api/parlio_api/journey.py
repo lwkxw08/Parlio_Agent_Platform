@@ -18,6 +18,7 @@ import asyncio
 import contextlib
 import logging
 import re
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from typing import Any, Literal
 
@@ -800,10 +801,12 @@ class CheckInLoop:
         calendar: CalendarService,
         notifications: NotificationService,
         interval_s: float = 3600,
+        enrich: Callable[[str, int], Awaitable[str]] | None = None,
     ) -> None:
         self.store, self.billing, self.sip = store, billing, sip
         self.calendar, self.notifications = calendar, notifications
         self.interval_s = interval_s
+        self.enrich = enrich
         self._task: asyncio.Task[None] | None = None
 
     def start(self) -> None:
@@ -847,15 +850,24 @@ class CheckInLoop:
                 cfgs = await self.store.list_assistants(doc.tenant_id)
                 name = cfgs[0].name if cfgs else "your assistant"
                 hint = f" — next: {cl.next_step.title.lower()}" if cl.next_step else ""
+                text = body.format(
+                    name=name, completed=cl.completed, total=cl.total, next_hint=hint
+                )
+                if self.enrich is not None:
+                    try:
+                        extra = await self.enrich(doc.tenant_id, day)
+                    except Exception:
+                        log.exception("check-in enrichment failed")
+                        extra = ""
+                    if extra:
+                        text = f"{extra}\n\n{text}"
                 await self.notifications.dispatch(
                     NotificationEvent(
                         tenant_id=doc.tenant_id,
                         company_id=cfgs[0].company_id if cfgs else None,
                         event=NotifyEvent.OWNER_DIGEST,
                         title=subject.format(name=name),
-                        body=body.format(
-                            name=name, completed=cl.completed, total=cl.total, next_hint=hint
-                        ),
+                        body=text,
                         context={"checkin_day": day},
                     )
                 )

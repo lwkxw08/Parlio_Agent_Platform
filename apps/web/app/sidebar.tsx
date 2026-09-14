@@ -89,6 +89,7 @@ export const GROUPS: Group[] = [
       { href: "/billing", label: "Billing", icon: I.billing },
       { href: "/compliance", label: "Compliance", icon: I.compliance },
       { href: "/support", label: "Support", icon: I.support },
+      { href: "/whats-new", label: "What's new", icon: I.launch },
       { href: "/settings", label: "Settings", icon: I.settings },
       { href: "/team", label: "Team", icon: I.team },
     ],

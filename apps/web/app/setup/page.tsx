@@ -1,5 +1,6 @@
 import Link from "next/link";
-import { fetchChecklist, fetchMe, fetchPlans, fetchQuestionnaire, fetchWidget } from "@/lib/api";
+import { fetchChecklist, fetchFirstWeek, fetchMe, fetchPlans, fetchQuestionnaire, fetchWhiteGlove, fetchWhiteGloveAreas, fetchWidget } from "@/lib/api";
+import { FirstWeekCard, WhiteGloveCard } from "./extras";
 import Setup from "./setup";
 
 export const dynamic = "force-dynamic";
@@ -11,9 +12,12 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ t
   const active = me.data.memberships.filter((m) => m.status === "active");
   const tenant = sp.tenant ?? active[0]?.tenant_id;
   if (!tenant) return <><h1>Setup</h1><p className="muted">No organisation yet — <Link href="/onboarding">set one up</Link>.</p></>;
-  const [checklist, plans, q, widget] = await Promise.all([fetchChecklist(tenant), fetchPlans(), fetchQuestionnaire(tenant), fetchWidget(tenant)]);
+  const [checklist, plans, q, widget, week, wg, areas] = await Promise.all([
+    fetchChecklist(tenant), fetchPlans(), fetchQuestionnaire(tenant), fetchWidget(tenant), fetchFirstWeek(tenant), fetchWhiteGlove(tenant), fetchWhiteGloveAreas(),
+  ]);
   if (!checklist) return <><h1>Setup</h1><p className="muted">API unreachable</p></>;
   const role = me.data.memberships.find((m) => m.tenant_id === tenant)?.role ?? "viewer";
+  const canManage = role === "owner" || role === "admin";
   return (
     <>
       <h1>Setup checklist</h1>
@@ -23,7 +27,9 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ t
         </div>
       )}
       {sp.checkout === "simulated" && <div className="banner" style={{ marginBottom: "1rem" }}><strong>Payment details saved (simulated checkout)</strong><span>Your subscription is active.</span></div>}
-      <Setup tenant={tenant} initial={checklist} plans={plans ?? []} questionnaire={q?.questionnaire ?? null} widget={widget} canManage={role === "owner" || role === "admin"} />
+      <Setup tenant={tenant} initial={checklist} plans={plans ?? []} questionnaire={q?.questionnaire ?? null} widget={widget} canManage={canManage} />
+      {week && (week.calls > 0 || checklist.live) && <FirstWeekCard report={week} tenant={tenant} />}
+      {wg && <WhiteGloveCard tenant={tenant} initial={wg} areas={areas ?? {}} canManage={canManage} />}
     </>
   );
 }

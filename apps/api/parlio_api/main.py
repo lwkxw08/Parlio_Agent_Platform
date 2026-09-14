@@ -18,6 +18,12 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 
 from parlio_api import __version__
 from parlio_api.admin import AdminService
+from parlio_api.adoption import (
+    AnnouncementService,
+    WhiteGloveService,
+    first_week_report,
+    render_first_week,
+)
 from parlio_api.billing import (
     BillingProvider,
     BillingService,
@@ -107,6 +113,7 @@ from parlio_api.routes import (
     worker,
 )
 from parlio_api.routes import admin as admin_routes
+from parlio_api.routes import adoption as adoption_routes
 from parlio_api.routes import (
     inbox as inbox_routes,
 )
@@ -493,6 +500,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.value = value
     digest = DigestService(store, value, notifications)
     app.state.digest = digest
+    app.state.whiteglove = WhiteGloveService(store, billing, notifications)
+    app.state.announcements = AnnouncementService(store)
     digest.start()
     app.state.whitelabel = WhiteLabelService(
         store,
@@ -504,7 +513,17 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     inbox_sla.start()
     ops_loop = OpsLoop(ops, settings.ops_sweep_interval_s)
     ops_loop.start()
-    checkins = CheckInLoop(store, billing, sip, calendar, notifications)
+
+    async def _checkin_digest(tenant_id: str, day: int) -> str:
+        if day != 7:
+            return ""
+        rep = await first_week_report(
+            tenant_id, store, value, billing, sip, calendar, notifications
+        )
+        cfgs = await store.list_assistants(tenant_id)
+        return render_first_week(rep, cfgs[0].business_name if cfgs else "your business")
+
+    checkins = CheckInLoop(store, billing, sip, calendar, notifications, enrich=_checkin_digest)
     checkins.start()
 
     stop = asyncio.Event()
@@ -565,6 +584,9 @@ def create_app() -> FastAPI:
     app.include_router(account.public)
     app.include_router(journey_routes.router)
     app.include_router(journey_routes.public)
+    app.include_router(adoption_routes.router)
+    app.include_router(adoption_routes.admin)
+    app.include_router(adoption_routes.public)
     app.include_router(quality_routes.router)
     app.include_router(value_routes.router)
     app.include_router(value_routes.public)
