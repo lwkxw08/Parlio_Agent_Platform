@@ -219,11 +219,12 @@ Parlio owns and guarantees AI numbers, carrier, SIP edge and AI pipeline; custom
 - Human support business hours (8am-8pm UK Mon-Sat) via ticket queue and shared inbox; Slack Connect + named CSM for Enterprise/Sovereign; 24/7 human response only for paid P1 SLAs.
 - Helpdesk with SLA timers, escalation to engineering (Linear), CSAT after every ticket, weekly ticket-tag review into product backlog.
 
-### Phase 19 — Onboarding, self-serve & trust (0.5 session)
-- In-app setup checklist, one-click test call, "why did the AI say this?" explainability view (transcript + retrieved FAQ/rule), guided FAQ import, vertical playbooks (trades, salons, hospitality, professional services).
-- White-glove onboarding for Growth+ (config review, forwarding/SIP setup, test calls) with 7-/30-day check-in automation and "first week" impact digest.
-- Docs site (forwarding + SIP guides UK/US, integrations, API), change log, in-app announcements, public roadmap/feedback board.
-- Trust centre publishing certifications, DPA, sub-processors, data residency, recording-consent guidance, incident response and breach notification policy, telephony demarcation.
+### Phase 19 — Onboarding, self-serve & trust (0.5 session) — PR #24
+- Guided sign-up journey (Dena-style): monthly call volume → what the assistant should do → business type/languages/team/channels/UK-sovereign → website/Google lookup → confirm details → recommended plan (smallest plan whose entitlements + minutes cover the answers, estimated cost incl. overage, Enterprise = talk to sales) → FAQs → assistant → tenant created on that plan's trial → `/setup` checklist + optional checkout.
+- In-app setup checklist (`/setup`: assistant, number, test call, alerts, calendar, team, billing; live = real answered calls), one-click test call (runs the Phase 17 synthetic caller; browser click-to-talk link when the widget has voice on), "Why did it say that?" tab on call detail (assistant turns matched to the FAQ/rule/business fact/hours/greeting of the config version live at call time — heuristic wording match, not model provenance), vertical playbooks (trades, salon, hospitality, professional, dental, legal, property, general) applied at onboarding.
+- 7-/30-day check-in automation (`CheckInLoop` → owner digest notification with checklist progress, idempotent per tenant/day). Still to do: white-glove booking workflow for Growth+, "first week" impact digest UI, guided FAQ import.
+- Still to do: docs site (forwarding + SIP guides UK/US, integrations, API), change log, in-app announcements, public roadmap/feedback board.
+- Trust centre (`/trust`, `GET /v1/public/trust`): data residency, DPA, recording/consent, security, incident response & breach notification, telephony demarcation, data-subject rights, certifications (Cyber Essentials in progress; ISO 27001/SOC 2 roadmap — wording needs legal review before launch), sub-processor table.
 
 ---
 

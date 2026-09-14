@@ -29,6 +29,7 @@ const I = {
   health: <svg viewBox="0 0 24 24" {...S}><path d="M3 12h4l2-5 4 10 2-5h6" /></svg>,
   support: <svg viewBox="0 0 24 24" {...S}><circle cx="12" cy="12" r="9" /><path d="M9.5 9.5a2.5 2.5 0 0 1 5 0c0 1.7-2.5 2-2.5 3.5" /><path d="M12 17h.01" /></svg>,
   team: <svg viewBox="0 0 24 24" {...S}><circle cx="9" cy="8" r="3.5" /><path d="M2 20a7 7 0 0 1 14 0" /><circle cx="17" cy="9" r="2.5" /><path d="M16 15a5 5 0 0 1 6 5" /></svg>,
+  setup: <svg viewBox="0 0 24 24" {...S}><rect x="4" y="3" width="16" height="18" rx="2" /><path d="M8 8h8M8 12h8M8 16h5" /></svg>,
   launch: <svg viewBox="0 0 24 24" {...S}><path d="M5 15l-2 6 6-2" /><path d="M14 4c3 0 6 3 6 6-2 6-8 10-11 10L4 15C4 12 8 6 14 4z" /><circle cx="15" cy="9" r="1.5" /></svg>,
   account: <svg viewBox="0 0 24 24" {...S}><circle cx="12" cy="12" r="10" /><circle cx="12" cy="10" r="3.2" /><path d="M6 19a6.5 6.5 0 0 1 12 0" /></svg>,
   sun: <svg viewBox="0 0 24 24" {...S}><circle cx="12" cy="12" r="4" /><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" /></svg>,
@@ -57,6 +58,7 @@ export const NAV: Item[] = [
   { href: "/support", label: "Support", icon: I.support },
   { href: "/settings", label: "Settings", icon: I.settings },
   { href: "/team", label: "Team", icon: I.team },
+  { href: "/setup", label: "Setup", icon: I.setup },
   { href: "/launch", label: "Launch", icon: I.launch },
 ];
 

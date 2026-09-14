@@ -13,7 +13,7 @@ export default async function Page() {
       <h1>Parlio status</h1>
       <div className={`banner ${s.overall === "operational" ? "" : stateCls(s.overall)}`} style={{ marginBottom: "1rem" }}>
         <strong>{s.overall === "operational" ? "All systems operational" : STATE_LABEL[s.overall]}</strong>
-        <span>30-day voice uptime {s.uptime_30d_pct.toFixed(2)}% · updated {when(s.generated_at)}</span>
+        <span>30-day voice uptime {s.uptime_30d_pct.toFixed(2)}% · updated {when(s.generated_at)} · <a href="/trust">Trust centre</a></span>
       </div>
       <div className="section">
         <h2>Components</h2>

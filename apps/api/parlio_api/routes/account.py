@@ -12,7 +12,9 @@ from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, Field
 
 from parlio_api.auth import UserDep
-from parlio_api.deps import SettingsDep, StoreDep
+from parlio_api.billing import PLAN_BY_ID
+from parlio_api.deps import BillingDep, SettingsDep, StoreDep
+from parlio_api.journey import QUESTIONNAIRE_KIND, Questionnaire, Vertical, apply_playbook
 from parlio_api.onboarding import (
     PlaceResult,
     WebsiteAnalysis,
@@ -20,7 +22,7 @@ from parlio_api.onboarding import (
     config_patch_from_analysis,
     search_places,
 )
-from parlio_api.store import Contact, ContactUpdate, Member
+from parlio_api.store import Contact, ContactUpdate, Member, TenantDoc
 from parlio_voice.models import AssistantConfig, BusinessInfo, Faq, Schedule
 
 router = APIRouter(prefix="/v1", tags=["account"])
@@ -186,12 +188,17 @@ class OnboardingRequest(BaseModel):
     languages: list[str] = Field(default_factory=lambda: ["en"])
     greeting: str | None = None
     numbers: list[str] = Field(default_factory=list)
+    vertical: Vertical = "general"
+    questionnaire: Questionnaire | None = None
+    plan_id: str | None = None  # from the recommendation step; trial starts on this plan
 
 
 class OnboardingResult(BaseModel):
     tenant_id: str
     assistant: AssistantConfig
     member: Member
+    plan_id: str | None = None
+    trial_ends_at: datetime | None = None
 
 
 def _slug(name: str) -> str:
@@ -201,7 +208,7 @@ def _slug(name: str) -> str:
 
 @router.post("/onboarding", response_model=OnboardingResult, status_code=status.HTTP_201_CREATED)
 async def complete_onboarding(
-    body: OnboardingRequest, user: UserDep, store: StoreDep
+    body: OnboardingRequest, user: UserDep, store: StoreDep, billing: BillingDep
 ) -> OnboardingResult:
     """Create the organisation, make the signer its owner and publish assistant v1."""
     tenant_id = _slug(body.organisation_name)
@@ -228,8 +235,34 @@ async def complete_onboarding(
     )
     if body.greeting:
         cfg.greeting = body.greeting
+    cfg = apply_playbook(cfg, body.vertical)
     await store.upsert_assistant(cfg, body.numbers)
-    return OnboardingResult(tenant_id=tenant_id, assistant=cfg, member=member)
+    plan_id: str | None = None
+    trial_ends: datetime | None = None
+    if body.plan_id and body.plan_id in PLAN_BY_ID and not PLAN_BY_ID[body.plan_id].enterprise:
+        sub = await billing.change_plan(tenant_id, body.plan_id)
+        plan_id, trial_ends = sub.plan_id, sub.trial_ends_at
+    if body.questionnaire is not None:
+        await store.put_doc(
+            TenantDoc(
+                kind=QUESTIONNAIRE_KIND,
+                id=tenant_id,
+                tenant_id=tenant_id,
+                data={
+                    "questionnaire": body.questionnaire.model_dump(mode="json"),
+                    "recommended_plan_id": body.plan_id,
+                    "vertical": body.vertical,
+                    "signed_up_at": datetime.now(UTC).isoformat(),
+                },
+            )
+        )
+    return OnboardingResult(
+        tenant_id=tenant_id,
+        assistant=cfg,
+        member=member,
+        plan_id=plan_id,
+        trial_ends_at=trial_ends,
+    )
 
 
 # -- public share links ------------------------------------------------------------------------
