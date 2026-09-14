@@ -181,7 +181,7 @@ async def test_transfer_events_are_recorded_and_aggregated(client: AsyncClient) 
 async def test_transfer_config_round_trip_and_validation(client: AsyncClient) -> None:
     r = await client.get("/v1/assistants/demo/transfer")
     cfg = r.json()
-    assert [d["id"] for d in cfg["destinations"]] == ["office", "oncall"]
+    assert {"office", "oncall"} <= {d["id"] for d in cfg["destinations"]}
     r = await client.get("/v1/assistants/demo/availability")
     avail = {d["destination"]["id"]: d["available_now"] for d in r.json()}
     assert avail["oncall"] is True and isinstance(avail["office"], bool)

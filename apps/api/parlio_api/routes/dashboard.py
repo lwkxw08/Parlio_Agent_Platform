@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from typing import Annotated
+from uuid import uuid4
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -116,6 +117,57 @@ class WorkerKeyCreated(BaseModel):
 @router.get("/assistants", response_model=list[AssistantConfig])
 async def list_assistants(store: StoreDep, tenant_id: str | None = None) -> list[AssistantConfig]:
     return await store.list_assistants(tenant_id)
+
+
+class AssistantCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=60)
+    business_name: str = Field(min_length=1, max_length=120)
+    tenant_id: str | None = None
+    copy_from: str | None = Field(default=None, description="assistant_id to clone settings from")
+
+
+@router.post("/assistants", response_model=AssistantConfig, status_code=status.HTTP_201_CREATED)
+async def create_assistant(
+    body: AssistantCreate, store: StoreDep, billing: BillingDep, user: UserDep
+) -> AssistantConfig:
+    """Add another assistant to the organisation (plan-limited via ``Plan.max_assistants``)."""
+    tenants = user.tenant_ids
+    tenant_id = body.tenant_id or (tenants[0] if tenants else None)
+    if tenant_id is None:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "no organisation")
+    user.require_admin(tenant_id)
+    existing = await store.list_assistants(tenant_id)
+    plan = (await billing.subscription(tenant_id)).plan
+    if len(existing) >= plan.max_assistants:
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN,
+            f"{plan.name} allows {plan.max_assistants} assistant(s); upgrade your plan to add more",
+        )
+    aid = f"{tenant_id}-{uuid4().hex[:8]}"
+    src = await store.get_assistant(body.copy_from) if body.copy_from else None
+    if src is not None and src.tenant_id != tenant_id:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "cannot copy from another organisation")
+    if src is not None:
+        cfg = src.model_copy(
+            update={
+                "assistant_id": aid,
+                "assistant_version": 1,
+                "name": body.name,
+                "business_name": body.business_name,
+            },
+            deep=True,
+        )
+    else:
+        company = existing[0].company_id if existing else f"{tenant_id}-main"
+        cfg = AssistantConfig(
+            tenant_id=tenant_id,
+            company_id=company,
+            assistant_id=aid,
+            name=body.name,
+            business_name=body.business_name,
+        )
+    await store.upsert_assistant(cfg, [])
+    return cfg
 
 
 @router.put("/assistants/{assistant_id}", response_model=AssistantConfig)

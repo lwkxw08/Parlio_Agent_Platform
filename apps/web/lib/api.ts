@@ -594,6 +594,8 @@ export const fetchCalls = (params: Record<string, string | number | undefined | 
   get<CallRecord[]>(`/v1/calls${qs(params)}`);
 export const fetchCall = (id: string) => get<CallRecord>(`/v1/calls/${id}`);
 export const fetchAssistants = (tenant_id?: string) => get<Assistant[]>(`/v1/assistants${qs({ tenant_id })}`);
+export const createAssistant = (body: { name: string; business_name: string; copy_from?: string | null }) =>
+  request<Assistant>("/v1/assistants", { method: "POST", body: JSON.stringify(body) });
 export const fetchVersions = (id: string) => get<VersionSummary[]>(`/v1/assistants/${id}/versions`);
 export const fetchSuggestedFaqs = (id: string) => get<Faq[]>(`/v1/assistants/${id}/faqs/suggest`);
 export const fetchTickets = (status?: TicketStatus) => get<Ticket[]>(`/v1/tickets${qs({ status })}`);
