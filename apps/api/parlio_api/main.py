@@ -154,6 +154,7 @@ from parlio_api.telephony.telnyx import TelnyxProvider
 from parlio_api.tickets import Notifier, SlaMonitor, TicketService
 from parlio_api.value import DigestService, ValueService
 from parlio_api.vault import LocalVault
+from parlio_api.voices import VoicePreviewer
 from parlio_api.whitelabel import WhiteLabelService
 from parlio_voice.config_client import DEMO_CONFIG
 from parlio_voice.models import CallEvent, CallEventType
@@ -504,6 +505,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.whiteglove = WhiteGloveService(store, billing, notifications)
     app.state.announcements = AnnouncementService(store)
     app.state.drafter = Drafter(settings.openai_api_key, model=settings.openai_model)
+    app.state.voice_previewer = VoicePreviewer(
+        settings.cartesia_api_key, settings.elevenlabs_api_key
+    )
     digest.start()
     app.state.whitelabel = WhiteLabelService(
         store,

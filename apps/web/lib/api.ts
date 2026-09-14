@@ -1130,5 +1130,12 @@ export const setFeedbackStatus = (id: string, status: Feedback["status"]) => pat
 
 export type DraftField = "description" | "services" | "persona_extra" | "instructions" | "greeting" | "faq_answer" | "rule" | "sms_template";
 export type Draft = { field: DraftField; text: string; source: "llm" | "template"; website_used: string | null; notes: string[] };
+export type Voice = { provider: "cartesia" | "elevenlabs"; id: string; name: string; gender: "female" | "male"; accent: string; description: string; recommended: boolean };
+export type VoiceCatalogue = { voices: Voice[]; preview_available: Record<string, boolean> };
+export const fetchVoices = () => get<VoiceCatalogue>("/v1/voices");
+export type VoicePreview = { provider: string; voice_id: string; mime: string; audio_b64: string };
+export const previewVoice = (body: { provider: string; voice_id: string; text?: string; speed?: number | null }) =>
+  request<VoicePreview>("/v1/voices/preview", { method: "POST", body: JSON.stringify(body) });
+
 export const requestDraft = (assistantId: string, body: { field: DraftField; brief: string; current?: string; website?: string | null; context?: string | null }) =>
   request<Draft>(`/v1/assistants/${assistantId}/draft`, { method: "POST", body: JSON.stringify(body) });

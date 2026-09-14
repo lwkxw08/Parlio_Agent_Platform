@@ -241,3 +241,8 @@ html.embed body { background: var(--panel); }
 .card.choice.selected { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft, rgba(37, 99, 235, 0.25)); }
 .chips button { display: inline-block; padding: 0.25rem 0.7rem; border-radius: 999px; background: var(--line); color: var(--muted); border: 0; font-size: 0.8rem; margin-right: 0.3rem; cursor: pointer; }
 .chips button.active { background: var(--accent-grad); color: #fff; }
+
+/* Assistant Studio voice picker */
+.voice-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 0.75rem; margin: 0.5rem 0; }
+.card.voice { padding: 0.8rem; }
+.card.voice p { min-height: 2.4em; }

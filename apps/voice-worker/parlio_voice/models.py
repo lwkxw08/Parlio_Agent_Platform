@@ -36,7 +36,7 @@ class TTSProvider(StrEnum):
 
 class VoiceConfig(BaseModel):
     provider: TTSProvider = TTSProvider.CARTESIA
-    voice_id: str = "f786b574-daa5-4673-aa0c-cbe3e8534c02"
+    voice_id: str = "c46cf1f6-49a1-4d67-9a57-ff859a4046d3"  # Cartesia "Cora" (British)
     speed: float | None = None
 
 

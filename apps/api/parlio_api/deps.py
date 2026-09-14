@@ -32,6 +32,7 @@ from parlio_api.store import CallStore
 from parlio_api.support import SupportDesk
 from parlio_api.tickets import TicketService
 from parlio_api.value import DigestService, ValueService
+from parlio_api.voices import VoicePreviewer
 from parlio_api.whitelabel import WhiteLabelService
 
 
@@ -61,6 +62,11 @@ def get_tickets(request: Request) -> TicketService:
 def get_drafter(request: Request) -> Drafter:
     d: Drafter = request.app.state.drafter
     return d
+
+
+def get_voice_previewer(request: Request) -> VoicePreviewer:
+    p: VoicePreviewer = request.app.state.voice_previewer
+    return p
 
 
 def get_sms(request: Request) -> MessageService:
@@ -240,6 +246,7 @@ SipDep = Annotated[SipService, Depends(get_sip)]
 HubDep = Annotated[IntegrationHub, Depends(get_hub)]
 TicketsDep = Annotated[TicketService, Depends(get_tickets)]
 DrafterDep = Annotated[Drafter, Depends(get_drafter)]
+VoicePreviewDep = Annotated[VoicePreviewer, Depends(get_voice_previewer)]
 PostCallDep = Annotated[PostCallProcessor, Depends(get_postcall)]
 SettingsDep = Annotated[Settings, Depends(get_settings)]
 QADep = Annotated[QAService, Depends(get_qa)]
