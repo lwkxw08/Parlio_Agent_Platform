@@ -590,6 +590,37 @@ PROVIDER_GUIDES: list[ProviderGuide] = [
         quirks=["Some providers charge forwarding minutes; check your tariff."],
     ),
     ProviderGuide(
+        id="mobile",
+        name="Mobile phone (EE, O2, Vodafone, Three, giffgaff...)",
+        mode=TrunkMode.FORWARD,
+        summary=(
+            "No landline needed: divert your business mobile to your Parlio number, either"
+            " always or only when you can't answer."
+        ),
+        steps=[
+            "Decide how much Parlio should handle. Overflow only: dial **61*<Parlio number>**"
+            " to divert unanswered calls (add *11 before the final # to set the ring time to"
+            " ~15s, e.g. **61*<number>*11*15#), **67*<number># when busy and"
+            " **62*<number># when out of signal. Everything: dial **21*<number>#.",
+            "Enter your Parlio number in international format (+44... or 0044...) exactly as"
+            " shown on this page.",
+            "Add your mobile number as a DDI here so the assistant knows which business the"
+            " call is for and can text callers back from the right identity.",
+            "Test by calling your mobile from another phone and letting it ring out; Parlio"
+            " should answer within a ring of the divert.",
+            "To switch off later: ##61#, ##67#, ##62# or ##21# (or ##002# to clear all).",
+        ],
+        quirks=[
+            "Most UK unlimited tariffs include diverted calls, but some PAYG/business SIMs"
+            " charge for the diverted leg - check before going live.",
+            "Diverts are set per SIM; on dual-SIM phones set them on the business line.",
+            "Caller ID is passed through, so contacts, SMS follow-ups and returning-caller"
+            " detection work as normal.",
+            "iPhone/Android call-forwarding settings only offer 'always'; use the ** codes"
+            " (or your network app) for no-answer/busy diverts.",
+        ],
+    ),
+    ProviderGuide(
         id="voipfone",
         name="Voipfone",
         mode=TrunkMode.BYO_REGISTER,

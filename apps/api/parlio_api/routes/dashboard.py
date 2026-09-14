@@ -24,7 +24,8 @@ from parlio_api.analytics_query import (
     parse_question,
 )
 from parlio_api.auth import UserDep, current_user
-from parlio_api.deps import BillingDep, SettingsDep, StoreDep, TicketsDep
+from parlio_api.deps import BillingDep, DrafterDep, SettingsDep, StoreDep, TicketsDep
+from parlio_api.drafting import Draft, DraftRequest
 from parlio_api.onboarding import suggest_faqs
 from parlio_api.store import (
     AssistantVersion,
@@ -142,6 +143,17 @@ async def suggest_assistant_faqs(assistant_id: str, store: StoreDep) -> list[Faq
         raise HTTPException(status.HTTP_404_NOT_FOUND, "assistant not found")
     calls = await store.list_calls(cfg.tenant_id, limit=200)
     return suggest_faqs(calls, cfg.faqs)
+
+
+@router.post("/assistants/{assistant_id}/draft", response_model=Draft)
+async def draft_field(
+    assistant_id: str, body: DraftRequest, store: StoreDep, drafter: DrafterDep
+) -> Draft:
+    """Ask AI to draft: brief (+ optional website) -> optimised wording for a Studio field."""
+    cfg = await store.get_assistant(assistant_id)
+    if cfg is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "assistant not found")
+    return await drafter.draft(body, cfg)
 
 
 @router.get("/assistants/{assistant_id}/required-fields", response_model=list[RequiredField])

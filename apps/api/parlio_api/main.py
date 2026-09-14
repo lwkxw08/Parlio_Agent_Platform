@@ -49,6 +49,7 @@ from parlio_api.compliance import ComplianceService
 from parlio_api.connectors import ConnectorService, RetryLoop, build_backends
 from parlio_api.db.engine import make_engine, migrate
 from parlio_api.db.postgres import PostgresStore
+from parlio_api.drafting import Drafter
 from parlio_api.inbox import (
     Channel,
     ChannelSender,
@@ -502,6 +503,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.digest = digest
     app.state.whiteglove = WhiteGloveService(store, billing, notifications)
     app.state.announcements = AnnouncementService(store)
+    app.state.drafter = Drafter(settings.openai_api_key, model=settings.openai_model)
     digest.start()
     app.state.whitelabel = WhiteLabelService(
         store,

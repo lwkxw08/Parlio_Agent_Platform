@@ -1127,3 +1127,8 @@ export const submitFeedback = (tenant_id: string, body: { kind: FeedbackKind; te
   request<Feedback>(`/v1/feedback${qs({ tenant_id })}`, { method: "POST", body: JSON.stringify(body) });
 export const fetchAdminFeedback = () => get<Feedback[]>("/v1/admin/feedback");
 export const setFeedbackStatus = (id: string, status: Feedback["status"]) => patch<Feedback>(`/v1/admin/feedback/${id}`, { status });
+
+export type DraftField = "description" | "services" | "persona_extra" | "instructions" | "greeting" | "faq_answer" | "rule" | "sms_template";
+export type Draft = { field: DraftField; text: string; source: "llm" | "template"; website_used: string | null; notes: string[] };
+export const requestDraft = (assistantId: string, body: { field: DraftField; brief: string; current?: string; website?: string | null; context?: string | null }) =>
+  request<Draft>(`/v1/assistants/${assistantId}/draft`, { method: "POST", body: JSON.stringify(body) });

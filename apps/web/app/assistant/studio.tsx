@@ -14,6 +14,7 @@ import {
   put,
   when,
 } from "@/lib/api";
+import AskAi from "./ask-ai";
 import FaqImport from "./faq-import";
 
 const TABS = ["persona", "business", "hours", "rules", "faqs", "fields", "sms", "languages", "recording", "blocked", "afterhours", "versions"] as const;
@@ -92,7 +93,7 @@ export default function Studio({ initial, versions: initialVersions, requiredFie
             <label>Assistant name <input value={cfg.name} onChange={(e) => upd({ name: e.target.value })} /></label>
             <label>Business name (as spoken) <input value={cfg.business_name} onChange={(e) => upd({ business_name: e.target.value })} /></label>
           </div>
-          <label>Greeting <input value={cfg.greeting} onChange={(e) => upd({ greeting: e.target.value })} /></label>
+          <label><span className="row" style={{ alignItems: "center" }}>Greeting <AskAi assistantId={cfg.assistant_id} field="greeting" current={cfg.greeting} website={cfg.business.website} onInsert={(t) => upd({ greeting: t.replace(/\s+/g, " ").trim() })} /></span><input value={cfg.greeting} onChange={(e) => upd({ greeting: e.target.value })} /></label>
           <div className="two">
             <label>Tone
               <select value={cfg.persona.tone} onChange={(e) => upd({ persona: { ...cfg.persona, tone: e.target.value } })}>
@@ -126,21 +127,21 @@ export default function Studio({ initial, versions: initialVersions, requiredFie
           <label>Speaking speed ({cfg.voice.speed ?? 1}×)
             <input type="range" min={0.8} max={1.2} step={0.05} value={cfg.voice.speed ?? 1} onChange={(e) => upd({ voice: { ...cfg.voice, speed: Number(e.target.value) } })} />
           </label>
-          <label>Extra persona guidance <textarea value={cfg.persona.extra} placeholder="e.g. Always mention we are family-run. Never quote prices over the phone." onChange={(e) => upd({ persona: { ...cfg.persona, extra: e.target.value } })} /></label>
-          <label>Core instructions (advanced) <textarea value={cfg.instructions} onChange={(e) => upd({ instructions: e.target.value })} /></label>
+          <label><span className="row" style={{ alignItems: "center" }}>Extra persona guidance <AskAi assistantId={cfg.assistant_id} field="persona_extra" current={cfg.persona.extra} website={cfg.business.website} onInsert={(t) => upd({ persona: { ...cfg.persona, extra: t } })} /></span><textarea value={cfg.persona.extra} placeholder="e.g. Always mention we are family-run. Never quote prices over the phone." onChange={(e) => upd({ persona: { ...cfg.persona, extra: e.target.value } })} /></label>
+          <label><span className="row" style={{ alignItems: "center" }}>Core instructions (advanced) <AskAi assistantId={cfg.assistant_id} field="instructions" current={cfg.instructions} website={cfg.business.website} onInsert={(t) => upd({ instructions: t })} /></span><textarea value={cfg.instructions} onChange={(e) => upd({ instructions: e.target.value })} /></label>
         </div>
       )}
 
       {tab === "business" && (
         <div className="section form">
-          <label>Description <textarea value={cfg.business.description} onChange={(e) => upd({ business: { ...cfg.business, description: e.target.value } })} /></label>
+          <label><span className="row" style={{ alignItems: "center" }}>Description <AskAi assistantId={cfg.assistant_id} field="description" current={cfg.business.description} website={cfg.business.website} onInsert={(t) => upd({ business: { ...cfg.business, description: t } })} /></span><textarea value={cfg.business.description} onChange={(e) => upd({ business: { ...cfg.business, description: e.target.value } })} /></label>
           <div className="two">
             <label>Website <input value={cfg.business.website ?? ""} onChange={(e) => upd({ business: { ...cfg.business, website: e.target.value || null } })} /></label>
             <label>Phone <input value={cfg.business.phone ?? ""} onChange={(e) => upd({ business: { ...cfg.business, phone: e.target.value || null } })} /></label>
             <label>Email <input value={cfg.business.email ?? ""} onChange={(e) => upd({ business: { ...cfg.business, email: e.target.value || null } })} /></label>
             <label>Address <input value={cfg.business.address ?? ""} onChange={(e) => upd({ business: { ...cfg.business, address: e.target.value || null } })} /></label>
           </div>
-          <label>Services (one per line)
+          <label><span className="row" style={{ alignItems: "center" }}>Services (one per line) <AskAi assistantId={cfg.assistant_id} field="services" current={cfg.business.services.join("\n")} website={cfg.business.website} placeholder="e.g. List the services a domestic plumbing firm offers, taken from www.parliodemo.co.uk" onInsert={(t) => upd({ business: { ...cfg.business, services: t.split("\n").map((s) => s.trim()).filter(Boolean) } })} /></span>
             <textarea value={cfg.business.services.join("\n")} onChange={(e) => upd({ business: { ...cfg.business, services: e.target.value.split("\n").map((s) => s.trim()).filter(Boolean) } })} />
           </label>
         </div>
@@ -189,7 +190,10 @@ export default function Studio({ initial, versions: initialVersions, requiredFie
           {cfg.rules.map((r, i) => (
             <div className="list-row" key={r.id ?? i}>
               <input value={r.name} placeholder="Rule name" onChange={(e) => listEdit<BusinessRule>("rules", i, { name: e.target.value })} />
-              <textarea value={r.instruction} placeholder="Instruction" onChange={(e) => listEdit<BusinessRule>("rules", i, { instruction: e.target.value })} />
+              <div>
+                <textarea value={r.instruction} placeholder="Instruction" onChange={(e) => listEdit<BusinessRule>("rules", i, { instruction: e.target.value })} />
+                <AskAi assistantId={cfg.assistant_id} field="rule" current={r.instruction} context={r.name || null} website={cfg.business.website} placeholder="e.g. Never book same-day jobs after 3pm; offer next morning instead" onInsert={(t) => listEdit<BusinessRule>("rules", i, { instruction: t })} />
+              </div>
               <span>
                 <label className="small"><input type="checkbox" checked={r.enabled} onChange={(e) => listEdit<BusinessRule>("rules", i, { enabled: e.target.checked })} /> on</label>{" "}
                 <button className="danger" onClick={() => listRemove("rules", i)}>✕</button>
@@ -213,7 +217,10 @@ export default function Studio({ initial, versions: initialVersions, requiredFie
                     <input value={f.question} placeholder="Question" onChange={(e) => listEdit<Faq>("faqs", i, { question: e.target.value })} />
                     <input value={f.category} style={{ marginTop: 4 }} placeholder="Category" onChange={(e) => listEdit<Faq>("faqs", i, { category: e.target.value })} />
                   </div>
-                  <textarea value={f.answer} placeholder="Answer" onChange={(e) => listEdit<Faq>("faqs", i, { answer: e.target.value })} />
+                  <div>
+                    <textarea value={f.answer} placeholder="Answer" onChange={(e) => listEdit<Faq>("faqs", i, { answer: e.target.value })} />
+                    <AskAi assistantId={cfg.assistant_id} field="faq_answer" current={f.answer} context={f.question || null} website={cfg.business.website} placeholder="e.g. We cover all of Greater Manchester, call-out fee £60, free quotes" onInsert={(t) => listEdit<Faq>("faqs", i, { answer: t })} />
+                  </div>
                   <span>
                     <label className="small"><input type="checkbox" checked={f.enabled} onChange={(e) => listEdit<Faq>("faqs", i, { enabled: e.target.checked })} /> on</label>{" "}
                     {f.source !== "manual" && <span className="pill">{f.source}</span>}{" "}
@@ -277,7 +284,10 @@ export default function Studio({ initial, versions: initialVersions, requiredFie
                   {SMS_TRIGGERS.map((t) => <option key={t} value={t}>{t.replaceAll("_", " ")}</option>)}
                 </select>
               </div>
-              <textarea value={s.template} placeholder="Message template" maxLength={320} onChange={(e) => listEdit<SmsScenario>("sms_scenarios", i, { template: e.target.value })} />
+              <div>
+                <textarea value={s.template} placeholder="Message template" maxLength={320} onChange={(e) => listEdit<SmsScenario>("sms_scenarios", i, { template: e.target.value })} />
+                <AskAi assistantId={cfg.assistant_id} field="sms_template" current={s.template} context={`${s.name} (${s.trigger})`} website={cfg.business.website} placeholder="e.g. Thank them for calling and send our booking link" onInsert={(t) => listEdit<SmsScenario>("sms_scenarios", i, { template: t.slice(0, 320) })} />
+              </div>
               <span>
                 <label className="small"><input type="checkbox" checked={s.enabled} onChange={(e) => listEdit<SmsScenario>("sms_scenarios", i, { enabled: e.target.checked })} /> on</label>{" "}
                 <button className="danger" onClick={() => listRemove("sms_scenarios", i)}>✕</button>
