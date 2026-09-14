@@ -4,6 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
+import { ActivityAlerts, BADGE_FOR_HREF, useActivity } from "./activity";
 
 type Item = { href: string; label: string; icon: React.ReactNode };
 
@@ -99,7 +100,7 @@ export const GROUPS: Group[] = [
 const OPEN_KEY = "parlio-nav-open";
 
 export type Account =
-  | { kind: "user"; name: string; email: string; dev: boolean; staff: boolean; viewAs: string | null }
+  | { kind: "user"; name: string; email: string; dev: boolean; staff: boolean; viewAs: string | null; tenantId: string | null }
   | { kind: "signin" }
   | { kind: "offline" };
 
@@ -139,6 +140,7 @@ export default function Sidebar({ account }: { account: Account }) {
   const isActive = (href: string) => (href === "/" ? path === "/" : path.startsWith(href));
   const activeGroup = GROUPS.find((g) => g.items.some((it) => isActive(it.href)))?.key ?? null;
   const [open, setOpen] = useState<Record<string, boolean>>({});
+  const { badges, alerts, dismiss } = useActivity(account.kind === "user" && !path.startsWith("/chat/") ? account.tenantId : null);
   useEffect(() => setOpen(loadOpen()), []);
   useEffect(() => {
     if (activeGroup) setOpen((o) => (o[activeGroup] ? o : { ...o, [activeGroup]: true }));
@@ -151,13 +153,25 @@ export default function Sidebar({ account }: { account: Account }) {
     });
   if (path.startsWith("/chat/")) return null;
   const staff = account.kind === "user" && account.staff;
-  const link = (it: Item) => (
-    <Link key={it.href} href={it.href} className={`nav-item${isActive(it.href) ? " active" : ""}`} title={it.label}>
-      {it.icon}
-      <span>{it.label}</span>
-    </Link>
-  );
+  const countFor = (href: string) => {
+    const key = BADGE_FOR_HREF[href];
+    return key ? badges[key] : 0;
+  };
+  const badge = (n: number, urgent = false) =>
+    n > 0 ? <span className={`nav-badge${urgent ? " urgent" : ""}`} aria-label={`${n} needing attention`}>{n > 99 ? "99+" : n}</span> : null;
+  const link = (it: Item) => {
+    const n = countFor(it.href);
+    return (
+      <Link key={it.href} href={it.href} className={`nav-item${isActive(it.href) ? " active" : ""}${n ? " has-badge" : ""}`} title={n ? `${it.label} (${n})` : it.label}>
+        {it.icon}
+        <span>{it.label}</span>
+        {badge(n, it.href === "/live" || it.href === "/inbox")}
+      </Link>
+    );
+  };
   return (
+    <>
+    <ActivityAlerts alerts={alerts} dismiss={dismiss} />
     <aside className="side">
       <Link href="/" className="logo" aria-label="Parlio home">
         <Image src="/logo-icon.png" alt="Parlio" width={40} height={40} priority />
@@ -167,11 +181,13 @@ export default function Sidebar({ account }: { account: Account }) {
         {GROUPS.map((g) => {
           const isOpen = !!open[g.key];
           const current = activeGroup === g.key;
+          const total = g.items.reduce((s, it) => s + countFor(it.href), 0);
           return (
             <div key={g.key} className={`nav-group${isOpen ? " open" : ""}${current ? " current" : ""}`}>
-              <button type="button" className={`nav-item nav-group-head${current && !isOpen ? " active" : ""}`} onClick={() => toggle(g.key)} aria-expanded={isOpen} title={g.label}>
+              <button type="button" className={`nav-item nav-group-head${current && !isOpen ? " active" : ""}${total ? " has-badge" : ""}`} onClick={() => toggle(g.key)} aria-expanded={isOpen} title={total ? `${g.label} (${total})` : g.label}>
                 {g.icon}
                 <span>{g.label}</span>
+                {badge(total)}
                 <svg className="chev" viewBox="0 0 24 24" {...S} aria-hidden><path d="M9 6l6 6-6 6" /></svg>
               </button>
               <div className="nav-children">{g.items.map(link)}</div>
@@ -208,5 +224,6 @@ export default function Sidebar({ account }: { account: Account }) {
         )}
       </div>
     </aside>
+    </>
   );
 }

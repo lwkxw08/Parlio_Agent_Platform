@@ -15,7 +15,10 @@ export default async function Page() {
     <>
       {status.level !== "ok" && (
         <p className="small">
-          Platform status: <span className="pill warn">{status.level}</span> {status.title} — <Link href="/admin/status">manage</Link>
+          Platform banner: <span className="pill warn">{status.level}</span> {status.title}
+          {status.starts_at && new Date(status.starts_at).getTime() > Date.now() && ` (scheduled from ${when(status.starts_at)})`}
+          {status.ends_at && new Date(status.ends_at).getTime() <= Date.now() && ` (expired ${when(status.ends_at)})`}
+          {" — "}<Link href="/admin/status">manage</Link>
         </p>
       )}
       <div className="grid">

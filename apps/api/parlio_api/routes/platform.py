@@ -175,7 +175,17 @@ async def checkout(
 @router.get("/billing/usage", response_model=UsageSummary)
 async def usage(user: UserDep, billing: BillingDep, tenant_id: str) -> UsageSummary:
     user.require_tenant(tenant_id)
-    return await billing.usage(tenant_id)
+    u = await billing.usage(tenant_id)
+    if user.staff_role:
+        return u
+    # Parlio's own vendor spend/margin is internal; customers only see what they are billed.
+    return u.model_copy(
+        update={
+            "vendor_cost_pence": 0.0,
+            "gross_margin_pct": None,
+            "top_calls": [c.model_copy(update={"vendor_pence": 0.0}) for c in u.top_calls],
+        }
+    )
 
 
 @public.post("/billing/webhook")

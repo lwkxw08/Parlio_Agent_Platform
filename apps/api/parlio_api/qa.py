@@ -148,7 +148,9 @@ class Insight(BaseModel):
 class QAScorer(Protocol):
     name: str
 
-    async def score(self, call: CallRecord, cfg: AssistantConfig | None) -> QAScore: ...
+    async def score(
+        self, call: CallRecord, cfg: AssistantConfig | None, *, brief: str | None = None
+    ) -> QAScore: ...
 
 
 _UNSURE = (
@@ -269,7 +271,9 @@ class HeuristicScorer:
 
     name = "heuristic"
 
-    async def score(self, call: CallRecord, cfg: AssistantConfig | None) -> QAScore:
+    async def score(
+        self, call: CallRecord, cfg: AssistantConfig | None, *, brief: str | None = None
+    ) -> QAScore:
         user, bot = _turns(call, "user"), _turns(call, "assistant")
         flags: list[QAFlag] = []
         notes: list[str] = []
@@ -385,7 +389,9 @@ class OpenAIScorer:
         self._model = model
         self._fallback = fallback or HeuristicScorer()
 
-    async def score(self, call: CallRecord, cfg: AssistantConfig | None) -> QAScore:
+    async def score(
+        self, call: CallRecord, cfg: AssistantConfig | None, *, brief: str | None = None
+    ) -> QAScore:
         transcript = "\n".join(f"{t.get('role')}: {t.get('text')}" for t in call.transcript)
         knowledge = _knowledge_text(cfg)[:6000]
         prompt = (
@@ -393,10 +399,16 @@ class OpenAIScorer:
             "call 0-10 on: resolution (did the caller get what they needed), tone (polite, "
             "concise, natural), accuracy (answers consistent with the business knowledge below), "
             "and hallucination_risk (10 = the assistant confidently stated facts not in the "
-            "knowledge). List caller questions the assistant could not answer, and any "
-            "statements that look invented. Return JSON with keys resolution, tone, accuracy, "
-            "hallucination_risk, unanswered (list), hallucinations (list), notes (list).\n\n"
-            f"Business knowledge:\n{knowledge}\n\nTranscript:\n{transcript}"
+            "knowledge). Judge only what the caller actually asked for in this conversation; do "
+            "not penalise a short call for not collecting details the caller never needed, and "
+            "do not penalise correct handoffs or ticket-taking. 8-10 = handled well, 6-7 = "
+            "acceptable with minor issues, below 6 = a real problem. List caller questions the "
+            "assistant could not answer, and any statements that look invented. notes must be "
+            "short, specific reasons for any mark below 8 (quote the turn). Return JSON with "
+            "keys resolution, tone, accuracy, hallucination_risk, unanswered (list), "
+            "hallucinations (list), notes (list).\n\n"
+            + (f"{brief}\n\n" if brief else "")
+            + f"Business knowledge:\n{knowledge}\n\nTranscript:\n{transcript}"
         )
         try:
             r = await self._client.post(
@@ -412,8 +424,8 @@ class OpenAIScorer:
             data = _LLMScore.model_validate_json(r.json()["choices"][0]["message"]["content"])
         except Exception:
             log.warning("LLM QA failed for %s; using heuristic", call.call_id, exc_info=True)
-            return await self._fallback.score(call, cfg)
-        base = await self._fallback.score(call, cfg)
+            return await self._fallback.score(call, cfg, brief=brief)
+        base = await self._fallback.score(call, cfg, brief=brief)
         flags: list[QAFlag] = [
             f for f in base.flags if f in (QAFlag.ESCALATED, QAFlag.LONG_SILENCE)
         ]
@@ -894,6 +906,7 @@ class SimulationService:
                     direction=Direction.OUT,
                     author=Author.AI,
                     text=turn.reply,
+                    handoff=turn.handoff,
                 )
             )
             transcript.append({"role": "assistant", "text": turn.reply})
@@ -921,7 +934,18 @@ class SimulationService:
             transcript=transcript,
             ticket_ids=["sim"] if ticket else [],
         )
-        score = await self.scorer.score(fake, cfg)
+        brief = (
+            "This is a scripted test conversation, not a real call: the caller lines are fixed "
+            f"in advance ({len(scenario.turns)} turns) so the assistant cannot ask follow-ups "
+            f"that the script does not answer. Caller persona: {scenario.persona}."
+            + (f" Caller goal: {scenario.goal}." if scenario.goal else "")
+            + (
+                f" Replies should mention: {', '.join(scenario.expect.mentions)}."
+                if scenario.expect.mentions
+                else ""
+            )
+        )
+        score = await self.scorer.score(fake, cfg, brief=brief)
         failures: list[str] = []
         replies = " ".join(t.assistant for t in turns).lower()
         for m in scenario.expect.mentions:
@@ -939,7 +963,11 @@ class SimulationService:
                 "expected a ticket/message" if scenario.expect.ticket else "unexpected ticket"
             )
         if score.overall < scenario.expect.min_overall:
-            failures.append(f"QA score {score.overall} below {scenario.expect.min_overall}")
+            why = "; ".join(score.notes[:2]) or "; ".join(score.unanswered[:2])
+            failures.append(
+                f"QA score {score.overall} below {scenario.expect.min_overall}"
+                + (f" — {why}" if why else "")
+            )
         return SimulationResult(
             scenario_id=scenario.id,
             scenario_name=scenario.name,

@@ -203,6 +203,47 @@ async def test_openai_agent_parses_json() -> None:
     assert r.handoff is False
 
 
+async def test_openai_agent_handoff_is_sticky_and_department_aware() -> None:
+    seen: list[dict[str, Any]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content)
+        seen.append(body)
+        # model wrongly tries to drop the handoff and raise a ticket on the 2nd turn
+        content = json.dumps(
+            {
+                "reply": "I can raise a ticket for you.",
+                "handoff": False,
+                "department": None,
+                "ticket": {"reason": "invoice query", "category": None, "priority": "normal"},
+            }
+        )
+        return httpx.Response(200, json={"choices": [{"message": {"content": content}}]})
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handler), base_url="https://x")
+    agent = OpenAITextAgent("k", client=client)
+    th = _thread()
+    hist = _hist("I need to speak to a real person", th)
+    hist.append(
+        InboxMessage(
+            tenant_id=th.tenant_id,
+            thread_id=th.id,
+            channel=th.channel,
+            direction=Direction.OUT,
+            author=Author.AI,
+            text="Connecting you to the team now.",
+            handoff=True,
+        )
+    )
+    hist.extend(_hist("It's about an invoice", th))
+    r = await agent.respond(_cfg(), th, hist)
+    assert r.handoff is True
+    assert r.ticket is None
+    system = seen[0]["messages"][0]["content"]
+    assert "Handoff policy" in system
+    assert "already in progress" in system
+
+
 # -- end-to-end via routes -------------------------------------------------------------------------
 
 
@@ -356,6 +397,7 @@ async def test_sla_sweep_flags_breach(client: AsyncClient, app: FastAPI) -> None
     assert len(await svc.sweep_sla()) == 1
     r = await client.get("/v1/inbox/threads", params={"tenant_id": DEV_TENANT})
     assert r.json()[0]["sla_breached"] is True
+    assert r.json()[0]["callback_ticket_id"]
     assert await svc.sweep_sla() == []
 
 
@@ -538,3 +580,30 @@ async def test_service_direct_isolation(client: AsyncClient, app: FastAPI) -> No
     t = await svc.find_existing("demo", Channel.SMS, "+4471")
     assert t is not None and t.status in (ThreadStatus.OPEN, ThreadStatus.WAITING)
     assert await svc.find_existing("other", Channel.SMS, "+4471") is None
+
+
+async def test_nav_badges_and_handoff_alert(client: AsyncClient, app: FastAPI) -> None:
+    r = await client.get("/v1/nav/badges", params={"tenant_id": DEV_TENANT})
+    assert r.status_code == 200
+    assert r.json()["inbox"] == 0
+
+    live = app.state.live
+    q = live.subscribe(DEV_TENANT)
+    try:
+        r = await client.post("/v1/inbound/sms", json=telnyx_sms("I need to speak to a human"))
+        assert r.status_code == 202
+        types = []
+        while not q.empty():
+            types.append(q.get_nowait().type)
+        assert "inbox.handoff" in types
+    finally:
+        live.unsubscribe(DEV_TENANT, q)
+
+    r = await client.get("/v1/nav/badges", params={"tenant_id": DEV_TENANT})
+    body = r.json()
+    assert body["inbox"] >= 1
+    assert body["tickets"] >= 1
+    assert body["total"] >= body["inbox"] + body["tickets"]
+
+    r = await client.get("/v1/nav/badges", params={"tenant_id": "other"})
+    assert r.status_code == 403

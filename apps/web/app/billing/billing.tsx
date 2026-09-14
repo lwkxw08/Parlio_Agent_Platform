@@ -80,7 +80,6 @@ function Usage({ usage: u, sub }: { usage: UsageSummary; sub: Subscription }) {
         <div className="card"><div className="label">Calls this period</div><div className="value">{u.calls}</div></div>
         <div className="card"><div className="label">SMS</div><div className="value">{u.sms_used}</div><div className="small muted">of {u.sms_included} included{u.sms_overage_pence ? ` · ${gbp(u.sms_overage_pence)} overage` : ""}</div></div>
         <div className="card"><div className="label">Numbers</div><div className="value">{u.numbers_used}</div><div className="small muted">of {u.numbers_included} included</div></div>
-        <div className="card"><div className="label">Vendor cost / margin</div><div className="value">{gbp(Math.round(u.vendor_cost_pence))}</div><div className="small muted">{u.gross_margin_pct == null ? "—" : `${u.gross_margin_pct.toFixed(0)}% gross margin`} (STT+LLM+TTS+carrier)</div></div>
       </div>
       <div className="section">
         <h2>Minutes per day</h2>
@@ -95,10 +94,10 @@ function Usage({ usage: u, sub }: { usage: UsageSummary; sub: Subscription }) {
         <div className="section">
           <h2>Largest calls</h2>
           <table>
-            <thead><tr><th>Call</th><th>Minutes</th><th>Billable</th><th>Vendor cost</th></tr></thead>
+            <thead><tr><th>Call</th><th>Minutes</th><th>Billable</th></tr></thead>
             <tbody>
               {u.top_calls.map((c) => (
-                <tr key={c.call_id}><td><a href={`/calls/${c.call_id}`}>{c.call_id}</a></td><td>{c.minutes.toFixed(1)}</td><td>{gbp(c.billable_pence)}</td><td>{c.vendor_pence.toFixed(1)}p</td></tr>
+                <tr key={c.call_id}><td><a href={`/calls/${c.call_id}`}>{c.call_id}</a></td><td>{c.minutes.toFixed(1)}</td><td>{gbp(c.billable_pence)}</td></tr>
               ))}
             </tbody>
           </table>

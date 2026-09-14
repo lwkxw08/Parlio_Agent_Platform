@@ -332,6 +332,10 @@ function Simulate({ tenant, canManage, scenarios, runs, assistants, flash }: {
                   <span><span className={`pill ${r.passed ? "ok" : "bad"}`}>{r.passed ? "passed" : "failed"}</span> <span className={`pill ${scoreCls(r.score.overall)}`}>QA {r.score.overall}</span></span>
                 </div>
                 {r.failures.length > 0 && <ul className="small" style={{ color: "var(--bad-fg)", margin: "0.3rem 0 0 1rem" }}>{r.failures.map((f, i) => <li key={i}>{f}</li>)}</ul>}
+                <p className="small muted" style={{ margin: "0.3rem 0 0" }}>
+                  Resolution {r.score.resolution} · Tone {r.score.tone} · Accuracy {r.score.accuracy} · Hallucination risk {r.score.hallucination_risk} · scored by {r.score.scorer}
+                </p>
+                {r.score.notes.length > 0 && <ul className="small muted" style={{ margin: "0.2rem 0 0 1rem" }}>{r.score.notes.map((n, i) => <li key={i}>{n}</li>)}</ul>}
                 <div className="transcript" style={{ marginTop: "0.5rem" }}>
                   {r.turns.map((t, i) => (
                     <div key={i}>

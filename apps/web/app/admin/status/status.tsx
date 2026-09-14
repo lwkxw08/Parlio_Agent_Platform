@@ -12,22 +12,39 @@ const LEVELS: [PlatformStatusLevel, string][] = [
   ["maintenance", "Scheduled maintenance"],
 ];
 
-const toLocal = (iso: string | null) => (iso ? new Date(iso).toISOString().slice(0, 16) : "");
+const pad = (n: number) => String(n).padStart(2, "0");
+const toLocal = (iso: string | null) => {
+  if (!iso) return "";
+  const d = new Date(iso);
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+};
 const fromLocal = (v: string) => (v ? new Date(v).toISOString() : null);
+const CLEARED = { level: "ok" as PlatformStatusLevel, title: "", message: "", link: null, starts_at: null, ends_at: null };
+
+const scheduleNote = (s: PlatformStatus): string | null => {
+  if (s.level === "ok") return null;
+  const now = Date.now();
+  if (s.starts_at && new Date(s.starts_at).getTime() > now) return `Scheduled — will appear from ${when(s.starts_at)}`;
+  if (s.ends_at && new Date(s.ends_at).getTime() <= now) return `Expired — hidden since ${when(s.ends_at)}. Clear "Hide after" or set a later time to show it.`;
+  return "Live now on every tenant dashboard";
+};
 
 export default function Status({ status: initial, canEdit }: { status: PlatformStatus; canEdit: boolean }) {
   const [s, setS] = useState<PlatformStatus>(initial);
   const [msg, setMsg] = useState<string | null>(null);
   const router = useRouter();
-  const save = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const r = await put<PlatformStatus>("/v1/admin/status", s);
+  const publish = async (next: PlatformStatus) => {
+    const r = await put<PlatformStatus>("/v1/admin/status", next);
     if (!r.ok) return setMsg(r.error);
     setS(r.data);
-    setMsg(r.data.level === "ok" ? "Banner cleared" : "Banner published to every tenant dashboard");
+    setMsg(r.data.level === "ok" ? "Banner cleared" : scheduleNote(r.data) ?? "Published");
     router.refresh();
   };
-  const clear = () => setS({ ...s, level: "ok", title: "", message: "", link: null, starts_at: null, ends_at: null });
+  const save = (e: React.FormEvent) => {
+    e.preventDefault();
+    void publish(s);
+  };
+  const clear = () => void publish({ ...s, ...CLEARED });
   return (
     <div className="grid" style={{ gridTemplateColumns: "1fr 1fr" }}>
       <form className="section form" onSubmit={save}>
@@ -47,6 +64,7 @@ export default function Status({ status: initial, canEdit }: { status: PlatformS
             <label>Hide after<input type="datetime-local" value={toLocal(s.ends_at)} onChange={(e) => setS({ ...s, ends_at: fromLocal(e.target.value) })} /></label>
           </div>
           {canEdit && <div className="row"><button type="submit" className="primary">Publish</button><button type="button" className="ghost" onClick={clear}>Clear banner</button></div>}
+          {scheduleNote(s) && <p className="small muted">{scheduleNote(s)}</p>}
         </fieldset>
         {msg && <p className="small" style={{ color: "var(--accent)" }}>{msg}</p>}
         {s.updated_by && <p className="muted small">Last changed by {s.updated_by} · {when(s.updated_at)}</p>}
@@ -54,7 +72,7 @@ export default function Status({ status: initial, canEdit }: { status: PlatformS
       <div className="section">
         <h2>Preview</h2>
         {s.level === "ok" ? <p className="muted small">No banner will be shown.</p> : (
-          <div className={`banner ${s.level === "incident" ? "bad" : "warn"}`}>
+          <div className={`banner ${s.level === "incident" ? "bad" : s.level === "maintenance" ? "" : "warn"}`}>
             <strong>{s.title || LEVELS.find(([l]) => l === s.level)?.[1]}</strong>
             <span>{s.message}</span>
             {s.link && <a href={s.link} target="_blank" rel="noreferrer">Details</a>}
