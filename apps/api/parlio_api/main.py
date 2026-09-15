@@ -105,6 +105,7 @@ from parlio_api.qa import (
     SimulationService,
     VoiceCloneService,
 )
+from parlio_api.recordings import RecordingStorage
 from parlio_api.routes import (
     account,
     connectors,
@@ -140,7 +141,7 @@ from parlio_api.security import SecurityService
 from parlio_api.settings import Settings, get_settings
 from parlio_api.sip import SimulatedProvisioner, SimulatedRegistrar, SipProvisioner, SipService
 from parlio_api.sip_livekit import LiveKitProvisioner
-from parlio_api.store import CallStore, MemoryStore
+from parlio_api.store import CallStore, MemoryStore, RequiredField
 from parlio_api.support import (
     SUPPORT_TENANT,
     LinearIssueTracker,
@@ -161,6 +162,14 @@ from parlio_voice.config_client import DEMO_CONFIG
 from parlio_voice.models import CallEvent, CallEventType
 
 log = logging.getLogger("parlio.api")
+
+DEMO_REQUIRED_FIELDS = [
+    RequiredField(name="name", description="caller's full name"),
+    RequiredField(name="phone", description="best contact number"),
+    RequiredField(name="address", description="property address or postcode for the job"),
+    RequiredField(name="issue", description="what the caller needs (fault, service, quote)"),
+    RequiredField(name="email", description="caller's email address", required=False),
+]
 
 
 async def consume_events(
@@ -328,6 +337,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         existing = await store.get_assistant(DEMO_CONFIG.assistant_id)
         if existing is None or not existing.business.description:
             await store.upsert_assistant(DEMO_CONFIG.model_copy(deep=True), [settings.demo_number])
+        if not await store.required_fields(DEMO_CONFIG.assistant_id):
+            await store.set_required_fields(DEMO_CONFIG.assistant_id, DEMO_REQUIRED_FIELDS)
 
     vault = LocalVault(settings.vault_key)
     app.state.security = SecurityService(store, vault, settings.vault_key)
@@ -512,6 +523,20 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.drafter = Drafter(settings.openai_api_key, model=settings.openai_model)
     app.state.voice_previewer = VoicePreviewer(
         settings.cartesia_api_key, settings.elevenlabs_api_key
+    )
+    app.state.recordings = (
+        RecordingStorage(
+            settings.recording_s3_endpoint,
+            settings.recording_bucket,
+            settings.recording_s3_access_key,
+            settings.recording_s3_secret_key,
+            region=settings.recording_s3_region,
+        )
+        if settings.recording_s3_endpoint
+        and settings.recording_bucket
+        and settings.recording_s3_access_key
+        and settings.recording_s3_secret_key
+        else None
     )
     digest.start()
     app.state.whitelabel = WhiteLabelService(

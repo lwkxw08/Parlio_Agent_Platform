@@ -12,7 +12,8 @@ from typing import Annotated
 from uuid import uuid4
 from zoneinfo import ZoneInfo
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, status
+from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
 from parlio_api.analytics import OverviewAnalytics, compute_overview
@@ -35,6 +36,7 @@ from parlio_api.deps import (
 )
 from parlio_api.drafting import Draft, DraftRequest
 from parlio_api.onboarding import suggest_faqs
+from parlio_api.recordings import RecordingStorage, content_type_for
 from parlio_api.store import (
     AssistantVersion,
     CallFeedback,
@@ -306,6 +308,45 @@ async def call_feedback(
     if call is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "call not found")
     return call
+
+
+@router.get("/calls/{call_id}/recordings/{index}")
+async def call_recording(
+    call_id: str,
+    index: int,
+    request: Request,
+    store: StoreDep,
+    user: UserDep,
+    range_header: Annotated[str | None, Header(alias="range")] = None,
+) -> Response:
+    """Stream one leg of the call recording (index into `CallRecord.recordings`)."""
+    call = await store.get_call(call_id)
+    if call is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "call not found")
+    user.require_tenant(call.tenant_id)
+    if not 0 <= index < len(call.recordings):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "no such recording")
+    storage: RecordingStorage | None = request.app.state.recordings
+    if storage is None:
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "recording storage not configured")
+    key = call.recordings[index]
+    upstream = await storage.fetch(key, range_header)
+    if upstream.status_code == 404:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "recording not available yet")
+    if upstream.status_code >= 400:
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, "recording storage error")
+    headers = {
+        k: v
+        for k, v in upstream.headers.items()
+        if k.lower() in {"content-length", "content-range", "accept-ranges", "etag"}
+    }
+    headers["content-disposition"] = f'inline; filename="{call_id}-{key.rsplit("/", 1)[-1]}"'
+    return Response(
+        upstream.content,
+        status_code=upstream.status_code,
+        media_type=content_type_for(key),
+        headers=headers,
+    )
 
 
 @router.post("/calls/{call_id}/share", response_model=ShareLink)

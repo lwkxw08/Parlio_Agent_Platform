@@ -21,7 +21,7 @@ export type CallRecord = {
   answer_latency_s: number | null;
   duration_s: number | null;
   latency: { turns?: number; p50_s?: number; p95_s?: number };
-  transcript: { role: string; text: string; interrupted?: boolean }[];
+  transcript: { role: string; text: string; interrupted?: boolean; at?: string }[];
   recordings: string[];
   end_reason: string | null;
   summary: string | null;
@@ -315,7 +315,7 @@ export type SharedCall = {
   caller: string | null;
   summary: string | null;
   extracted: Record<string, unknown>;
-  transcript: { role: string; text: string }[];
+  transcript: { role: string; text: string; at?: string }[];
 };
 
 // -- transport ---------------------------------------------------------------------------------
@@ -628,6 +628,16 @@ export const fetchProviders = () => get<{ providers: ProviderInfo[]; payload_fie
 export const fetchConnectors = (tenant_id: string) => get<Connector[]>(`/v1/connectors${qs({ tenant_id })}`);
 export const fetchSyncJobs = (tenant_id: string) => get<SyncJob[]>(`/v1/connectors/jobs${qs({ tenant_id })}`);
 export const fetchApiKeys = (tenant_id: string) => get<TenantApiKey[]>(`/v1/api-keys${qs({ tenant_id })}`);
+
+/** Browser-only: fetch one recording leg (auth headers) and return an object URL for <audio>/download. */
+export async function fetchRecordingUrl(call_id: string, index: number): Promise<ApiResult<string>> {
+  const res = await fetch(`${API_URL}/v1/calls/${call_id}/recordings/${index}`, { headers: await authHeaders() });
+  if (!res.ok) {
+    const detail = await res.json().then((j: { detail?: string }) => j.detail).catch(() => undefined);
+    return { ok: false, status: res.status, error: detail ?? res.statusText };
+  }
+  return { ok: true, data: URL.createObjectURL(await res.blob()) };
+}
 
 /** Browser-only: fetch a CSV export with auth headers and trigger a file download. */
 export async function downloadCsv(what: "calls" | "contacts" | "tickets" | "audit", tenant_id: string): Promise<string | null> {

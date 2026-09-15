@@ -1,5 +1,7 @@
-"""Idempotently create the LiveKit inbound SIP trunk + dispatch rule for the test number.
+"""Idempotently create the LiveKit inbound SIP trunk + dispatch rule for the test number, and an
+outbound trunk (used for warm transfers / outbound calls) via the carrier's SIP host.
 Run on the server: docker compose exec -e DID=+44... voice-worker python /dev/stdin < lk_setup.py
+Then put the printed outbound trunk id in .env as OUTBOUND_SIP_TRUNK_ID and redeploy the worker.
 """
 
 import asyncio
@@ -38,7 +40,22 @@ async def main():
                 ),
             )
         )
+    out = await lk.sip.list_sip_outbound_trunk(sipp.ListSIPOutboundTrunkRequest())
+    out_names = {t.name: t.sip_trunk_id for t in out.items}
+    if "telnyx-uk-outbound" not in out_names:
+        t = await lk.sip.create_sip_outbound_trunk(
+            sipp.CreateSIPOutboundTrunkRequest(
+                trunk=sipp.SIPOutboundTrunkInfo(
+                    name="telnyx-uk-outbound",
+                    address=os.environ.get("SIP_HOST", "sip.telnyx.eu"),
+                    numbers=[os.environ["DID"]],
+                    transport=sipp.SIPTransport.SIP_TRANSPORT_UDP,
+                )
+            )
+        )
+        out_names[t.name] = t.sip_trunk_id
     print("trunks", names)
+    print("outbound trunks", out_names)
     print(
         "rules",
         [

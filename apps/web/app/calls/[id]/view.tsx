@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { type CallExplanation, type CallRecord, fetchExplanation, ms, post, secs, when } from "@/lib/api";
+import { Transcript } from "../../transcript";
+import { RecordingLeg } from "./recording";
 
 const TABS = ["overview", "recording", "transfers", "transcript", "why", "all"] as const;
 type Tab = (typeof TABS)[number];
@@ -141,17 +143,17 @@ export default function CallView({ initial }: { initial: CallRecord }) {
 
       {showRecording && (
         <div className="section">
-          <h2>AI recording</h2>
+          <h2>Recording</h2>
           {call.recordings.length ? (
-            <ul>
-              {call.recordings.map((k) => (
-                <li key={k}><code>{k}</code></li>
+            <div className="recording-legs">
+              {call.recordings.map((k, i) => (
+                <RecordingLeg key={k} callId={call.call_id} index={i} objectKey={k} />
               ))}
-            </ul>
+            </div>
           ) : (
             <p className="muted">No recording for this call{call.kind === "blocked" ? " (blocked before answer)" : ""}.</p>
           )}
-          <p className="hint">Playback and download links are served from object storage once the media service is deployed.</p>
+          {call.recordings.length > 0 && <p className="hint">Each side of the call is recorded separately. Recordings are kept per your retention policy.</p>}
         </div>
       )}
 
@@ -177,15 +179,7 @@ export default function CallView({ initial }: { initial: CallRecord }) {
       {showTranscript && (
         <div className="section">
           <h2>Transcript</h2>
-          <div className="transcript">
-            {call.transcript.map((t, i) => (
-              <div key={i} className={`bubble ${t.role}`}>
-                <span className="who">{t.role === "assistant" ? call.assistant_id : "Caller"}{t.interrupted ? " (interrupted)" : ""}</span>
-                {t.text}
-              </div>
-            ))}
-            {!call.transcript.length && <p className="muted">No transcript.</p>}
-          </div>
+          <Transcript turns={call.transcript} startedAt={call.answered_at ?? call.started_at} />
         </div>
       )}
 

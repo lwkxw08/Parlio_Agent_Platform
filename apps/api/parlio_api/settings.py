@@ -36,6 +36,13 @@ class Settings(BaseSettings):
             return None
         return self.openai_api_key or None
 
+    # Object storage the worker's egress writes recordings to (same env names as the worker).
+    recording_bucket: str | None = None
+    recording_s3_endpoint: str | None = None
+    recording_s3_region: str = "auto"
+    recording_s3_access_key: str | None = None
+    recording_s3_secret_key: str | None = None
+
     # TTS provider keys for Studio voice previews (the worker has its own copies).
     cartesia_api_key: str | None = None
     elevenlabs_api_key: str | None = None
