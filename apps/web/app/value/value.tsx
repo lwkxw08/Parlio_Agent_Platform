@@ -77,11 +77,15 @@ function Report({ tenant, days, ov }: { tenant: string; days: number; ov: ValueO
         <div className="section">
           <h2>What callers wanted</h2>
           {intents.length === 0 ? <p className="muted small">No calls in this period.</p> : (
-            <div className="hbars">
+            <ul className="hbars">
               {intents.map(([k, v]) => (
-                <div key={k} className="row"><span style={{ width: 110, textTransform: "capitalize" }}>{k}</span><div className="bars" style={{ flex: 1 }}><div style={{ width: `${(v / max) * 100}%` }} /></div><span className="small muted">{v}</span></div>
+                <li key={k}>
+                  <span style={{ textTransform: "capitalize" }}>{k}</span>
+                  <i style={{ width: `${(v / max) * 100}%` }} />
+                  <b>{v}</b>
+                </li>
               ))}
-            </div>
+            </ul>
           )}
         </div>
         <div className="section">
