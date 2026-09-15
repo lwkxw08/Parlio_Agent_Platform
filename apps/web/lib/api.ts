@@ -29,7 +29,7 @@ export type CallRecord = {
   missed_fields: string[];
   caller_type: string | null;
   contact_id: string | null;
-  transfers: { transfer_id: string; destination: string; department: string | null; mode: string; outcome: string; at: string }[];
+  transfers: { transfer_id: string; destination: string; department: string | null; mode: string; outcome: string; at: string | null }[];
   ticket_ids: string[];
   escalated: boolean;
   escalation_keyword: string | null;
@@ -660,6 +660,12 @@ export const fetchLatency = (tenant_id: string, days = 7) => get<LatencyReport>(
 export const fetchAudit = (tenant_id: string) => get<AuditEntry[]>(`/v1/audit${qs({ tenant_id })}`);
 export const fetchRetention = (tenant_id: string) => get<RetentionView>(`/v1/compliance/retention${qs({ tenant_id })}`);
 export const gbp = (pence: number) => `£${(pence / 100).toLocaleString("en-GB", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+/** Short, human-friendly ticket reference: "tk-2f693f5fce" -> "#2F69-3F5F". */
+export const ticketRef = (id: string) => {
+  const hex = id.replace(/^tk-/, "").toUpperCase();
+  return `#${hex.slice(0, 4)}${hex.length > 4 ? `-${hex.slice(4, 8)}` : ""}`;
+};
 
 export const secs = (s: number | null | undefined) => {
   if (s == null) return "—";

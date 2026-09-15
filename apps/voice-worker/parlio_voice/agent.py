@@ -18,7 +18,9 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
+from collections.abc import AsyncIterable, Coroutine
 from contextlib import suppress
+from typing import Any
 from uuid import uuid4
 
 from dotenv import load_dotenv
@@ -29,6 +31,7 @@ from livekit.agents import (
     JobContext,
     JobProcess,
     MetricsCollectedEvent,
+    ModelSettings,
     RoomInputOptions,
     RoomOutputOptions,
     WorkerOptions,
@@ -47,6 +50,7 @@ from parlio_voice.models import AssistantConfig, CallEventType, TurnLatency
 from parlio_voice.outbound import OutboundJob, OutcomeReporter, dial_callee, parse_outbound
 from parlio_voice.recording import CallRecorder
 from parlio_voice.settings import get_settings
+from parlio_voice.speech import speakable_stream
 from parlio_voice.supervisor import Supervisor
 from parlio_voice.tools import (
     CoreApiClient,
@@ -95,6 +99,11 @@ class Receptionist(Agent):
             instructions += "\n\n" + web.instructions()
         super().__init__(instructions=instructions, tools=fn_tools)
         self.cfg = cfg
+
+    def tts_node(
+        self, text: AsyncIterable[str], model_settings: ModelSettings
+    ) -> AsyncIterable[rtc.AudioFrame] | Coroutine[Any, Any, AsyncIterable[rtc.AudioFrame]]:
+        return Agent.default.tts_node(self, speakable_stream(text), model_settings)
 
 
 def _redis(url: str) -> Redis | None:

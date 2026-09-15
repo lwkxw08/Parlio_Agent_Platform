@@ -18,6 +18,7 @@ from parlio_voice.tools import (
     caller_id_instruction,
     guess_department,
     mentions_connecting,
+    normalise_number,
     spoken_number,
 )
 from parlio_voice.transfer import SimulatedBridge, TransferEngine
@@ -169,9 +170,9 @@ def test_urgent_keyword_matching(text: str, hit: str | None) -> None:
 @pytest.mark.parametrize(
     ("number", "said"),
     [
-        ("+447930934098", "07930, 934, 098"),
-        ("+442046206823", "020, 4620, 6823"),
-        ("01614960000", "01614, 960, 000"),
+        ("+447930934098", "0 7 9 3 0, 9 3 4, 0 9 8"),
+        ("+442046206823", "0 2 0, 4 6 2 0, 6 8 2 3"),
+        ("01614960000", "0 1 6 1 4, 9 6 0, 0 0 0"),
         ("unknown", None),
         ("anonymous", None),
     ],
@@ -180,8 +181,23 @@ def test_spoken_number(number: str, said: str | None) -> None:
     assert spoken_number(number) == said
 
 
+@pytest.mark.parametrize(
+    ("spoken", "caller", "stored"),
+    [
+        ("07930, 934, 098", "+447930934098", "+447930934098"),
+        ("0 7 9 3 0, 9 3 4, 0 9 8", "+447930934098", "+447930934098"),
+        ("07881 311506", "+447930934098", "+447881311506"),
+        ("+44 161 496 0000", None, "+441614960000"),
+        ("the same one", "+447930934098", "+447930934098"),
+        (None, None, None),
+    ],
+)
+def test_normalise_number(spoken: str | None, caller: str | None, stored: str | None) -> None:
+    assert normalise_number(spoken, caller) == stored
+
+
 def test_caller_id_instruction_offers_own_number_or_asks() -> None:
-    assert "07930, 934, 098" in caller_id_instruction("+447930934098")
+    assert "0 7 9 3 0, 9 3 4, 0 9 8" in caller_id_instruction("+447930934098")
     assert "withheld" in caller_id_instruction(None)
     assert "withheld" in caller_id_instruction("unknown")
 

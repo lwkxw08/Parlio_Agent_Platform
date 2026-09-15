@@ -560,6 +560,16 @@ async def resolve_ticket(ticket_id: str, body: Actor, tickets: TicketsDep) -> Ti
     return t
 
 
+@router.post("/tickets/{ticket_id}/reopen", response_model=Ticket)
+async def reopen_ticket(ticket_id: str, body: Actor, tickets: TicketsDep) -> Ticket:
+    t = await tickets.update(
+        ticket_id, TicketUpdate(status=TicketStatus.OPEN, actor=body.actor, note=body.note)
+    )
+    if t is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "ticket not found")
+    return t
+
+
 @router.post("/tickets/{ticket_id}/notes", response_model=list[TicketEvent])
 async def add_ticket_note(ticket_id: str, body: Actor, store: StoreDep) -> list[TicketEvent]:
     if not body.note:

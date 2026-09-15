@@ -162,11 +162,11 @@ export default function CallView({ initial }: { initial: CallRecord }) {
           <h2>Transfers</h2>
           {call.transfers.length ? (
             <table>
-              <thead><tr><th>At</th><th>Destination</th><th>Department</th><th>Mode</th><th>Outcome</th></tr></thead>
+              <thead><tr><th>When</th><th>Destination</th><th>Department</th><th>Mode</th><th>Outcome</th></tr></thead>
               <tbody>
                 {call.transfers.map((t) => (
                   <tr key={t.transfer_id}>
-                    <td>{when(t.at)}</td><td>{t.destination}</td><td>{t.department ?? "—"}</td><td>{t.mode}</td>
+                    <td>{t.at ? when(t.at) : "—"}</td><td>{t.destination}</td><td>{t.department ?? "—"}</td><td>{t.mode}</td>
                     <td><span className={`pill ${t.outcome === "answered" || t.outcome === "bridged" ? "ok" : "bad"}`}>{t.outcome}</span></td>
                   </tr>
                 ))}

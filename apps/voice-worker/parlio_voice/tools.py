@@ -42,7 +42,8 @@ _CONNECT_PHRASES = re.compile(
 
 
 def spoken_number(number: str) -> str | None:
-    """Caller ID as the receptionist should say it: UK national format in short groups."""
+    """Caller ID as the receptionist should say it: UK national format, single digits
+    separated by spaces so the TTS never reads '934' as 'nine hundred and thirty-four'."""
     digits = re.sub(r"\D", "", number)
     if not digits or len(digits) < 7:
         return None
@@ -56,7 +57,22 @@ def spoken_number(number: str) -> str | None:
         groups = [digits[:5], digits[5:8], digits[8:]]
     else:
         groups = [digits[i : i + 3] for i in range(0, len(digits), 3)]
-    return ", ".join(groups)
+    return ", ".join(" ".join(g) for g in groups)
+
+
+def normalise_number(spoken: str | None, caller: str | None) -> str | None:
+    """Dialable E.164 from what the LLM passed (often the spoken read-back with spaces/commas).
+    Falls back to caller ID when nothing usable was given or the digits match it."""
+    digits = re.sub(r"\D", "", spoken or "")
+    if len(digits) < 7:
+        return caller
+    if digits.startswith("00"):
+        digits = digits[2:]
+    elif digits.startswith("0"):
+        digits = "44" + digits[1:]
+    if caller and re.sub(r"\D", "", caller) == digits:
+        return caller
+    return f"+{digits}"
 
 
 def caller_id_instruction(caller: str | None) -> str:
@@ -71,7 +87,7 @@ def caller_id_instruction(caller: str | None) -> str:
         f"The caller is ringing from {said}. When you need a callback number, do not ask them "
         f"to give one; ask 'Can we use the number you're calling from, {said}, if we need to "
         "call you back?' If they say yes, that is confirmed. If they say no, ask for the best "
-        "number and read it back in groups to confirm."
+        "number and read it back the same way (single digits, spaces between them) to confirm."
     )
 
 
@@ -321,7 +337,7 @@ class ReceptionistTools:
         intake = TicketIntake(
             call_id=self.call_id,
             caller_name=caller_name,
-            caller_number=callback_number or self.caller,
+            caller_number=normalise_number(callback_number, self.caller),
             reason=reason,
             priority=priority,
             department=department,

@@ -203,7 +203,7 @@ async def _hydrate_handoff(conn: AsyncConnection, calls: list[CallRecord]) -> No
     ids = list(by_id)
     rows = await conn.execute(
         text(
-            "SELECT call_id, id, destination, department, mode, outcome, reason"
+            "SELECT call_id, id, destination, department, mode, outcome, reason, started_at"
             " FROM transfers WHERE call_id = ANY(:ids) ORDER BY started_at"
         ),
         {"ids": ids},
@@ -217,6 +217,7 @@ async def _hydrate_handoff(conn: AsyncConnection, calls: list[CallRecord]) -> No
                 "mode": r.mode,
                 "outcome": r.outcome,
                 "reason": r.reason,
+                "at": r.started_at.isoformat() if r.started_at else None,
             }
         )
     rows = await conn.execute(
