@@ -367,6 +367,38 @@ async def test_stale_dial_times_out(client: AsyncClient, app: FastAPI) -> None:
     assert expired.attempts[-1].outcome == Outcome.FAILED and expired.reason == "dial timed out"
 
 
+async def test_dial_now_overrides_window_and_cap(client: AsyncClient, app: FastAPI) -> None:
+    svc = _svc(app)
+    p = await svc.policy("demo")
+    today = datetime.now(UTC).strftime("%a").lower()
+    p.timezone = "UTC"
+    p.days = [d for d in ["mon", "tue", "wed", "thu", "fri", "sat", "sun"] if d != today]
+    p.daily_cap_per_number = 0
+    await svc.save_policy(p)
+    job = await svc.schedule(
+        tenant_id="demo",
+        assistant_id="demo",
+        purpose=Purpose.TICKET_CALLBACK,
+        to="07700900555",
+        when=datetime.now(UTC),
+    )
+    assert (await svc.dispatch(job)).status == OutboundStatus.SCHEDULED  # loop defers
+    r = await client.post(f"/v1/outbound/calls/{job.id}/dial-now", params=Q)
+    assert r.status_code == 200 and r.json()["status"] == "dialing"
+
+    await svc.suppress("demo", "07700900556", reason="asked", source="test")
+    job = await svc.schedule(
+        tenant_id="demo",
+        assistant_id="demo",
+        purpose=Purpose.TICKET_CALLBACK,
+        to="07700900556",
+        when=datetime.now(UTC),
+    )
+    assert job.status == OutboundStatus.SUPPRESSED
+    r = await client.post(f"/v1/outbound/calls/{job.id}/dial-now", params=Q)
+    assert r.status_code == 409
+
+
 async def test_booking_schedules_reminder_and_review_then_no_show(
     client: AsyncClient, app: FastAPI
 ) -> None:
