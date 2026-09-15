@@ -8,6 +8,7 @@ unit-testable without an AgentSession.
 from __future__ import annotations
 
 import logging
+import re
 import time
 from collections.abc import Awaitable, Callable
 from typing import Any
@@ -32,6 +33,55 @@ log = logging.getLogger("parlio.tools")
 
 Emit = Callable[[CallEventType, dict[str, Any]], None]
 Say = Callable[[str], Awaitable[None]]
+
+_CONNECT_PHRASES = re.compile(
+    r"\b(connect(ing)? you|put(ting)? you through|transfer(ring)? you"
+    r"|pass(ing)? you (over|through))\b",
+    re.IGNORECASE,
+)
+
+
+def spoken_number(number: str) -> str | None:
+    """Caller ID as the receptionist should say it: UK national format in short groups."""
+    digits = re.sub(r"\D", "", number)
+    if not digits or len(digits) < 7:
+        return None
+    if digits.startswith("44"):
+        digits = "0" + digits[2:]
+    if digits.startswith("07") and len(digits) == 11:
+        groups = [digits[:5], digits[5:8], digits[8:]]
+    elif digits.startswith("02") and len(digits) == 11:
+        groups = [digits[:3], digits[3:7], digits[7:]]
+    elif digits.startswith("01") and len(digits) == 11:
+        groups = [digits[:5], digits[5:8], digits[8:]]
+    else:
+        groups = [digits[i : i + 3] for i in range(0, len(digits), 3)]
+    return ", ".join(groups)
+
+
+def caller_id_instruction(caller: str | None) -> str:
+    """Prompt section so the assistant offers the caller's own number instead of asking for one."""
+    said = spoken_number(caller) if caller else None
+    if said is None:
+        return (
+            "The caller's number is withheld or unknown: if you need a callback number, ask for "
+            "it and read it back in groups to confirm."
+        )
+    return (
+        f"The caller is ringing from {said}. When you need a callback number, do not ask them "
+        f"to give one; ask 'Can we use the number you're calling from, {said}, if we need to "
+        "call you back?' If they say yes, that is confirmed. If they say no, ask for the best "
+        "number and read it back in groups to confirm."
+    )
+
+
+def mentions_connecting(text: str) -> bool:
+    return bool(_CONNECT_PHRASES.search(text))
+
+
+def guess_department(text: str, departments: list[str]) -> str | None:
+    low = text.lower()
+    return next((d for d in departments if d.lower() in low), None)
 
 
 class CoreApiClient:
@@ -157,6 +207,7 @@ class ReceptionistTools:
         self.say = say
         self.urgent_hit: str | None = None
         self.transferred = False
+        self.transfer_attempted = False
         self.ticket_id: str | None = None
         self.booking_id: str | None = None
         self.sms_sent: list[str] = []
@@ -214,6 +265,8 @@ class ReceptionistTools:
                 "plan": [d.id for d in plan],
             },
         )
+        self.transfer_attempted = True
+        await self.say(self.holding_line(department))
         res = await self.engine.run(department, urgent=urgent)
         for a in res.attempts:
             self.emit(
@@ -235,6 +288,10 @@ class ReceptionistTools:
             await self.say(self.briefing(res.connected.name, reason))
             await self.engine.bridge.leave()
         return res
+
+    def holding_line(self, department: str | None) -> str:
+        who = f"the {department} team" if department else "someone"
+        return f"Connecting you to {who} now. Please bear with me, this can take a moment."
 
     def briefing(self, human: str, reason: str) -> str:
         who = self.caller or "a caller"
@@ -509,10 +566,11 @@ def build_tools(t: ReceptionistTools) -> list[Any]:
     @function_tool(
         name="transfer_to_human",
         description=(
-            "Transfer the caller to a human. Use when the caller asks for a person, when the "
-            "matter is urgent, or when you cannot help. Tell the caller you are connecting them "
-            f"first. Departments: {depts}. Returns the outcome; if not 'answered', offer to take "
-            "a message (create_ticket)."
+            "Transfer the caller to a human. Call it immediately when the caller asks for a "
+            "person, when the matter is urgent, or when you cannot help - in the same turn, "
+            "without announcing it first (the tool tells the caller it is connecting them). "
+            f"Departments: {depts}. Returns the outcome; if not 'answered', tell the caller "
+            "nobody could pick up and offer to take a message (create_ticket)."
         ),
     )
     async def transfer_to_human(reason: str, department: str | None = None) -> dict[str, Any]:

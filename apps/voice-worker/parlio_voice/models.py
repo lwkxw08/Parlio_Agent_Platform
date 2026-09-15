@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from datetime import UTC, datetime, time
 from enum import StrEnum
 from typing import Any
@@ -196,8 +197,17 @@ class TransferConfig(BaseModel):
         return next((d for d in self.destinations if d.id == dest_id), None)
 
     def matches_urgent(self, text: str) -> str | None:
+        """First urgent keyword in `text`, ignoring negated mentions ("it's not an emergency")."""
         low = text.lower()
-        return next((k for k in self.urgent_keywords if k in low), None)
+        for k in self.urgent_keywords:
+            for m in re.finditer(re.escape(k), low):
+                before = low[max(0, m.start() - 24) : m.start()]
+                if not _NEGATION.search(before):
+                    return k
+        return None
+
+
+_NEGATION = re.compile(r"\b(not|no|isn't|isnt|wasn't|never|nothing|without)\b[^.!?,;]*$")
 
 
 class Faq(BaseModel):
@@ -326,7 +336,7 @@ class AssistantConfig(BaseModel):
 
     def rendered_instructions(self) -> str:
         base = self.instructions.format(name=self.name, business_name=self.business_name)
-        return "\n\n".join([base, *self.knowledge_sections()])
+        return "\n\n".join([base, *self.knowledge_sections(), CONVERSATION_STYLE])
 
     def knowledge_sections(self) -> list[str]:
         """Studio-managed prompt sections: persona, business, hours, rules, FAQs, languages."""
@@ -384,6 +394,18 @@ class AssistantConfig(BaseModel):
             return None
         ann = self.recording.consent_announcement
         return ann.get(self.language) or ann.get("en")
+
+
+CONVERSATION_STYLE = (
+    "Speaking style on the phone:\n"
+    "- Confirm one detail at a time, never several in one sentence. After each, ask "
+    "'is that right?' and wait for the answer before moving on.\n"
+    "- Read phone numbers back in small groups with pauses (e.g. 07930, 934, 098) and "
+    "postcodes letter by letter and digit by digit (e.g. M20, 3PQ).\n"
+    "- Never repeat the caller's name, address and number back together in one go.\n"
+    "- When the caller wants a person, call transfer_to_human straight away in that same "
+    "turn; do not just say you will connect them and then wait."
+)
 
 
 class CallDirection(StrEnum):
