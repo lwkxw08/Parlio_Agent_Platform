@@ -26,6 +26,7 @@ OUTCOMES = (
     "qualified",
     "booked",
     "ticketed",
+    "resolved",
     "confirmed",
     "rescheduled",
     "not_interested",
@@ -34,6 +35,10 @@ OUTCOMES = (
     "opt_out",
     "voicemail",
 )
+
+
+# Context keys the API has already folded into the script; repeating them just adds noise.
+SCRIPT_ONLY_CONTEXT = frozenset({"resolution_kind", "resolution", "transfer_to"})
 
 
 class OutboundJob(BaseModel):
@@ -56,10 +61,15 @@ class OutboundJob(BaseModel):
         return self.script.get("opening") or "Hello, is now a good time to talk?"
 
     def instructions(self) -> str:
-        parts = [self.script.get("common", ""), self.script.get("goal", "")]
-        if self.context:
+        parts = [
+            self.script.get("instructions", ""),
+            self.script.get("common", ""),
+            self.script.get("goal", ""),
+        ]
+        shown = {k: v for k, v in self.context.items() if v and k not in SCRIPT_ONLY_CONTEXT}
+        if shown:
             parts.append(
-                "Context for this call: " + "; ".join(f"{k}: {v}" for k, v in self.context.items())
+                "Context for this call: " + "; ".join(f"{k}: {v}" for k, v in shown.items())
             )
         parts.append(
             "When the purpose of the call is achieved (or clearly cannot be), call record_outcome "
@@ -153,7 +163,8 @@ def outcome_tool(reporter: OutcomeReporter) -> Any:
         name="record_outcome",
         description=(
             "Record how this outbound call went. Call exactly once, before ending the call. "
-            f"outcome is one of: {', '.join(OUTCOMES)}. Use 'opt_out' if the person asks not "
+            f"outcome is one of: {', '.join(OUTCOMES)}. Use 'resolved' when a return call gave "
+            "the customer their answer or put them through. Use 'opt_out' if the person asks not "
             "to be called again, 'wrong_number' if this is not the intended person, 'voicemail' "
             "if you reached an answerphone. detail: one short sentence."
         ),

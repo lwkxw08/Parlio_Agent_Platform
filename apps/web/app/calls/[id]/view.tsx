@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { type CallExplanation, type CallRecord, type Scenario, fetchExplanation, ms, post, request, secs, when } from "@/lib/api";
+import { type CallExplanation, type CallRecord, type Scenario, callParty, fetchExplanation, ms, phone, post, request, secs, when } from "@/lib/api";
 import { Transcript } from "../../transcript";
 import { RecordingLeg } from "./recording";
 
@@ -80,7 +80,8 @@ export default function CallView({ initial }: { initial: CallRecord }) {
     <>
       <p className="small"><Link href="/calls">← Calls</Link></p>
       <div style={{ display: "flex", alignItems: "center", gap: "0.8rem", flexWrap: "wrap" }}>
-        <h1 style={{ margin: 0 }}>{call.caller ?? "Unknown caller"}</h1>
+        <h1 style={{ margin: 0 }}>{call.party ? callParty(call) : call.direction === "outbound" ? "Outbound call" : "Unknown caller"}</h1>
+        {call.direction === "outbound" && <span className="pill accent">Outbound</span>}
         <span className={`pill ${call.kind === "missed" || call.kind === "blocked" ? "bad" : call.kind === "answered" ? "ok" : ""}`}>{call.kind}</span>
         {call.escalated && <span className="pill urgent">urgent: {call.escalation_keyword}</span>}
         {call.caller_type && <span className="pill">{call.caller_type} caller</span>}
@@ -91,7 +92,13 @@ export default function CallView({ initial }: { initial: CallRecord }) {
           {call.contact_id && <Link className="btn" href={`/contacts/${call.contact_id}`}>Contact</Link>}
         </span>
       </div>
-      <p className="muted small">{when(call.started_at)} · {call.dialed ?? "—"} · {call.call_id}</p>
+      <p className="muted small">
+        {when(call.started_at)} ·{" "}
+        {call.direction === "outbound"
+          ? `the assistant rang ${phone(call.party)}${call.caller && call.caller !== "unknown" ? ` from ${phone(call.caller)}` : ""}`
+          : `${phone(call.party)} rang ${phone(call.dialed)}`}{" "}
+        · {call.call_id}
+      </p>
       {shareUrl && <p className="small">Public link: <code>{shareUrl}</code></p>}
 
       <div className="tabs">

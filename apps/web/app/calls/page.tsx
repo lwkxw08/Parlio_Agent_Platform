@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { fetchCalls, ms, secs, when } from "@/lib/api";
+import { callParty, fetchCalls, ms, phone, secs, when } from "@/lib/api";
 
 export const dynamic = "force-dynamic";
 
@@ -8,6 +8,7 @@ const KINDS = [
   ["unread", "Unread"],
   ["answered", "Answered"],
   ["missed", "Missed"],
+  ["outbound", "Outbound"],
   ["transferred", "Transferred"],
   ["ticketed", "Ticketed"],
   ["escalated", "Urgent"],
@@ -57,13 +58,18 @@ export default async function Calls({ searchParams }: { searchParams: Promise<Se
       </form>
       <table>
         <thead>
-          <tr><th>Started</th><th>Caller</th><th>Outcome</th><th>Summary</th><th>Pick-up</th><th>Turn p50</th><th>Duration</th></tr>
+          <tr><th>Started</th><th>Who</th><th>Outcome</th><th>Summary</th><th>Time to answer</th><th>Assistant response</th><th>Duration</th></tr>
         </thead>
         <tbody>
           {calls.map((c) => (
             <tr key={c.call_id} className={c.read ? "" : "unread"}>
               <td><Link href={`/calls/${c.call_id}`}>{when(c.started_at)}</Link></td>
-              <td>{c.caller ?? "—"}{c.caller_type === "returning" && <span className="pill" style={{ marginLeft: 4 }}>returning</span>}</td>
+              <td>
+                {c.direction === "outbound" && <span className="pill accent" style={{ marginRight: 6 }} title={`The assistant rang ${phone(c.party)}`}>Outbound</span>}
+                {callParty(c)}
+                {typeof c.extracted.name === "string" && c.party && <span className="muted small" style={{ marginLeft: 6 }}>{phone(c.party)}</span>}
+                {c.caller_type === "returning" && <span className="pill" style={{ marginLeft: 4 }}>returning</span>}
+              </td>
               <td>
                 <span className={`pill ${c.kind === "missed" || c.kind === "blocked" ? "bad" : c.kind === "answered" ? "ok" : ""}`}>{c.kind}</span>
                 {c.escalated && <span className="pill urgent" style={{ marginLeft: 4 }}>urgent</span>}

@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import hmac
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, Field
@@ -85,6 +85,11 @@ class ScheduleInput(BaseModel):
     when: datetime | None = None
     ticket_id: str | None = None
     context: dict[str, str] = Field(default_factory=dict)
+    # Ticket callbacks must carry something for the customer: an update to relay, a person
+    # who is ready to take the call, or a booking to make.
+    resolution_kind: Literal["answer", "transfer", "booking"] | None = None
+    resolution: str | None = None
+    transfer_to: str | None = None
 
 
 class SuppressInput(BaseModel):
@@ -218,11 +223,21 @@ async def schedule_call(
     cfg = await store.get_assistant(aid)
     if cfg is None or cfg.tenant_id != tenant_id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "assistant not found")
-    ctx = dict(body.context)
-    if body.ticket_id and "reason" not in ctx:
-        t = await store.get_ticket(body.ticket_id)
-        if t is not None and t.tenant_id == tenant_id:
-            ctx["reason"] = t.reason
+    ctx = {k: v for k, v in body.context.items() if v}
+    if body.purpose == Purpose.TICKET_CALLBACK and body.ticket_id:
+        kind = body.resolution_kind or "answer"
+        if kind == "answer" and not (body.resolution or "").strip():
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST,
+                "say what the assistant should tell the customer, or choose transfer/booking",
+            )
+        if kind == "transfer" and not (body.transfer_to or "").strip():
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "say who will take the call")
+        ctx["resolution_kind"] = kind
+        if body.resolution:
+            ctx["resolution"] = body.resolution.strip()
+        if body.transfer_to:
+            ctx["transfer_to"] = body.transfer_to.strip()
     job = await svc.schedule(
         tenant_id=tenant_id,
         assistant_id=aid,

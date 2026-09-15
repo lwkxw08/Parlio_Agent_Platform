@@ -33,7 +33,15 @@ from zoneinfo import ZoneInfo
 
 from pydantic import BaseModel, Field, computed_field
 
-from parlio_api.store import CallRecord, CallStore, TenantDoc, Ticket
+from parlio_api.store import (
+    CallRecord,
+    CallStore,
+    TenantDoc,
+    Ticket,
+    TicketStatus,
+    TicketUpdate,
+    ticket_ref,
+)
 from parlio_voice.models import WEEKDAYS, AssistantConfig, TicketIntake, TicketPriority
 
 log = logging.getLogger(__name__)
@@ -105,6 +113,7 @@ class Outcome(StrEnum):
     QUALIFIED = "qualified"
     BOOKED = "booked"
     TICKETED = "ticketed"
+    RESOLVED = "resolved"  # ticket callback: the customer got their answer / was put through
     CONFIRMED = "confirmed"
     RESCHEDULED = "rescheduled"
     NOT_INTERESTED = "not_interested"
@@ -123,6 +132,7 @@ TERMINAL_CONTACT = {
     Outcome.QUALIFIED,
     Outcome.BOOKED,
     Outcome.TICKETED,
+    Outcome.RESOLVED,
     Outcome.CONFIRMED,
     Outcome.RESCHEDULED,
     Outcome.NOT_INTERESTED,
@@ -376,15 +386,11 @@ def build_script(job: OutboundCall, cfg: AssistantConfig) -> dict[str, str]:
             )
         case Purpose.TICKET_CALLBACK:
             opening = (
-                f"Hi{who} It's {cfg.name} from {biz}, returning your call"
-                + (f" about {c['reason']}" if c.get("reason") else "")
+                f"Hi{who} It's {cfg.name} from {biz}. I'm calling back about your enquiry"
+                + (f" regarding {_natural(c['reason'])}" if c.get("reason") else "")
                 + ". Is now a good time?"
             )
-            goal = (
-                "Goal: resolve or progress their enquiry using the FAQs and business rules; if a "
-                "human is needed, transfer_to_human, otherwise update the ticket via create_ticket "
-                "with the new information. Finish with record_outcome('ticketed' or 'qualified')."
-            )
+            goal = _ticket_callback_goal(c)
         case Purpose.REMINDER:
             opening = (
                 f"Hi{who} It's {cfg.name} from {biz} with a quick reminder of your appointment "
@@ -424,6 +430,70 @@ def build_script(job: OutboundCall, cfg: AssistantConfig) -> dict[str, str]:
                 "and record_outcome('ticketed')."
             )
     return {"opening": opening, "instructions": f"{common}\n\n{goal}"}
+
+
+def _natural(reason: str) -> str:
+    """Ticket reasons are headlines ("Discussing an invoice…"); speak them as a clause."""
+    r = reason.strip().rstrip(".")
+    if not r:
+        return r
+    return r[0].lower() + r[1:] if not r[:2].isupper() else r
+
+
+def _ticket_callback_goal(c: dict[str, str]) -> str:
+    known = "; ".join(
+        f"{label}: {c[key]}"
+        for key, label in (
+            ("ticket_ref", "ticket"),
+            ("caller_name", "name"),
+            ("callback_number", "number"),
+            ("address", "address"),
+            ("postcode", "postcode"),
+            ("department", "department"),
+            ("priority", "priority"),
+            ("original_summary", "what they told us"),
+        )
+        if c.get(key)
+    )
+    base = (
+        "This is a RETURN call for an existing ticket. You already have everything they told us"
+        + (f" ({known})" if known else "")
+        + ". NEVER ask again for their name, number, address or the reason — only confirm a "
+        "detail if they say something has changed. NEVER call create_ticket: this ticket "
+        "already exists and is updated automatically from this call. Do not say nobody is "
+        "available and do not offer to take a message."
+    )
+    kind = c.get("resolution_kind") or "answer"
+    if kind == "transfer":
+        who = c.get("transfer_to") or "the person handling their ticket"
+        deliver = (
+            f"Goal: put them through to {who}, who is ready to speak to them now. Once they "
+            "agree, call transfer_to_human straight away and call record_outcome('resolved') "
+            "when the transfer connects. If the transfer fails, apologise, say exactly when "
+            "they will be called and record_outcome('callback_later')."
+        )
+    elif kind == "booking":
+        deliver = (
+            "Goal: book or confirm the appointment they asked for using check_calendar / "
+            "book_appointment, read the slot back, then record_outcome('booked')."
+        )
+    elif c.get("resolution"):
+        deliver = (
+            f"Goal: relay this update from the team, in your own words and in full: "
+            f'"{c["resolution"]}". Check they understand and whether that resolves it. If yes, '
+            "record_outcome('resolved'). If they have a follow-up you can answer from the FAQs "
+            "and rules, answer it; otherwise note what they need, say the team will pick it up "
+            "on the same ticket and record_outcome('callback_later')."
+        )
+    else:
+        deliver = (
+            "Goal: answer their enquiry fully from the FAQs and business rules. If you can, "
+            "confirm they are happy and record_outcome('resolved'). If it genuinely needs a "
+            "person and one is available, transfer_to_human. Otherwise be honest: apologise, "
+            "say a colleague will call them back on this same ticket, and record_outcome("
+            "'callback_later') — do not pretend to log a new message."
+        )
+    return f"{base}\n\n{deliver}"
 
 
 # -- dialer -------------------------------------------------------------------------------------
@@ -661,6 +731,9 @@ class OutboundService:
             raise LookupError(f"assistant {assistant_id} not found")
         to = normalise_phone(to)
         now = datetime.now(UTC)
+        context = dict(context or {})
+        if ticket_id and purpose == Purpose.TICKET_CALLBACK:
+            context = await self._ticket_context(tenant_id, ticket_id) | context
         job = OutboundCall(
             tenant_id=tenant_id,
             company_id=cfg.company_id,
@@ -672,7 +745,7 @@ class OutboundService:
             lead_id=lead_id,
             ticket_id=ticket_id,
             booking_id=booking_id,
-            context=context or {},
+            context=context,
             scheduled_at=when or now,
             not_after=not_after,
             max_attempts=policy.max_attempts,
@@ -828,6 +901,7 @@ class OutboundService:
             job.status, job.completed_at = OutboundStatus.COMPLETED, now
         await self._save(job)
         await self._update_lead(job, outcome)
+        await self._note_ticket(job, outcome)
         if outcome == Outcome.OPT_OUT:
             await self.suppress(job.tenant_id, job.to, "opt_out", source="call")
         if outcome == Outcome.WRONG_NUMBER:
@@ -856,6 +930,44 @@ class OutboundService:
                     ),
                 )
         return job
+
+    async def _ticket_context(self, tenant_id: str, ticket_id: str) -> dict[str, str]:
+        """Everything the customer already told us, so the return call never re-collects it."""
+        t = await self.store.get_ticket(ticket_id)
+        if t is None or t.tenant_id != tenant_id:
+            return {}
+        ctx = {
+            "ticket_ref": ticket_ref(t.id),
+            "reason": t.reason,
+            "caller_name": t.caller_name or "",
+            "callback_number": t.caller_number or "",
+            "department": t.department or "",
+            "priority": t.priority.value,
+        }
+        call = await self.store.get_call(t.call_id) if t.call_id else None
+        if call is not None:
+            ex = call.extracted
+            for key in ("address", "postcode", "email"):
+                if isinstance(ex.get(key), str):
+                    ctx[key] = ex[key]
+            if call.summary:
+                ctx["original_summary"] = call.summary
+        return {k: v for k, v in ctx.items() if v}
+
+    async def _note_ticket(self, job: OutboundCall, outcome: Outcome) -> None:
+        """Progress the *existing* ticket: note every attempt, resolve on success."""
+        if not job.ticket_id:
+            return
+        n = len(job.attempts)
+        label = outcome.value.replace("_", " ")
+        note = f"AI call back (attempt {n}): {label}"
+        if job.outcome_detail:
+            note += f" — {job.outcome_detail}"
+        upd = TicketUpdate(note=note, actor="ai")
+        if outcome in (Outcome.RESOLVED, Outcome.BOOKED, Outcome.CONFIRMED):
+            upd.status = TicketStatus.RESOLVED
+        with contextlib.suppress(Exception):
+            await self.store.update_ticket(job.ticket_id, upd)
 
     async def _update_lead(self, job: OutboundCall, outcome: Outcome) -> None:
         if not job.lead_id:
@@ -904,7 +1016,7 @@ class OutboundService:
         if job.attempts:
             job.attempts[-1].outcome = outcome
             job.attempts[-1].detail = job.outcome_detail
-        if call.ticket_ids and outcome not in TERMINAL_CONTACT:
+        if call.ticket_ids and outcome not in TERMINAL_CONTACT and job.ticket_id is None:
             outcome = Outcome.TICKETED
         policy = await self.policy(job.tenant_id)
         return await self._after_attempt(job, outcome, policy, call.ended_at or datetime.now(UTC))
