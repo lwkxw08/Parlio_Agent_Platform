@@ -802,6 +802,13 @@ export const fetchInboxStats = (tenant_id: string) => get<InboxStats>(`/v1/inbox
 // -- sidebar activity badges ------------------------------------------------------------------------
 export type NavBadges = { live: number; inbox: number; tickets: number; transfers: number; outbound: number; support: number; total: number };
 export const fetchNavBadges = (tenant_id: string) => get<NavBadges>(`/v1/nav/badges${qs({ tenant_id })}`);
+export type Snapshot = {
+  active_calls: number; transferring: number; waiting_chats: number; unread_messages: number;
+  open_tickets: number; claimed_tickets: number; sla_breached: number; callbacks_due: number; approvals_pending: number;
+  calls_today: number; answered_today: number; missed_today: number; transferred_today: number; tickets_today: number;
+  avg_answer_s: number | null; avg_response_s: number | null; generated_at: string;
+};
+export const fetchSnapshot = (tenant_id: string) => get<Snapshot>(`/v1/nav/snapshot${qs({ tenant_id })}`);
 export const fetchThread = (tenant_id: string, id: string) => get<{ thread: InboxThread; messages: InboxMessage[] }>(`/v1/inbox/threads/${id}${qs({ tenant_id })}`);
 export const replyThread = (tenant_id: string, id: string, text: string) => post<InboxMessage>(`/v1/inbox/threads/${id}/reply${qs({ tenant_id })}`, { text });
 export const noteThread = (tenant_id: string, id: string, text: string) => post<InboxMessage>(`/v1/inbox/threads/${id}/note${qs({ tenant_id })}`, { text });
