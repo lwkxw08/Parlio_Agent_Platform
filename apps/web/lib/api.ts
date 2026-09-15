@@ -13,6 +13,9 @@ export type CallRecord = {
   assistant_id: string;
   caller: string | null;
   dialed: string | null;
+  /** The customer's number: who rang us, or who we rang. */
+  party: string | null;
+  direction: "inbound" | "outbound";
   status: string;
   kind: CallKind;
   started_at: string;
@@ -605,6 +608,22 @@ const qs = (params: Record<string, string | number | undefined | null>) => {
 
 export const fetchHealth = () => get<{ status: string; env: string }>("/healthz");
 export const fetchMe = () => request<Me>("/v1/me");
+/** UK numbers in national form (+447930934098 -> 07930 934098, +442046206823 -> 020 4620 6823). */
+export function phone(e164: string | null | undefined): string {
+  if (!e164) return "—";
+  if (!/^\+44\d{9,10}$/.test(e164)) return e164;
+  const n = `0${e164.slice(3)}`;
+  if (n.startsWith("02")) return `${n.slice(0, 3)} ${n.slice(3, 7)} ${n.slice(7)}`;
+  if (/^0(7|1\d\d)/.test(n) && n.length === 11) return `${n.slice(0, 5)} ${n.slice(5)}`;
+  return `${n.slice(0, 4)} ${n.slice(4, 7)} ${n.slice(7)}`;
+}
+
+/** Who the call was with, as the list should show it: contact name if we learned one, else the number. */
+export const callParty = (c: Pick<CallRecord, "party" | "extracted">) => {
+  const name = c.extracted.name;
+  return typeof name === "string" && name.trim() ? name.trim() : phone(c.party);
+};
+
 export const fetchCalls = (params: Record<string, string | number | undefined | null> = {}) =>
   get<CallRecord[]>(`/v1/calls${qs(params)}`);
 export const fetchCall = (id: string) => get<CallRecord>(`/v1/calls/${id}`);

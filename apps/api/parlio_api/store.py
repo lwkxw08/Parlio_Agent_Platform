@@ -63,6 +63,13 @@ class CallRecord(BaseModel):
 
     @computed_field  # type: ignore[prop-decorator]
     @property
+    def party(self) -> str | None:
+        """The customer's number: who rang us, or who we rang (never our own caller ID)."""
+        n = self.dialed if self.direction == "outbound" else self.caller
+        return None if n in (None, "unknown") else n
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
     def kind(self) -> str:
         """Dashboard bucket: blocked | missed | transferred | ticketed | answered | active."""
         if self.end_reason == "blocked":
@@ -78,7 +85,9 @@ class CallRecord(BaseModel):
 
 class CallFilter(BaseModel):
     tenant_id: str | None = None
-    kind: str | None = None  # answered|missed|transferred|ticketed|blocked|escalated|unread
+    kind: str | None = (
+        None  # answered|missed|transferred|ticketed|blocked|escalated|unread|outbound
+    )
     since: datetime | None = None
     until: datetime | None = None
     hour: int | None = None  # 0-23, local to the assistant timezone is a later refinement
@@ -99,6 +108,9 @@ class CallFilter(BaseModel):
                 return False
         elif self.kind == "unread":
             if c.read:
+                return False
+        elif self.kind == "outbound":
+            if c.direction != "outbound":
                 return False
         elif self.kind and c.kind != self.kind:
             return False
@@ -180,6 +192,12 @@ class TransferRecord(BaseModel):
     reason: str | None = None
     started_at: datetime
     ended_at: datetime | None = None
+
+
+def ticket_ref(ticket_id: str) -> str:
+    """Short human reference, same form as the dashboard: tk-2f693f5f… -> #2F69-3F5F."""
+    h = ticket_id.removeprefix("tk-").upper()
+    return f"#{h[:4]}" + (f"-{h[4:8]}" if len(h) > 4 else "")
 
 
 class TicketStatus(StrEnum):

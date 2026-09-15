@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
 import {
   API_URL,
@@ -227,7 +228,11 @@ function Queue({ tenant, calls, assistants, canManage, policy, onCancel, onDial,
               <td><span className="pill">{PURPOSES.find(([id]) => id === c.purpose)?.[1] ?? c.purpose}</span></td>
               <td><span className={`pill ${STATUS_CLS[c.status] ?? ""}`}>{c.status.replace("_", " ")}</span>{c.reason && <div className="small muted">{c.reason}</div>}</td>
               <td className="small">{c.attempts.length}/{c.max_attempts}{c.attempts.length ? <div className="muted">{c.attempts.map((a) => a.outcome.replace("_", " ")).join(", ")}</div> : null}</td>
-              <td className="small">{c.outcome ? c.outcome.replace("_", " ") : "—"}{c.outcome_detail && <div className="muted">{c.outcome_detail}</div>}</td>
+              <td className="small">
+                {c.outcome ? c.outcome.replace("_", " ") : "—"}{c.outcome_detail && <div className="muted">{c.outcome_detail}</div>}
+                {c.call_id && <div><Link href={`/calls/${c.call_id}`}>Transcript &amp; recording</Link></div>}
+                {c.ticket_id && <div><Link href={`/tickets/${c.ticket_id}`}>Ticket</Link></div>}
+              </td>
               <td className="row">
                 {canManage && active.has(c.status) && c.status !== "in_progress" && <button className="small" onClick={() => onDial(c.id)} title="Call straight away, even outside calling hours or past the daily cap (do-not-call still applies)">Dial now</button>}
                 {canManage && active.has(c.status) && <button className="small" onClick={() => onCancel(c.id)}>Cancel</button>}

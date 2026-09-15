@@ -33,10 +33,11 @@ META = {
         "trunk_id": "ST_1",
         "script": {
             "opening": "Hi, is that Lena?",
+            "instructions": "You are calling about their enquiry.",
             "goal": "Qualify the lead.",
             "common": "Be brief.",
         },
-        "context": {"interest": "rewire"},
+        "context": {"interest": "rewire", "resolution_kind": "answer", "resolution": "secret"},
     }
 }
 
@@ -51,6 +52,8 @@ def test_parse_outbound_metadata() -> None:
     assert job.opening == "Hi, is that Lena?"
     text = job.instructions()
     assert "Qualify the lead." in text and "interest: rewire" in text and "record_outcome" in text
+    assert "You are calling about their enquiry." in text
+    assert "resolution_kind" not in text and "resolution: secret" not in text
     bad = {"outbound": {"job_id": "x"}}
     assert parse_outbound(json.dumps(bad)) is None
 

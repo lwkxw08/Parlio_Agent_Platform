@@ -20,6 +20,7 @@ from parlio_api.outbound import (
     Outcome,
     Purpose,
     SimulatedDialer,
+    build_script,
     jurisdiction_for,
     normalise_phone,
     parse_callback_window,
@@ -337,15 +338,94 @@ async def test_ticket_callback_scheduled_from_intake(client: AsyncClient, app: F
     assert len(jobs) == 1 and jobs[0]["purpose"] == "ticket_callback"
     assert jobs[0]["ticket_id"] == r.json()["id"] and jobs[0]["context"]["reason"] == "boiler leak"
 
-    # manual callback from the tickets board
+    # manual callback from the tickets board: refused without a resolution for the customer
+    tid = jobs[0]["ticket_id"]
     r = await client.post(
         "/v1/outbound/calls",
         params=Q,
-        json={"purpose": "ticket_callback", "to": "07700900555", "ticket_id": jobs[0]["ticket_id"]},
+        json={"purpose": "ticket_callback", "to": "07700900555", "ticket_id": tid},
     )
-    assert r.status_code == 201 and r.json()["context"]["reason"] == "boiler leak"
+    assert r.status_code == 400
+    r = await client.post(
+        "/v1/outbound/calls",
+        params=Q,
+        json={
+            "purpose": "ticket_callback",
+            "to": "07700900555",
+            "ticket_id": tid,
+            "resolution_kind": "transfer",
+        },
+    )
+    assert r.status_code == 400
+    r = await client.post(
+        "/v1/outbound/calls",
+        params=Q,
+        json={
+            "purpose": "ticket_callback",
+            "to": "07700900555",
+            "ticket_id": tid,
+            "resolution": "An engineer is booked for 9am tomorrow; no call-out fee.",
+        },
+    )
+    assert r.status_code == 201, r.text
+    ctx = r.json()["context"]
+    assert ctx["reason"] == "boiler leak" and ctx["resolution_kind"] == "answer"
+    assert ctx["caller_name"] == "Tom" and ctx["callback_number"] == "07700900555"
+    assert ctx["ticket_ref"].startswith("#")
     r = await client.post(f"/v1/outbound/calls/{r.json()['id']}/cancel", params=Q)
     assert r.status_code == 200 and r.json()["status"] == "cancelled"
+
+
+async def test_ticket_callback_script_and_existing_ticket_updated(
+    client: AsyncClient, app: FastAPI
+) -> None:
+    await _open_window(app)
+    r = await client.post(
+        "/v1/worker/tickets",
+        headers=HEADERS,
+        params={"tenant_id": "demo", "company_id": "demo", "call_id": "c-tk2"},
+        json={"caller_name": "Keith", "caller_number": "07700900777", "reason": "Invoice query"},
+    )
+    tid = r.json()["id"]
+    r = await client.post(
+        "/v1/outbound/calls",
+        params=Q,
+        json={
+            "purpose": "ticket_callback",
+            "to": "07700900777",
+            "name": "Keith",
+            "ticket_id": tid,
+            "resolution": "The invoice has been corrected to £340.",
+        },
+    )
+    assert r.status_code == 201, r.text
+    job = OutboundCall.model_validate(r.json())
+    cfg = await app.state.store.get_assistant(job.assistant_id)
+    script = build_script(job, cfg)
+    assert "regarding invoice query" in script["opening"]
+    ins = script["instructions"]
+    assert "NEVER call create_ticket" in ins and "£340" in ins and "Keith" in ins
+    assert "record_outcome('resolved')" in ins
+
+    svc = _svc(app)
+    await app.state.outbound_loop.tick()
+    job = (await svc.get("demo", job.id)) or job
+    assert job.status == OutboundStatus.DIALING and job.call_id
+    await client.post(
+        f"/v1/worker/outbound/{job.id}/outcome",
+        headers=HEADERS,
+        json={"outcome": "resolved", "detail": "customer happy with corrected invoice"},
+    )
+    await _end_call(client, job.call_id, answered=True)
+    job = (await svc.get("demo", job.id)) or job
+    assert job.outcome == Outcome.RESOLVED
+    detail = (await client.get(f"/v1/tickets/{tid}")).json()
+    assert detail["ticket"]["status"] == "resolved"
+    notes = [e["note"] for e in detail["events"] if e["note"]]
+    assert any("AI call back" in n and "resolved" in n for n in notes)
+    # no second ticket for the same customer
+    tickets = (await client.get("/v1/tickets", params=Q)).json()
+    assert sum(1 for t in tickets if t["caller_number"].endswith("900777")) == 1
 
 
 async def test_stale_dial_times_out(client: AsyncClient, app: FastAPI) -> None:
