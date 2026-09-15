@@ -232,6 +232,42 @@ Parlio owns and guarantees AI numbers, carrier, SIP edge and AI pipeline; custom
 ## Part F — Integration test, tuning, polish ~3 sessions
 - E2E scenario tests (real numbers, forwarding + both SIP modes, all channels, both region profiles), latency tuning per region, load test, mobile polish, docs/runbooks.
 
+### Phase 20 — Competitive parity (Dena / RingCentral AI Receptionist) ~2.5 sessions
+Ordered by value/effort; 20a–20e first, the rest as demand appears.
+- **20a Post-call SMS summary to the owner (0.25)** — new notification channel "owner SMS": one text per call ("Keith Wilson, burst pipe, M20, callback 07930…") via the Telnyx messaging profile; per-rule opt-in in Notifications, quiet hours, cost metered as a channel.
+- **20b Two-way SMS appointment confirmations (0.5)** — reminder texts with "reply 1 to confirm / 2 to reschedule"; inbound replies matched to the booking via the Inbox SMS webhook, reschedule offers free slots from the calendar provider, falls back to a ticket. Cheaper companion to the Phase 9 voice reminders.
+- **20c Microsoft 365 / Outlook calendar (0.5)** — Graph OAuth (calendar scopes), availability + booking alongside Google in `calendar.py`; Integrations → Calendar picks provider per assistant.
+- **20d Call screening & spam filtering (0.5)** — unknown/withheld callers asked to state name + reason before ringing through; robocall heuristics (silence, IVR tones, known-spam list, repeat short calls) end the call early without billing minutes; per-tenant strictness setting and an "allow/block" list surfaced on the call.
+- **20e Mobile: PWA + push notifications (0.5)** — installable dashboard (manifest, service worker, offline shell), Web Push for new ticket / missed call / chat waiting / live-call alerts, deep links to the ticket or call; native wrapper later if needed.
+- **20f Business-hours vs after-hours personas (0.25)** — separate greeting, tone, intake rules and transfer behaviour per schedule window in Studio (extends business hours + Speaking style), with holiday overrides.
+- **20g Multi-location / multi-brand routing (0.25)** — first-class "sites" on an organisation: number → site → assistant/departments, site-aware transfers and analytics filters; franchise roll-up views.
+- **20h Full payments over the phone (0.5)** — PCI-DSS SAQ-A-EP card capture via a DTMF/IVR-masking provider (e.g. PCI Pal / Stripe Terminal-style agent-assisted) on top of the Phase 12 payment seam; recording pauses during capture.
+- **20i Transcript & recording search (0.25)** — full-text search across transcripts/summaries ("every call mentioning boiler"), Postgres FTS first, ClickHouse when Part G triggers; results link to the moment in the recording.
+- **20j Human-answered call inbox / voicemail-to-text (deferred)** — RingCentral is a full PBX; we stay "in front of your phones". Only pick up the slice that fits: voicemail-to-text for unanswered transfers and a shared inbox entry per human-answered call (using the transfer recordings of the human leg). Softphones/desk-phone extensions are out of scope.
+
+### Phase 21 — Deep analytics & AI business advisor ~3 sessions
+Turns the data Parlio already collects (calls, transcripts, tickets, transfers, bookings, leads, QA, recordings) into operational insight and, on top of that, recommendations. All aggregates live in `analytics.py` / `value.py` read models (Postgres views first; ClickHouse when Part G triggers); the advisor only ever sees aggregated metrics, never raw PII.
+
+**21a Analytics read models (1 session)**
+- **Demand & staffing** — volume heat-map (hour × weekday), 7-day forecast (seasonal naive → Prophet-style later), "would have been missed without the assistant" by hour, concurrency peaks.
+- **Resolution funnel** — answered → resolved by AI / transferred / ticketed / callback → resolved by human; time at each step, first-contact resolution %, where work leaks to humans.
+- **Ticket & callback SLA** — time to claim, time to first human callback, % callbacks resolved on the first AI attempt, reopen rate, backlog age by department, SLA-breach trend.
+- **Transfer quality** — answer rate and pick-up time per person/department, human talk time (Phase transfer-recording), abandoned-while-ringing, cost of a transfer vs AI handling.
+- **Intent & FAQ gap** — top intents, week-on-week trending questions, unanswered-question clusters (Phase 13 insights) weighted by revenue.
+- **Revenue & pipeline** — conversion by intent/source/hour, average job value per intent, lead-to-booking time, value lost per missed/unresolved call, repeat-caller share and lifetime value per contact.
+- **Customer experience** — sentiment/frustration per call and trend, repeat calls about the same issue within 7 days (friction signal), QA score by intent and by assistant version (before/after each Studio publish).
+- **Workforce** — per member: tickets claimed, resolution time, callbacks made, transfers answered/missed, hours covered; vs team average. Owner/admin only.
+- **Marketing attribution** — tracking numbers per channel → calls, leads, bookings, value (extends Phase 14).
+- **Cost & efficiency** — minutes handled by AI vs human, cost per resolved enquiry, hours saved; margin view for platform admin.
+
+**21b Analytics UI (0.75)** — new "Insights" section (Demand, Resolution, Team, Customers, Revenue tabs) using the shared breakdown/heat-map components, period + compare pickers, "Ask AI" wired to the new measures, CSV export, scheduled report emails.
+
+**21c AI business advisor (1 session)** — `advisor.py`: weekly (and on-demand) run that reads the 21a aggregates for the period, detects notable patterns with deterministic rules first (spikes, unanswered hot-spots, SLA drift, cold leads, low-QA segments, FAQ gaps) then asks the LLM to write prioritised recommendations, each with: evidence (the numbers and a link to the filtered view), expected impact (£ / hours / calls), confidence, and a concrete action. Actions are one-click where Parlio owns the lever (draft FAQ/rule into Studio as a proposal, enable AI callbacks for an intent, extend a department's hours, add a member to a department, change the calling window, suggested rota coverage by hour) and advisory otherwise (staffing, pricing, coaching from transfer recordings). "Advisor" page + weekly digest (email/Slack/Teams) with Apply / Dismiss / Snooze; every applied recommendation is tracked so the next report shows whether the metric moved. Plan-gated (Growth+), audit-logged, tenant-isolated, no PII in prompts.
+
+**21d Tests & guardrails (0.25)** — golden fixtures for each measure, advisor regression set (fixed metrics → expected recommendation classes), cost cap per run, tone/claims check (no invented numbers: every figure in a recommendation must appear in the evidence payload).
+
+---
+
 ## Part G — Enterprise-scale step-up (deferred; ~1-2 sessions when triggered)
 - Trigger: ~200 tenants or 300+ concurrent calls. Actions (config/infra only): multi-node SIP edge + RTPengine, additional LiveKit nodes, larger worker pools per region, Postgres read replicas + pgBouncer, ClickHouse for analytics read model, NATS/Kafka in place of Redis Streams, enterprise vendor tiers + full multi-vendor failover, active-active UK+US, isolated pools for Enterprise/Sovereign, chaos testing.
 - Reference capacity: 1,000 concurrent calls ~ 60-100 vCPU workers + 2-3 LiveKit nodes + SIP edge pair ~ GBP 1.5-3k/mo infra; ~1.5M minutes/mo; ~3,000 SME tenants.
