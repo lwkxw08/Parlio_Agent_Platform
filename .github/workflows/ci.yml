@@ -125,11 +125,12 @@ jobs:
           NEXT_PUBLIC_API_URL: ${{ vars.NEXT_PUBLIC_API_URL || 'http://localhost:8000' }}
           NEXT_PUBLIC_SUPABASE_URL: ${{ vars.NEXT_PUBLIC_SUPABASE_URL }}
           NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ vars.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
-      - name: Preview alias (lowercase alphanumerics and dashes, max 63 chars)
+      - name: Preview alias (lowercase alphanumerics and dashes, max 40 chars)
         id: alias
         run: |
           alias=$(echo "${{ github.head_ref || github.ref_name }}" \
-            | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9]+/-/g; s/^-+|-+$//g' | cut -c1-63)
+            | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9]+/-/g; s/^-+|-+$//g' \
+            | cut -c1-40 | sed -E 's/-+$//')  # alias + "parlio-dashboard" must be < 63 chars
           echo "alias=$alias" >> "$GITHUB_OUTPUT"
       - name: Deploy
         if: env.HAS_CF == 'true'
