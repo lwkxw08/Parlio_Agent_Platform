@@ -12,7 +12,15 @@ from parlio_voice.models import (
     TransferMode,
     TransferOutcome,
 )
-from parlio_voice.tools import ReceptionistTools, after_hours_instruction
+from parlio_voice.tools import (
+    ReceptionistTools,
+    after_hours_instruction,
+    caller_id_instruction,
+    guess_department,
+    mentions_connecting,
+    normalise_number,
+    spoken_number,
+)
 from parlio_voice.transfer import SimulatedBridge, TransferEngine
 
 MONDAY_10 = datetime(2026, 9, 14, 9, 0, tzinfo=UTC)  # 10:00 BST
@@ -87,7 +95,9 @@ async def test_warm_transfer_answered_briefs_and_leaves() -> None:
     res = await tools.transfer(None, "a leaking tap")
     assert res.succeeded and res.connected and res.connected.id == "office"
     assert bridge.dialed == ["office"] and bridge.left
-    assert "Office" in rec.said[0] and "leaking tap" in rec.said[0]
+    assert "Connecting you" in rec.said[0]
+    assert "Office" in rec.said[-1] and "leaking tap" in rec.said[-1]
+    assert tools.transfer_attempted
     types = [t for t, _ in rec.events]
     assert types == [CallEventType.TRANSFER_STARTED, CallEventType.TRANSFER_COMPLETED]
     assert rec.events[1][1]["outcome"] == TransferOutcome.ANSWERED
@@ -111,7 +121,7 @@ async def test_cold_transfer_uses_refer() -> None:
     res = await tools.transfer(None, "invoice")
     assert res.succeeded
     assert not bridge.left  # cold: caller was REFERred away, agent needn't hang around
-    assert rec.said == []
+    assert len(rec.said) == 1 and rec.said[0].startswith("Connecting you")  # no briefing
 
 
 async def test_out_of_hours_is_unavailable_and_prompts_ticket() -> None:
@@ -120,6 +130,7 @@ async def test_out_of_hours_is_unavailable_and_prompts_ticket() -> None:
     assert tools.availability()["someone_available"] is False
     res = await tools.transfer(None, "quote")
     assert res.outcome == TransferOutcome.UNAVAILABLE and not res.attempts
+    assert not tools.transfer_attempted
     assert "ticket" in after_hours_instruction(c, False).lower()
     assert after_hours_instruction(c, True) == ""
 
@@ -143,10 +154,60 @@ async def test_urgent_keyword_escalates_and_forces_urgent_ticket() -> None:
 
 @pytest.mark.parametrize(
     ("text", "hit"),
-    [("hello there", None), ("a BURST PIPE upstairs", "burst pipe"), ("chest pain", "chest pain")],
+    [
+        ("hello there", None),
+        ("a BURST PIPE upstairs", "burst pipe"),
+        ("chest pain", "chest pain"),
+        ("No, it's not an emergency, I'd like accounts", None),
+        ("there's no flooding but there is a gas leak", "gas leak"),
+        ("not sure. It's an emergency", "emergency"),
+    ],
 )
 def test_urgent_keyword_matching(text: str, hit: str | None) -> None:
     assert TransferConfig().matches_urgent(text) == hit
+
+
+@pytest.mark.parametrize(
+    ("number", "said"),
+    [
+        ("+447930934098", "0 7 9 3 0, 9 3 4, 0 9 8"),
+        ("+442046206823", "0 2 0, 4 6 2 0, 6 8 2 3"),
+        ("01614960000", "0 1 6 1 4, 9 6 0, 0 0 0"),
+        ("unknown", None),
+        ("anonymous", None),
+    ],
+)
+def test_spoken_number(number: str, said: str | None) -> None:
+    assert spoken_number(number) == said
+
+
+@pytest.mark.parametrize(
+    ("spoken", "caller", "stored"),
+    [
+        ("07930, 934, 098", "+447930934098", "+447930934098"),
+        ("0 7 9 3 0, 9 3 4, 0 9 8", "+447930934098", "+447930934098"),
+        ("07881 311506", "+447930934098", "+447881311506"),
+        ("+44 161 496 0000", None, "+441614960000"),
+        ("the same one", "+447930934098", "+447930934098"),
+        (None, None, None),
+    ],
+)
+def test_normalise_number(spoken: str | None, caller: str | None, stored: str | None) -> None:
+    assert normalise_number(spoken, caller) == stored
+
+
+def test_caller_id_instruction_offers_own_number_or_asks() -> None:
+    assert "0 7 9 3 0, 9 3 4, 0 9 8" in caller_id_instruction("+447930934098")
+    assert "withheld" in caller_id_instruction(None)
+    assert "withheld" in caller_id_instruction("unknown")
+
+
+def test_promised_transfer_detection() -> None:
+    assert mentions_connecting("I'll connect you to the accounts team now.")
+    assert mentions_connecting("Let me put you through to Dave")
+    assert not mentions_connecting("We're open until six today.")
+    assert guess_department("connecting you to accounts", ["general", "accounts"]) == "accounts"
+    assert guess_department("connecting you now", ["general", "accounts"]) is None
 
 
 class FakeApi:

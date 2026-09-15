@@ -18,7 +18,9 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
+from collections.abc import AsyncIterable, Coroutine
 from contextlib import suppress
+from typing import Any
 from uuid import uuid4
 
 from dotenv import load_dotenv
@@ -29,6 +31,7 @@ from livekit.agents import (
     JobContext,
     JobProcess,
     MetricsCollectedEvent,
+    ModelSettings,
     RoomInputOptions,
     RoomOutputOptions,
     WorkerOptions,
@@ -47,12 +50,16 @@ from parlio_voice.models import AssistantConfig, CallEventType, TurnLatency
 from parlio_voice.outbound import OutboundJob, OutcomeReporter, dial_callee, parse_outbound
 from parlio_voice.recording import CallRecorder
 from parlio_voice.settings import get_settings
+from parlio_voice.speech import speakable_stream
 from parlio_voice.supervisor import Supervisor
 from parlio_voice.tools import (
     CoreApiClient,
     ReceptionistTools,
     after_hours_instruction,
     build_tools,
+    caller_id_instruction,
+    guess_department,
+    mentions_connecting,
 )
 from parlio_voice.transfer import LiveKitSipBridge, TransferEngine
 from parlio_voice.web import WEB_DIALED, WebJob, parse_web
@@ -84,12 +91,19 @@ class Receptionist(Agent):
                 avail = tools.availability()
                 instructions += after_hours_instruction(cfg, avail["someone_available"])
             fn_tools = build_tools(tools)
+            if outbound is None and web is None:
+                instructions += "\n\n" + caller_id_instruction(tools.caller)
         if outbound is not None:
             instructions += "\n\n" + outbound.instructions()
         if web is not None:
             instructions += "\n\n" + web.instructions()
         super().__init__(instructions=instructions, tools=fn_tools)
         self.cfg = cfg
+
+    def tts_node(
+        self, text: AsyncIterable[str], model_settings: ModelSettings
+    ) -> AsyncIterable[rtc.AudioFrame] | Coroutine[Any, Any, AsyncIterable[rtc.AudioFrame]]:
+        return Agent.default.tts_node(self, speakable_stream(text), model_settings)
 
 
 def _redis(url: str) -> Redis | None:
@@ -284,10 +298,36 @@ async def entrypoint(ctx: JobContext) -> None:
 
     audio_task = asyncio.create_task(_sample_audio())
 
+    async def _transfer_if_promised(text: str) -> None:
+        # The LLM sometimes says "connecting you now" without calling transfer_to_human, which
+        # leaves the caller in silence. Give it a beat, then make the transfer happen anyway.
+        await asyncio.sleep(3)
+        if tools.transfer_attempted or not cfg.transfer.enabled:
+            return
+        dept = guess_department(text, cfg.transfer.departments())
+        log.info("assistant promised a transfer without calling the tool; dialling %s", dept)
+        res = await tools.transfer(dept, "caller asked to be put through")
+        if res.succeeded:
+            return
+        note = (
+            f"The transfer to {dept or 'the team'} was not answered (outcome: {res.outcome}). "
+            "Tell the caller nobody could pick up and offer to take a message with create_ticket."
+        )
+        await SessionBridge(session).add_system_note(note)
+        session.generate_reply()
+
     @session.on("conversation_item_added")
     def _on_item(ev: ConversationItemAddedEvent) -> None:
         if ev.item.type != "message":
             return
+        text = ev.item.text_content or ""
+        if (
+            ev.item.role == "assistant"
+            and outbound is None
+            and not tools.transfer_attempted
+            and mentions_connecting(text)
+        ):
+            background.append(asyncio.create_task(_transfer_if_promised(text)))
         events.emit(
             cfg,
             call_id,
