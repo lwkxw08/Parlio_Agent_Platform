@@ -33,7 +33,14 @@ from parlio_api.billing import WEB_CALLER_PREFIX
 from parlio_api.live import LiveCallHub, LiveMessage
 from parlio_api.messaging import MessageService, MessageStatus
 from parlio_api.notifications import NotificationEvent, NotificationService, NotifyEvent
-from parlio_api.store import CallRecord, CallStore, TenantDoc, Ticket
+from parlio_api.store import (
+    CallRecord,
+    CallStore,
+    TenantDoc,
+    Ticket,
+    TicketStatus,
+    TicketUpdate,
+)
 from parlio_voice.models import AssistantConfig, TicketIntake, TicketPriority
 
 log = logging.getLogger("parlio.api.inbox")
@@ -92,6 +99,7 @@ class Thread(BaseModel):
     ai_enabled: bool = True
     handoff_department: str | None = None
     callback_ticket_id: str | None = None
+    ticket_ids: list[str] = Field(default_factory=list)  # every ticket raised from this thread
     unread: int = 0
     message_count: int = 0
     last_preview: str = ""
@@ -389,8 +397,10 @@ def _handoff_ticket(thread: Thread) -> TicketIntake:
         reason=f"{thread.channel} customer asked for a person and nobody picked up: "
         f"{thread.last_preview}",
         category=thread.handoff_department or "callback",
+        department=thread.handoff_department,
         priority=TicketPriority.HIGH,
         source="ai_intake",
+        thread_id=thread.id,
     )
 
 
@@ -402,6 +412,7 @@ def _message_ticket(thread: Thread, text: str, category: str | None) -> TicketIn
         category=category,
         priority=TicketPriority.NORMAL,
         source="ai_intake",
+        thread_id=thread.id,
     )
 
 
@@ -739,6 +750,7 @@ class InboxService:
         notifications: NotificationService | None = None,
         live: LiveCallHub | None = None,
         on_ticket: Callable[[str, str, TicketIntake], Awaitable[Ticket]] | None = None,
+        on_ticket_update: Callable[[str, TicketUpdate], Awaitable[Ticket | None]] | None = None,
         sla_minutes: int = DEFAULT_SLA_MINUTES,
     ) -> None:
         self.store = store
@@ -747,6 +759,7 @@ class InboxService:
         self.notifications = notifications
         self.live = live
         self.on_ticket = on_ticket
+        self.on_ticket_update = on_ticket_update
         self.sla = timedelta(minutes=sla_minutes)
 
     # -- lookups --------------------------------------------------------------------------------
@@ -924,6 +937,8 @@ class InboxService:
                 ticket = await self.on_ticket(tenant_id, company_id, turn.ticket)
                 reply.ticket_id = ticket.id
                 await self.store.put_doc(reply.to_doc())
+                self._link_ticket(t, ticket.id)
+                await self.store.put_doc(t.to_doc())
             except Exception:
                 log.warning("inbox ticket creation failed for %s", t.id, exc_info=True)
         if turn.clarifying and not turn.handoff:
@@ -1000,6 +1015,7 @@ class InboxService:
         if joining:
             await self._status(t, f"{display_name(by)} has joined the chat.")
         m = await self._deliver(t, text, author=Author.AGENT, author_name=by)
+        await self._sync_tickets(t, TicketStatus.CLAIMED, by)
         return m
 
     async def _status(self, t: Thread, text: str) -> InboxMessage | None:
@@ -1046,13 +1062,19 @@ class InboxService:
         read: bool | None = None,
         tags: list[str] | None = None,
         subject: str | None = None,
+        by: str | None = None,
+        sync_tickets: bool = True,
     ) -> Thread:
         t = await self._require(tenant_id, thread_id)
+        ticket_status: TicketStatus | None = None
         if status is not None:
             if status == ThreadStatus.CLOSED and t.status != ThreadStatus.CLOSED:
                 await self._status(
                     t, "This chat has been closed. Send a message if you need anything else."
                 )
+                ticket_status = TicketStatus.RESOLVED
+            elif status != ThreadStatus.CLOSED and t.status == ThreadStatus.CLOSED:
+                ticket_status = TicketStatus.OPEN
             t.status = status
             if status == ThreadStatus.CLOSED:
                 t.unread = 0
@@ -1061,6 +1083,8 @@ class InboxService:
             t.assigned_to = None
         elif assigned_to is not None:
             t.assigned_to = assigned_to
+            if ticket_status is None and t.status != ThreadStatus.CLOSED:
+                ticket_status = TicketStatus.CLAIMED
         if ai_enabled is not None:
             t.ai_enabled = ai_enabled
             if ai_enabled and t.status == ThreadStatus.WAITING:
@@ -1073,6 +1097,64 @@ class InboxService:
             t.subject = subject
         await self.store.put_doc(t.to_doc())
         self._publish("inbox.thread", t)
+        if sync_tickets and ticket_status is not None:
+            await self._sync_tickets(t, ticket_status, by or assigned_to or t.assigned_to)
+        return t
+
+    # -- linked tickets ---------------------------------------------------------------------------
+    @staticmethod
+    def _link_ticket(t: Thread, ticket_id: str) -> None:
+        if ticket_id not in t.ticket_ids:
+            t.ticket_ids.append(ticket_id)
+
+    async def _sync_tickets(self, t: Thread, status: TicketStatus, actor: str | None) -> None:
+        """Mirror the thread's progress onto its tickets: claimed when someone picks the thread
+        up, resolved when it is closed, reopened when it is reopened."""
+        if self.on_ticket_update is None:
+            return
+        for tid in t.ticket_ids:
+            tk = await self.store.get_ticket(tid)
+            if tk is None or tk.status == status:
+                continue
+            if status == TicketStatus.CLAIMED and tk.status != TicketStatus.OPEN:
+                continue
+            if status == TicketStatus.OPEN and tk.status != TicketStatus.RESOLVED:
+                continue
+            upd = TicketUpdate(
+                status=status,
+                assigned_to=t.assigned_to if status == TicketStatus.CLAIMED else None,
+                actor=actor,
+                note=f"via inbox conversation {t.id}",
+            )
+            try:
+                await self.on_ticket_update(tid, upd)
+            except Exception:
+                log.warning("ticket sync failed for %s -> %s", t.id, tid, exc_info=True)
+
+    async def on_ticket_changed(self, ticket: Ticket, actor: str | None = None) -> Thread | None:
+        """Ticket progressed on the Tickets board: reflect it on the linked conversation."""
+        if ticket.thread_id is None:
+            return None
+        t = await self.get(ticket.tenant_id, ticket.thread_id)
+        if t is None:
+            return None
+        if ticket.status in (TicketStatus.RESOLVED, TicketStatus.CANCELLED):
+            if t.status == ThreadStatus.CLOSED:
+                return t
+            return await self.update(
+                t.tenant_id, t.id, status=ThreadStatus.CLOSED, by=actor, sync_tickets=False
+            )
+        if ticket.status == TicketStatus.CLAIMED:
+            assignee = ticket.assigned_to or actor
+            if t.status == ThreadStatus.CLOSED or t.assigned_to or assignee is None:
+                return t
+            return await self.update(
+                t.tenant_id, t.id, assigned_to=assignee, by=actor, sync_tickets=False
+            )
+        if ticket.status == TicketStatus.OPEN and t.status == ThreadStatus.CLOSED:
+            return await self.update(
+                t.tenant_id, t.id, status=ThreadStatus.OPEN, by=actor, sync_tickets=False
+            )
         return t
 
     async def _require(self, tenant_id: str, thread_id: str) -> Thread:
@@ -1157,6 +1239,7 @@ class InboxService:
                     try:
                         ticket = await self.on_ticket(t.tenant_id, t.company_id, _handoff_ticket(t))
                         t.callback_ticket_id = ticket.id
+                        self._link_ticket(t, ticket.id)
                         await self._status(
                             t,
                             "Sorry, nobody was free to pick up. We've logged your request "

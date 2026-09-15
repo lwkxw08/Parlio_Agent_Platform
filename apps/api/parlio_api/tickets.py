@@ -12,13 +12,16 @@ import contextlib
 import logging
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
-from typing import Protocol
+from typing import TYPE_CHECKING, Protocol
 from uuid import uuid4
 
 import httpx
 
-from parlio_api.store import CallStore, Ticket, TicketEvent, intake_from_event
+from parlio_api.store import CallStore, Ticket, TicketEvent, TicketUpdate, intake_from_event
 from parlio_voice.models import CallEvent, TicketIntake, TicketPriority, TransferConfig
+
+if TYPE_CHECKING:
+    from parlio_api.inbox import InboxService
 
 log = logging.getLogger("parlio.api.tickets")
 
@@ -83,6 +86,7 @@ def build_ticket(
         tenant_id=tenant_id,
         company_id=company_id,
         call_id=intake.call_id,
+        thread_id=intake.thread_id,
         priority=priority,
         category=category,
         department=infer_department(intake, category, cfg),
@@ -148,6 +152,24 @@ class TicketService:
         self.store = store
         self.notifier = notifier
         self.on_created = on_created
+        self.inbox: InboxService | None = None  # set by main once the inbox exists
+
+    async def update(self, ticket_id: str, upd: TicketUpdate) -> Ticket | None:
+        """Apply an update and mirror claim/resolve/reopen onto the linked inbox thread."""
+        cur = await self.store.get_ticket(ticket_id)
+        if cur is None:
+            return None
+        before = cur.model_copy()  # the memory store mutates in place
+        t = await self.store.update_ticket(ticket_id, upd)
+        if t is None:
+            return None
+        changed = t.status != before.status or t.assigned_to != before.assigned_to
+        if changed and t.thread_id and self.inbox is not None:
+            try:
+                await self.inbox.on_ticket_changed(t, actor=upd.actor)
+            except Exception:
+                log.warning("inbox sync failed for ticket %s", t.id, exc_info=True)
+        return t
 
     async def create_from_intake(
         self, tenant_id: str, company_id: str, intake: TicketIntake

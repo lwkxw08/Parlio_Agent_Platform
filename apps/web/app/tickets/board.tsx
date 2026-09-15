@@ -76,6 +76,14 @@ export default function TicketBoard({ initial }: { initial: Ticket[] }) {
                     {t.caller_name ?? "Unknown caller"}{t.caller_number ? ` · ${t.caller_number}` : ""}
                     {t.callback_window ? ` · callback ${t.callback_window}` : ""}
                     {t.assigned_to ? ` · ${t.assigned_to}` : ""}
+                    {t.thread_id && (
+                      <>
+                        {" · "}
+                        <Link href={`/inbox?tenant=${t.tenant_id}&thread=${t.thread_id}`} title="Linked conversation — progress here or there, both stay in step">
+                          Open in Inbox
+                        </Link>
+                      </>
+                    )}
                   </div>
                   <div className="row actions">
                     {status === "open" && <button onClick={() => act(t.id, "claim")}>Claim</button>}

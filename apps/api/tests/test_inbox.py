@@ -517,6 +517,112 @@ async def test_sla_sweep_flags_breach(client: AsyncClient, app: FastAPI) -> None
     assert await svc.sweep_sla() == []
 
 
+async def _breached_thread(client: AsyncClient, app: FastAPI) -> tuple[str, str]:
+    """A waiting SMS thread whose SLA has lapsed, plus the callback ticket it raised."""
+    svc = _svc(app)
+    svc.sla = timedelta(0)
+    await client.post("/v1/inbound/sms", json=telnyx_sms("I need to speak to a human"))
+    r = await client.get("/v1/inbox/threads", params={"tenant_id": DEV_TENANT})
+    if r.json()[0]["status"] != "waiting":
+        await client.post("/v1/inbound/sms", json=telnyx_sms("about an invoice"))
+    await svc.sweep_sla()
+    r = await client.get("/v1/inbox/threads", params={"tenant_id": DEV_TENANT})
+    t = r.json()[0]
+    assert t["callback_ticket_id"] and t["ticket_ids"] == [t["callback_ticket_id"]]
+    return t["id"], t["callback_ticket_id"]
+
+
+async def test_callback_ticket_links_back_to_thread(client: AsyncClient, app: FastAPI) -> None:
+    tid, tk = await _breached_thread(client, app)
+    r = await client.get(f"/v1/tickets/{tk}")
+    assert r.json()["ticket"]["thread_id"] == tid
+    assert r.json()["ticket"]["status"] == "open"
+
+
+async def test_inbox_progress_updates_ticket(client: AsyncClient, app: FastAPI) -> None:
+    tid, tk = await _breached_thread(client, app)
+    q = {"tenant_id": DEV_TENANT}
+
+    # picking the thread up (human reply) claims the ticket for that person
+    r = await client.post(f"/v1/inbox/threads/{tid}/reply", params=q, json={"text": "Hi, Jo here"})
+    assert r.status_code == 200, r.text
+    t = (await client.get(f"/v1/tickets/{tk}")).json()["ticket"]
+    assert t["status"] == "claimed"
+    assert (
+        t["assigned_to"]
+        == (await client.get(f"/v1/inbox/threads/{tid}", params=q)).json()["thread"]["assigned_to"]
+    )
+
+    # closing the thread resolves the ticket
+    r = await client.patch(f"/v1/inbox/threads/{tid}", params=q, json={"status": "closed"})
+    assert r.json()["status"] == "closed"
+    t = (await client.get(f"/v1/tickets/{tk}")).json()["ticket"]
+    assert t["status"] == "resolved"
+    assert t["resolved_at"]
+
+    # reopening the thread reopens the ticket
+    await client.patch(f"/v1/inbox/threads/{tid}", params=q, json={"status": "open"})
+    t = (await client.get(f"/v1/tickets/{tk}")).json()["ticket"]
+    assert t["status"] == "open"
+    assert t["resolved_at"] is None
+
+
+async def test_inbox_assign_claims_ticket(client: AsyncClient, app: FastAPI) -> None:
+    tid, tk = await _breached_thread(client, app)
+    q = {"tenant_id": DEV_TENANT}
+    r = await client.patch(
+        f"/v1/inbox/threads/{tid}", params=q, json={"assigned_to": "owner@demo.parlio.local"}
+    )
+    assert r.status_code == 200
+    t = (await client.get(f"/v1/tickets/{tk}")).json()["ticket"]
+    assert t["status"] == "claimed"
+    assert t["assigned_to"] == "owner@demo.parlio.local"
+    events = (await client.get(f"/v1/tickets/{tk}")).json()["events"]
+    assert any(e["type"] == "claimed" and e["actor"] for e in events)
+
+
+async def test_ticket_progress_updates_inbox(client: AsyncClient, app: FastAPI) -> None:
+    tid, tk = await _breached_thread(client, app)
+    q = {"tenant_id": DEV_TENANT}
+
+    r = await client.post(f"/v1/tickets/{tk}/claim", json={"actor": "jo@demo.parlio.local"})
+    assert r.status_code == 200, r.text
+    t = (await client.get(f"/v1/inbox/threads/{tid}", params=q)).json()["thread"]
+    assert t["assigned_to"] == "jo@demo.parlio.local"
+    assert t["status"] == "waiting"  # still awaiting the actual reply to the customer
+
+    r = await client.post(f"/v1/tickets/{tk}/resolve", json={"actor": "jo@demo.parlio.local"})
+    assert r.json()["status"] == "resolved"
+    d = (await client.get(f"/v1/inbox/threads/{tid}", params=q)).json()
+    assert d["thread"]["status"] == "closed"
+    assert d["thread"]["sla_due_at"] is None
+    assert d["thread"]["unread"] == 0
+
+    # ticket already resolved -> closing the thread again is a no-op, no loop
+    r = await client.patch(f"/v1/inbox/threads/{tid}", params=q, json={"status": "closed"})
+    assert r.status_code == 200
+    assert (await client.get(f"/v1/tickets/{tk}")).json()["ticket"]["status"] == "resolved"
+
+
+async def test_unlinked_ticket_and_thread_untouched(client: AsyncClient, app: FastAPI) -> None:
+    q = {"tenant_id": DEV_TENANT}
+    r = await client.post("/v1/inbound/sms", json=telnyx_sms("hello there"))
+    tid = r.json()["thread_id"]
+    r = await client.post(
+        "/v1/tickets",
+        json={"tenant_id": DEV_TENANT, "company_id": DEV_TENANT, "intake": {"reason": "manual"}},
+    )
+    assert r.status_code in (200, 201), r.text
+    tk = r.json()["id"]
+    assert r.json()["thread_id"] is None
+
+    await client.patch(f"/v1/inbox/threads/{tid}", params=q, json={"status": "closed"})
+    assert (await client.get(f"/v1/tickets/{tk}")).json()["ticket"]["status"] == "open"
+    await client.post(f"/v1/tickets/{tk}/resolve", json={"actor": "x"})
+    t = (await client.get(f"/v1/inbox/threads/{tid}", params=q)).json()["thread"]
+    assert t["status"] == "closed"  # closed by us above, not reopened/touched by the ticket
+
+
 async def test_webchat_status_lines_and_state(client: AsyncClient, app: FastAPI) -> None:
     svc = _svc(app)
     svc.sla = timedelta(0)

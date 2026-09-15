@@ -195,6 +195,7 @@ class Ticket(BaseModel):
     company_id: str
     call_id: str | None = None
     contact_id: str | None = None
+    thread_id: str | None = None
     status: TicketStatus = TicketStatus.OPEN
     priority: TicketPriority = TicketPriority.NORMAL
     category: str | None = None

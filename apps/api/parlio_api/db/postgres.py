@@ -64,7 +64,7 @@ _CONTACT_COLS = """
 _TICKET_COLS = """
     id, organization_id, company_id, call_id, contact_id, status, priority, category, department,
     caller_name, caller_number, reason, callback_window, source, sla_due_at, sla_breached,
-    assigned_to, created_at, updated_at, resolved_at
+    assigned_to, created_at, updated_at, resolved_at, thread_id
 """
 
 _TRANSFER_COLS = """
@@ -96,6 +96,7 @@ def _row_to_ticket(r: Row[Any]) -> Ticket:
         created_at=m["created_at"],
         updated_at=m["updated_at"],
         resolved_at=m["resolved_at"],
+        thread_id=m["thread_id"],
     )
 
 
@@ -896,7 +897,7 @@ class PostgresStore:
                     VALUES (:id, :oid, :co, :call_id, :contact_id, :status, :priority, :category,
                             :department, :caller_name, :caller_number, :reason, :callback_window,
                             :source, :sla_due_at, :sla_breached, :assigned_to, :created_at,
-                            :updated_at, :resolved_at)
+                            :updated_at, :resolved_at, :thread_id)
                     """
                 ),
                 self._ticket_params(ticket),
@@ -933,6 +934,7 @@ class PostgresStore:
             "created_at": t.created_at,
             "updated_at": t.updated_at,
             "resolved_at": t.resolved_at,
+            "thread_id": t.thread_id,
         }
 
     @staticmethod

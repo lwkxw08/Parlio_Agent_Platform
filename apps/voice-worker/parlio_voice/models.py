@@ -437,6 +437,7 @@ class TicketIntake(BaseModel):
     department: str | None = None
     callback_window: str | None = None
     source: str = "ai_intake"  # ai_intake | no_answer | after_hours | escalation | manual
+    thread_id: str | None = None  # inbox conversation this ticket belongs to (kept in sync)
 
 
 class CallEvent(BaseModel):

@@ -490,11 +490,13 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         notifications=notifications,
         live=live,
         on_ticket=tickets.create_from_intake,
+        on_ticket_update=tickets.update,
         sla_minutes=settings.inbox_sla_minutes,
     )
     senders[Channel.WHATSAPP] = WhatsAppSender(inbox.whatsapp)
     app.state.inbox = inbox
     hub.inbox = inbox
+    tickets.inbox = inbox
 
     qa = QAService(store, scorer, notifications, settings.dashboard_url)
     app.state.qa = qa
