@@ -149,6 +149,7 @@ class TransferConfig(BaseModel):
     mode: TransferMode = TransferMode.WARM
     ring_timeout_s: int = 25
     destinations: list[Destination] = Field(default_factory=list)
+    department_notes: dict[str, str] = Field(default_factory=dict)
     urgent_keywords: list[str] = Field(
         default_factory=lambda: [
             "emergency",
@@ -171,6 +172,13 @@ class TransferConfig(BaseModel):
         for d in self.destinations:
             seen.setdefault(d.department, None)
         return list(seen)
+
+    def describe_departments(self) -> str:
+        """One line per department, with its routing description when set."""
+        return "; ".join(
+            f"{d} ({self.department_notes[d]})" if self.department_notes.get(d) else d
+            for d in self.departments()
+        )
 
     def candidates(
         self, department: str | None = None, now: datetime | None = None, urgent: bool = False

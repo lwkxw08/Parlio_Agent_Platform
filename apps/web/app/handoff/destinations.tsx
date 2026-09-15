@@ -54,7 +54,7 @@ export default function Destinations({ assistant }: { assistant: Assistant }) {
       </div>
       <p className="hint">
         A department is a group of people (or a hunt group) the assistant can transfer to; each destination is one number, SIP address or extension.
-        Callers are routed to the department that matches their request, then to its destinations in priority order, respecting each person&apos;s hours.
+        Callers are routed to the department whose description matches their request (e.g. “invoices, payments” → Accounts), then to its destinations in priority order, respecting each person&apos;s hours.
         Mark someone as on-call to receive urgent escalations. Transfer mode and urgent keywords are in <a href="/assistant">Assistant Studio → After hours</a>.
       </p>
 
@@ -66,6 +66,17 @@ export default function Destinations({ assistant }: { assistant: Assistant }) {
             <h3 style={{ margin: "0.5rem 0", textTransform: "capitalize" }}>{dept}</h3>
             <button type="button" className="ghost small" onClick={() => setEditing(blank(dept))}>+ Add person</button>
           </div>
+          <input
+            className="small"
+            style={{ marginBottom: "0.4rem", width: "100%" }}
+            placeholder="What this team handles, e.g. invoices, payments, refunds — the assistant uses this to pick the right department"
+            defaultValue={cfg.department_notes?.[dept] ?? ""}
+            onBlur={(e) => {
+              const v = e.target.value.trim();
+              if (v === (cfg.department_notes?.[dept] ?? "")) return;
+              void save({ ...cfg, department_notes: { ...(cfg.department_notes ?? {}), [dept]: v } });
+            }}
+          />
           <table>
             <thead><tr><th>Name</th><th>Type</th><th>Number / address</th><th>Priority</th><th>Hours</th><th>On-call</th><th>Fallback</th><th></th></tr></thead>
             <tbody>

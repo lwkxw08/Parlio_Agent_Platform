@@ -31,7 +31,7 @@ from parlio_api.inbox import (
 )
 from parlio_api.postcall import PostCallProcessor
 from parlio_api.settings import get_settings
-from parlio_voice.models import AssistantConfig, CallEventType, Faq
+from parlio_voice.models import AssistantConfig, CallEventType, Destination, Faq
 
 from .test_api import HEADERS, ev
 
@@ -242,6 +242,45 @@ async def test_openai_agent_handoff_is_sticky_and_department_aware() -> None:
     system = seen[0]["messages"][0]["content"]
     assert "Handoff policy" in system
     assert "already in progress" in system
+
+
+async def test_openai_agent_prompt_lists_department_descriptions() -> None:
+    seen: list[dict[str, Any]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(json.loads(request.content))
+        content = json.dumps({"reply": "Connecting you to accounts.", "handoff": True})
+        return httpx.Response(200, json={"choices": [{"message": {"content": content}}]})
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handler), base_url="https://x")
+    agent = OpenAITextAgent("k", client=client)
+    cfg = _cfg()
+    cfg.transfer.destinations.append(
+        Destination(id="d1", name="Jo", department="accounts", address="+447700900001")
+    )
+    cfg.transfer.department_notes = {"accounts": "invoices, payments, refunds"}
+    th = _thread()
+    await agent.respond(cfg, th, _hist("It's about an invoice", th))
+    assert "- accounts: invoices, payments, refunds;" in seen[0]["messages"][0]["content"]
+
+
+async def test_rules_agent_closing_remark_does_not_hand_off() -> None:
+    agent = RuleTextAgent()
+    th = _thread()
+    hist = _hist("what time do you close today?", th)
+    hist.append(
+        InboxMessage(
+            tenant_id=th.tenant_id,
+            thread_id=th.id,
+            channel=th.channel,
+            direction=Direction.OUT,
+            author=Author.AI,
+            text="We close at 6pm.",
+        )
+    )
+    hist.extend(_hist("Great, thanks.", th))
+    r = await agent.respond(_cfg(), th, hist)
+    assert r.handoff is False and r.ticket is None
 
 
 # -- end-to-end via routes -------------------------------------------------------------------------

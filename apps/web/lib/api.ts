@@ -212,6 +212,7 @@ export type TransferConfig = {
   mode: "warm" | "cold";
   ring_timeout_s: number;
   destinations: Destination[];
+  department_notes: Record<string, string>;
   urgent_keywords: string[];
   after_hours: "ticket" | "voicemail" | "both";
   intake: IntakeField[];

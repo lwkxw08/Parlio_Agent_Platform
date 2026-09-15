@@ -493,7 +493,7 @@ async def request_owner_approval(
 def build_tools(t: ReceptionistTools) -> list[Any]:
     """Wrap `ReceptionistTools` methods as LLM-callable function tools."""
     cfg = t.cfg.transfer
-    depts = ", ".join(cfg.departments()) or "general"
+    depts = cfg.describe_departments() or "general"
     intake_desc = "; ".join(f"{f.name}: {f.prompt}" for f in cfg.intake)
 
     @function_tool(

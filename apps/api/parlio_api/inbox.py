@@ -239,7 +239,11 @@ def _departments_section(cfg: AssistantConfig) -> str:
     lines = []
     for d in depts:
         open_now = bool(cfg.transfer.candidates(d, now))
-        lines.append(f"- {d} ({'available now' if open_now else 'closed now - callback'})")
+        note = cfg.transfer.department_notes.get(d)
+        lines.append(
+            f"- {d}: {note + '; ' if note else ''}"
+            f"{'available now' if open_now else 'closed now - callback'}"
+        )
     return "Departments a human handoff can go to:\n" + "\n".join(lines)
 
 
@@ -254,6 +258,7 @@ class TextAgent(Protocol):
 _WORD = re.compile(r"[a-z0-9']+")
 _HUMAN = ("speak to someone", "speak to a human", "real person", "talk to a person", "call me")
 _HOURS = ("open", "opening", "hours", "close", "closing")
+_CLOSING = ("thanks", "thank you", "great", "cheers", "ok", "okay", "perfect", "bye", "brilliant")
 _BOOK = ("book", "appointment", "booking", "schedule", "slot")
 _STOP = {"the", "a", "an", "is", "are", "do", "you", "i", "to", "of", "and", "what", "how", "can"}
 
@@ -278,6 +283,9 @@ class RuleTextAgent:
         low = text.lower()
         inbound = [m for m in history if m.direction == Direction.IN]
         greet = "" if len(inbound) > 1 else f"Hi, this is {cfg.name} from {cfg.business_name}. "
+
+        if len(inbound) > 1 and len(_tokens(text)) <= 4 and any(k in low for k in _CLOSING):
+            return AgentTurn(reply="You're welcome — anything else, just message us here.")
 
         if any(k in low for k in _HUMAN):
             return AgentTurn(
