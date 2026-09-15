@@ -20,6 +20,7 @@ import {
   request,
   when,
 } from "@/lib/api";
+import { humanize } from "@/app/breakdown";
 
 const TABS = [["brand", "White-label"], ["clients", "Client accounts"], ["compliance", "Compliance pack"], ["security", "Security"]] as const;
 type Tab = (typeof TABS)[number][0];
@@ -203,7 +204,7 @@ function Compliance({ tenant, pack }: { tenant: string; pack: CompliancePack | n
             <tbody>
               {pack.assistants.map((a) => (
                 <tr key={a.assistant_id}>
-                  <td>{a.name}</td><td><span className={`pill ${a.region_profile.startsWith("sovereign") ? "ok" : ""}`}>{a.region_profile}</span></td>
+                  <td>{a.name}</td><td><span className={`pill ${a.region_profile.startsWith("sovereign") ? "ok" : ""}`}>{humanize(a.region_profile)}</span></td>
                   <td>{a.stt.join(" → ")}</td><td>{a.llm.join(" → ")}</td><td>{a.tts.join(" → ")}</td>
                   <td>{a.consent_announcement ? "yes" : "no"}</td><td>{a.recording_enabled ? "on" : "off"}</td>
                 </tr>

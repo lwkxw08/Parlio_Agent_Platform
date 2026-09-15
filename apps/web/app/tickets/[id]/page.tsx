@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { fetchTicket, secs, ticketRef } from "@/lib/api";
 import TicketActions from "./actions";
+import { humanize } from "@/app/breakdown";
 
 export const dynamic = "force-dynamic";
 
@@ -16,8 +17,8 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
       <p><Link href="/tickets">← Tickets</Link></p>
       <div className="row" style={{ alignItems: "baseline", gap: "0.75rem", flexWrap: "wrap" }}>
         <h1 style={{ margin: 0 }}>{t.reason}</h1>
-        <span className={`pill ${t.priority}`}>{t.priority}</span>
-        <span className="pill">{t.status}</span>
+        <span className={`pill ${t.priority}`}>{humanize(t.priority)}</span>
+        <span className="pill">{humanize(t.status)}</span>
       </div>
       <p className="muted small">
         Ticket {ticketRef(t.id)} · raised {new Date(t.created_at).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" })}
@@ -26,7 +27,7 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
       <TicketActions ticket={t} />
       <div className="grid">
         <div className="card"><div className="label">Status</div><div className="value">{t.status}</div></div>
-        <div className="card"><div className="label">Priority</div><div className="value"><span className={`pill ${t.priority}`}>{t.priority}</span></div></div>
+        <div className="card"><div className="label">Priority</div><div className="value"><span className={`pill ${t.priority}`}>{humanize(t.priority)}</span></div></div>
         <div className="card"><div className="label">SLA</div><div className="value">{t.sla_breached ? "breached" : secs(sla_remaining_s)}</div></div>
         <div className="card"><div className="label">Assigned</div><div className="value">{t.assigned_to ?? "—"}</div></div>
       </div>

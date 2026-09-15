@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { fetchAssistants, fetchHealth, fetchMe, fetchSnapshot } from "@/lib/api";
 import LiveSnapshot from "./snapshot";
+import { humanize } from "@/app/breakdown";
 
 export const dynamic = "force-dynamic";
 
@@ -36,7 +37,7 @@ export default async function Overview() {
           {(assistants ?? []).map((a) => (
             <tr key={a.assistant_id}>
               <td><Link href="/assistant">{a.name}</Link></td><td>{a.business_name}</td><td>{a.language}</td>
-              <td><span className="pill">{a.region_profile}</span></td>
+              <td><span className="pill">{humanize(a.region_profile)}</span></td>
               <td className="muted">{a.greeting}</td>
             </tr>
           ))}

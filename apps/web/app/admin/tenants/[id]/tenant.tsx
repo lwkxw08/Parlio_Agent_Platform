@@ -23,6 +23,7 @@ import {
   when,
 } from "@/lib/api";
 import { HealthPill, Stat, StatusPill, num, pct } from "../../ui";
+import { humanize } from "@/app/breakdown";
 
 const TABS = [["overview", "Overview"], ["subscription", "Subscription"], ["limits", "Limits & flags"], ["people", "People & assets"], ["support", "Support"], ["audit", "Audit"]] as const;
 type Tab = (typeof TABS)[number][0];
@@ -56,7 +57,7 @@ export default function Tenant({ detail, plans, coupons, catalogue, role }: Prop
         <div>
           <h2 style={{ margin: 0 }}>{s.name} <span className="muted small">{s.tenant_id}</span></h2>
           <div className="row small" style={{ marginTop: 4 }}>
-            <StatusPill s={s.status} /><HealthPill h={s.health} /><span className="pill">{s.plan_name}</span>
+            <StatusPill s={s.status} /><HealthPill h={s.health} /><span className="pill">{humanize(s.plan_name)}</span>
             {s.flags.map((f) => <span key={f} className="pill">{f}</span>)}
           </div>
         </div>
@@ -209,7 +210,7 @@ function SubscriptionTab({ d, plans, coupons, base, canEdit, flash }: { d: Tenan
                   <td>{i.url ? <a href={i.url} target="_blank" rel="noreferrer">{i.id}</a> : i.id}</td>
                   <td className="small">{when(i.period_start).split(",")[0]} → {when(i.period_end).split(",")[0]}</td>
                   <td>{gbp(i.total_pence)}</td>
-                  <td><span className={`pill ${i.status === "paid" ? "ok" : i.status === "open" ? "warn" : ""}`}>{i.status}</span></td>
+                  <td><span className={`pill ${i.status === "paid" ? "ok" : i.status === "open" ? "warn" : ""}`}>{humanize(i.status)}</span></td>
                 </tr>
               ))}</tbody>
             </table>
@@ -309,7 +310,7 @@ function People({ d, base, canEdit, flash }: { d: TenantDetail; base: string; ca
               <tr key={m.user_id}>
                 <td>{m.email}<div className="small muted">{m.name ?? ""}</div></td>
                 <td>{m.role}</td>
-                <td><span className={`pill ${m.status === "active" ? "ok" : "warn"}`}>{m.status}</span></td>
+                <td><span className={`pill ${m.status === "active" ? "ok" : "warn"}`}>{humanize(m.status)}</span></td>
                 {canEdit && (
                   <td className="row">
                     {m.status === "invited" && <button type="button" className="ghost" onClick={() => resend(m)}>Re-send invite</button>}

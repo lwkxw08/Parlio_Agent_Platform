@@ -273,7 +273,7 @@ export default function AnalyticsView({ overview, initial }: { overview: Overvie
                 <div style={{ width: `${total ? (cur.first_time_callers / total) * 100 : 50}%`, background: P1 }} />
                 <div style={{ flex: 1, background: P2 }} />
               </div>
-              <dl className="kv">
+              <dl className="kv stats">
                 <dt><i className="dot" style={{ background: P1 }} /> First-time</dt><dd>{cur.first_time_callers} ({total ? Math.round((cur.first_time_callers / total) * 100) : 0}%)</dd>
                 <dt><i className="dot" style={{ background: P2 }} /> Returning</dt><dd>{cur.returning_callers} ({total ? Math.round((cur.returning_callers / total) * 100) : 0}%)</dd>
                 <dt>Prospects / customers</dt><dd>{overview.prospects.prospects} / {overview.prospects.customers}</dd>
@@ -290,29 +290,27 @@ export default function AnalyticsView({ overview, initial }: { overview: Overvie
             <Breakdown title="Outcomes" data={cur.by_outcome} empty="No calls in this period." />
             <div className="card">
               <h2>Usage this month ({overview.usage.month})</h2>
-              <dl className="kv">
+              <dl className="kv stats">
                 <dt>Calls</dt><dd>{overview.usage.calls}</dd>
                 <dt>Minutes</dt><dd>{Math.round(overview.usage.minutes)}</dd>
                 <dt>Transfers</dt><dd>{overview.usage.transfers}</dd>
                 <dt>Tickets</dt><dd>{overview.usage.tickets}</dd>
               </dl>
             </div>
-            <div className="card">
-              <h2>Quality signals</h2>
-              <p className="small muted" style={{ margin: "0 0 4px" }}>Information not captured</p>
-              <ul className="small">
-                {overview.top_missed_fields.map((m) => <li key={m.field}>{m.field.replaceAll("_", " ")} — {m.count}</li>)}
-                {!overview.top_missed_fields.length && <li className="muted">none</li>}
-              </ul>
-              <p className="small muted" style={{ margin: "8px 0 4px" }}>Feedback flags</p>
-              <ul className="small">
-                {Object.entries(overview.feedback_by_type).map(([k, v]) => <li key={k}>{k.replaceAll("_", " ")} — {v}</li>)}
-                {!Object.keys(overview.feedback_by_type).length && <li className="muted">none</li>}
-              </ul>
-            </div>
+            <Breakdown
+              title="Information not captured"
+              data={overview.top_missed_fields.map((m) => ({ name: m.field, count: m.count }))}
+              empty="The assistant captured every required detail."
+              hint="Required details callers didn't give — tune the wording in Studio → Required fields."
+            />
+            <Breakdown
+              title="Feedback flags"
+              data={overview.feedback_by_type}
+              empty="No feedback flagged on calls in this period."
+            />
             <div className="card">
               <h2>Handoff</h2>
-              <dl className="kv">
+              <dl className="kv stats">
                 <dt>Transfers</dt><dd>{overview.transfers.total}</dd>
                 <dt>Tickets open</dt><dd>{overview.tickets.open}</dd>
                 <dt>SLA breached</dt><dd>{overview.tickets.sla_breached}</dd>

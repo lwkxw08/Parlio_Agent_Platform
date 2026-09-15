@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { fetchCalls, fetchContact, secs, when } from "@/lib/api";
 import ContactForm from "./form";
+import { humanize } from "@/app/breakdown";
 
 export const dynamic = "force-dynamic";
 
@@ -31,7 +32,7 @@ export default async function ContactDetail({ params }: { params: Promise<{ id: 
             {calls.map((c) => (
               <tr key={c.call_id}>
                 <td><Link href={`/calls/${c.call_id}`}>{when(c.started_at)}</Link></td>
-                <td><span className="pill">{c.kind}</span></td>
+                <td><span className="pill">{humanize(c.kind)}</span></td>
                 <td className="small muted">{c.summary ?? "—"}</td>
                 <td>{secs(c.duration_s)}</td>
               </tr>

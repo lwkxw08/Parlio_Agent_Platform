@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { fetchContacts, when } from "@/lib/api";
+import { humanize } from "@/app/breakdown";
 
 export const dynamic = "force-dynamic";
 
@@ -29,7 +30,7 @@ export default async function Contacts({ searchParams }: { searchParams: Promise
             <tr key={c.id}>
               <td><Link href={`/contacts/${c.id}`}>{c.name ?? <span className="muted">Unknown</span>}</Link>{c.vip && <span className="pill warn" style={{ marginLeft: 4 }}>VIP</span>}</td>
               <td>{c.e164}</td>
-              <td><span className={`pill ${c.status === "customer" ? "ok" : c.status === "blocked" ? "bad" : ""}`}>{c.status}</span></td>
+              <td><span className={`pill ${c.status === "customer" ? "ok" : c.status === "blocked" ? "bad" : ""}`}>{humanize(c.status)}</span></td>
               <td>{c.call_count}{c.call_count > 1 && <span className="muted small"> returning</span>}</td>
               <td>{when(c.first_seen_at)}</td>
               <td>{when(c.last_seen_at)}</td>

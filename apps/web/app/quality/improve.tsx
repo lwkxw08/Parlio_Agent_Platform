@@ -14,6 +14,7 @@ import {
   request,
   when,
 } from "@/lib/api";
+import { humanize } from "@/app/breakdown";
 
 type Props = {
   tenant: string; canManage: boolean; regression: RegressionView; proposals: Proposal[]; runs: SimulationRun[]; assistants: Assistant[]; flash: (m: string) => void;
@@ -151,7 +152,7 @@ export default function Improve({ tenant, canManage, regression, proposals, runs
             <h3 style={{ marginTop: "1rem" }}>History</h3>
             {done.map((p) => (
               <div key={p.id} className="list-row small">
-                <span className={`pill ${p.status === "approved" ? "ok" : ""}`}>{p.status}</span>
+                <span className={`pill ${p.status === "approved" ? "ok" : ""}`}>{humanize(p.status)}</span>
                 <span style={{ flex: 1 }}>{p.title}{p.applied_version != null ? ` · v${p.applied_version}` : ""}</span>
                 <span className="muted">{when(p.updated_at)}</span>
               </div>

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { fetchAdminOverview, gbp, when } from "@/lib/api";
 import { Bars, Mix, Stat, num, pct, secs } from "./ui";
+import { humanize } from "@/app/breakdown";
 
 export const dynamic = "force-dynamic";
 
@@ -15,7 +16,7 @@ export default async function Page() {
     <>
       {status.level !== "ok" && (
         <p className="small">
-          Platform banner: <span className="pill warn">{status.level}</span> {status.title}
+          Platform banner: <span className="pill warn">{humanize(status.level)}</span> {status.title}
           {status.starts_at && new Date(status.starts_at).getTime() > Date.now() && ` (scheduled from ${when(status.starts_at)})`}
           {status.ends_at && new Date(status.ends_at).getTime() <= Date.now() && ` (expired ${when(status.ends_at)})`}
           {" — "}<Link href="/admin/status">manage</Link>

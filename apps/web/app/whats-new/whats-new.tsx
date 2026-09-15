@@ -6,6 +6,7 @@ import {
   type AnnouncementFeed, type FeedbackKind, type RoadmapStatus, type RoadmapView,
   KIND_LABEL, ROADMAP_LABEL, markAnnouncementsRead, submitFeedback, voteRoadmap, when,
 } from "@/lib/api";
+import { humanize } from "@/app/breakdown";
 
 const ROADMAP_ORDER: RoadmapStatus[] = ["in_progress", "planned", "considering", "shipped"];
 
@@ -58,7 +59,7 @@ export default function WhatsNew({ tenant, feed: initial, roadmap: initialRoadma
             {roadmap.filter((r) => r.status === st).map((r) => (
               <div className="list-row" key={r.id} style={{ gridTemplateColumns: "1fr auto", alignItems: "center" }}>
                 <div>
-                  <b className="small">{r.title}</b> {r.category && <span className="pill">{r.category}</span>} {r.eta && <span className="small muted">· {r.eta}</span>}
+                  <b className="small">{r.title}</b> {r.category && <span className="pill">{humanize(r.category)}</span>} {r.eta && <span className="small muted">· {r.eta}</span>}
                   <div className="small muted">{r.description}</div>
                 </div>
                 <button className={r.voted ? "primary small" : "ghost small"} disabled={r.voted || st === "shipped"} onClick={() => vote(r.id)}>▲ {r.votes}{r.voted ? " · voted" : ""}</button>

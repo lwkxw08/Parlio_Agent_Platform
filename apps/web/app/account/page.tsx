@@ -2,6 +2,7 @@ import Link from "next/link";
 import { fetchMe, fetchSessions, fetchTwoFactor } from "@/lib/api";
 import AccountSecurity from "./security";
 import SignOut from "./signout";
+import { humanize } from "@/app/breakdown";
 
 export const dynamic = "force-dynamic";
 
@@ -31,7 +32,7 @@ export default async function Account() {
           <tbody>
             {u.memberships.map((m) => (
               <tr key={m.tenant_id}>
-                <td>{m.tenant_id}</td><td><span className="pill">{m.role}</span></td><td>{m.status}</td>
+                <td>{m.tenant_id}</td><td><span className="pill">{humanize(m.role)}</span></td><td>{m.status}</td>
                 <td><Link href={`/team?tenant=${m.tenant_id}`}>Members</Link></td>
               </tr>
             ))}

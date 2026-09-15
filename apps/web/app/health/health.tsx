@@ -12,6 +12,7 @@ import {
   runSynthetic,
   when,
 } from "@/lib/api";
+import { humanize } from "@/app/breakdown";
 
 export const gradeCls = (g: string) => (g === "healthy" ? "ok" : g === "watch" ? "warn" : g === "inactive" ? "" : "bad");
 export const fmt = (v: number | null, unit: string) => (v == null ? "—" : `${Number.isInteger(v) ? v : v.toFixed(unit === "%" ? 0 : 2)}${unit === "%" ? "%" : unit ? ` ${unit}` : ""}`);
@@ -27,8 +28,8 @@ export function TrunkTable({ trunks, onDiagnose }: { trunks: TrunkHealth[]; onDi
       <tbody>
         {trunks.map((t) => (
           <tr key={t.trunk_id}>
-            <td>{t.name} <span className="pill">{t.mode}</span></td>
-            <td><span className={`pill ${t.healthy ? "ok" : "bad"}`}>{t.registration}</span>{t.registration_detail && <div className="small muted">{t.registration_detail}</div>}</td>
+            <td>{t.name} <span className="pill">{humanize(t.mode)}</span></td>
+            <td><span className={`pill ${t.healthy ? "ok" : "bad"}`}>{humanize(t.registration)}</span>{t.registration_detail && <div className="small muted">{t.registration_detail}</div>}</td>
             <td>{t.options_ping_ok == null ? "—" : t.options_ping_ok ? `ok ${t.options_rtt_ms ?? ""}ms` : "failed"}</td>
             <td>{t.invite_failures}/{t.invites}{t.auth_failures ? ` (${t.auth_failures} auth)` : ""}</td>
             <td>{fmt(t.audio.mos_avg, "")}</td><td>{fmt(t.audio.jitter_ms_avg, "ms")}</td><td>{fmt(t.audio.packet_loss_pct_avg, "%")}</td>
@@ -124,7 +125,7 @@ export default function Health({ tenant, view: initial }: { tenant: string; view
           <h2>Open alerts</h2>
           {v.alerts.length === 0 ? <p className="muted small">Nothing needs attention.</p> : v.alerts.map((a) => (
             <div key={a.id} className="row small" style={{ marginBottom: "0.4rem" }}>
-              <span className={`pill ${a.severity === "critical" ? "bad" : a.severity === "warning" ? "warn" : ""}`}>{a.severity}</span>
+              <span className={`pill ${a.severity === "critical" ? "bad" : a.severity === "warning" ? "warn" : ""}`}>{humanize(a.severity)}</span>
               <span><strong>{a.title}</strong> — {a.detail}</span>
               <span className="muted">{when(a.opened_at)}</span>
             </div>

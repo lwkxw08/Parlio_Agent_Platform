@@ -1,5 +1,6 @@
 "use client";
 
+import { humanize } from "@/app/breakdown";
 import { useState } from "react";
 import { type Assistant, type Destination, type TransferConfig, put } from "@/lib/api";
 
@@ -83,7 +84,7 @@ export default function Destinations({ assistant }: { assistant: Assistant }) {
               {cfg.destinations.filter((d) => d.department === dept).sort((a, b) => a.priority - b.priority).map((d) => (
                 <tr key={d.id}>
                   <td>{d.name}</td>
-                  <td>{d.kind}</td>
+                  <td>{humanize(d.kind)}</td>
                   <td><code>{d.address}</code></td>
                   <td>{d.priority}</td>
                   <td>{d.schedule.always ? "24/7" : Object.keys(d.schedule.hours).map((k) => k.slice(0, 3)).join(" ")}</td>

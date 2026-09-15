@@ -16,6 +16,7 @@ import {
   when,
 } from "@/lib/api";
 import { useRoomAudio } from "./room";
+import { humanize } from "@/app/breakdown";
 
 type Props = {
   tenant: string;
@@ -107,7 +108,7 @@ export default function Live({ tenant, me, canControl, initialCalls, initialAppr
         <div className="card"><div className="label">Active calls</div><div className="value">{list.length}</div></div>
         <div className="card"><div className="label">Awaiting approval</div><div className="value">{pending.length}</div></div>
         <div className="card"><div className="label">Being handled by a human</div><div className="value">{list.filter((c) => c.supervisor_mode === "taken_over").length}</div></div>
-        <div className="card"><div className="label">Stream</div><div className="value"><span className={`pill ${socket === "live" ? "ok" : socket === "offline" ? "bad" : "warn"}`}>{socket}</span></div></div>
+        <div className="card"><div className="label">Stream</div><div className="value"><span className={`pill ${socket === "live" ? "ok" : socket === "offline" ? "bad" : "warn"}`}>{humanize(socket)}</span></div></div>
       </div>
 
       <div className="live-layout">
@@ -123,7 +124,7 @@ export default function Live({ tenant, me, canControl, initialCalls, initialAppr
               </span>
               <span className="row small">
                 <span className={`pill ${STATUS_PILL[c.escalated ? "escalated" : c.status] ?? ""}`}>{c.escalated ? "escalated" : c.status.replace("_", " ")}</span>
-                <span className="pill">{c.direction}</span>
+                <span className="pill">{humanize(c.direction)}</span>
                 {c.supervisor_mode !== "none" && <span className="pill warn">{c.supervisor_mode === "taken_over" ? "human" : "listening"}</span>}
                 {c.pending_approval_id && <span className="pill bad">approval</span>}
               </span>
@@ -153,10 +154,10 @@ export default function Live({ tenant, me, canControl, initialCalls, initialAppr
               {decided.map((a) => (
                 <tr key={a.id}>
                   <td className="muted small">{when(a.decided_at ?? a.requested_at)}</td>
-                  <td><span className="pill">{a.kind}</span></td>
+                  <td><span className="pill">{humanize(a.kind)}</span></td>
                   <td>{a.title}</td>
                   <td>{money(a.amount, a.currency)}</td>
-                  <td><span className={`pill ${a.status === "approved" ? "ok" : a.status === "rejected" ? "bad" : "warn"}`}>{a.status}</span></td>
+                  <td><span className={`pill ${a.status === "approved" ? "ok" : a.status === "rejected" ? "bad" : "warn"}`}>{humanize(a.status)}</span></td>
                   <td className="muted small">{a.decided_by ?? "—"}{a.note ? ` · ${a.note}` : ""}</td>
                 </tr>
               ))}
@@ -236,7 +237,7 @@ function CallPanel({ tenant, me, call, canControl, approvals, onApproval }: {
       {err && <p className="muted small" style={{ color: "var(--bad-fg)" }}>{err}</p>}
       {join && (
         <p className="small muted" style={{ margin: "0.5rem 0 0" }}>
-          Audio: <span className={`pill ${room.state === "connected" ? "ok" : room.state === "error" ? "bad" : "warn"}`}>{room.state}</span>
+          Audio: <span className={`pill ${room.state === "connected" ? "ok" : room.state === "error" ? "bad" : "warn"}`}>{humanize(room.state)}</span>
           {room.state === "connected" && join.mode === "taken_over" && <> · your microphone is live — the assistant is muted</>}
           {room.state === "connected" && join.mode === "listening" && <> · listening only</>}
           {room.error && <> · {room.error}</>}
@@ -291,7 +292,7 @@ function ApprovalRow({ tenant, a, now, canDecide, onDone }: { tenant: string; a:
     <div className="approval">
       <div className="row between">
         <div>
-          <span className="pill warn" style={{ marginRight: "0.4rem" }}>{a.kind}</span>
+          <span className="pill warn" style={{ marginRight: "0.4rem" }}>{humanize(a.kind)}</span>
           <strong>{a.title}</strong> {a.amount !== null && <span className="muted">· {money(a.amount, a.currency)}</span>}
           {a.details && <p className="muted small" style={{ margin: "0.3rem 0 0" }}>{a.details}</p>}
           <p className="muted small" style={{ margin: "0.3rem 0 0" }}>
