@@ -266,6 +266,10 @@ class OutboundPolicy(BaseModel):
     daily_cap_per_number: int = 2
     speed_to_lead_target_s: int = 60
     require_consent: bool = True
+    # Queue an AI callback automatically when a caller leaves a callback request. Off means the
+    # ticket waits for a person, who can hand it to the assistant from the ticket page.
+    auto_ticket_callbacks: bool = False
+    stale_dial_min: int = 10  # a dial with no outcome after this long counts as failed
     caller_id: str | None = None  # E.164 presented to the callee
     form_token: str = Field(default_factory=lambda: f"lf_{uuid4().hex}")  # public web-form auth
     reminder_hours_before: int = 24
@@ -451,10 +455,18 @@ class LiveKitDialer:
 
     name = "livekit"
 
-    def __init__(self, trunk_id: str, *, agent_name: str = "parlio-voice") -> None:
+    def __init__(
+        self,
+        trunk_id: str,
+        *,
+        url: str | None = None,
+        api_key: str | None = None,
+        api_secret: str | None = None,
+        agent_name: str = "parlio-voice",
+    ) -> None:
         from livekit import api
 
-        self._lk = api.LiveKitAPI()
+        self._lk = api.LiveKitAPI(url, api_key, api_secret)
         self._api = api
         self._trunk_id = trunk_id
         self._agent = agent_name
@@ -725,6 +737,25 @@ class OutboundService:
             key=lambda j: j.scheduled_at,
         )
 
+    async def expire_stale(self, now: datetime | None = None) -> list[OutboundCall]:
+        """Fail dials the worker never reported back on (dialer down, dispatch lost, crash)."""
+        now = now or datetime.now(UTC)
+        out: list[OutboundCall] = []
+        for d in await self.store.list_docs(CALL_KIND, None, limit=5000):
+            job = OutboundCall.model_validate(d.data)
+            if job.status not in (OutboundStatus.DIALING, OutboundStatus.IN_PROGRESS):
+                continue
+            if not job.attempts:
+                continue
+            policy = await self.policy(job.tenant_id)
+            if now - job.attempts[-1].at < timedelta(minutes=policy.stale_dial_min):
+                continue
+            job.attempts[-1].outcome = Outcome.FAILED
+            job.attempts[-1].detail = "no outcome reported by the dialer"
+            job.reason = "dial timed out"
+            out.append(await self._after_attempt(job, Outcome.FAILED, policy, now))
+        return out
+
     async def dispatch(self, job: OutboundCall, now: datetime | None = None) -> OutboundCall:
         """Final gates at dial time (window, cap, suppression, deadline) then hand to the dialer."""
         now = now or datetime.now(UTC)
@@ -886,6 +917,8 @@ class OutboundService:
         if not ticket.caller_number or ticket.source in ("outbound_unreachable", "manual"):
             return None
         policy = await self.policy(ticket.tenant_id)
+        if not policy.auto_ticket_callbacks:
+            return None
         if not policy.allows(Purpose.TICKET_CALLBACK) or not ticket.callback_window:
             return None
         cfgs = await self.store.list_assistants(ticket.tenant_id)
@@ -1086,6 +1119,7 @@ class OutboundLoop:
 
     async def tick(self) -> int:
         n = 0
+        await self.svc.expire_stale()
         for job in await self.svc.due():
             await self.svc.dispatch(job)
             n += 1
