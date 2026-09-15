@@ -872,3 +872,22 @@ async def test_nav_badges_and_handoff_alert(client: AsyncClient, app: FastAPI) -
 
     r = await client.get("/v1/nav/badges", params={"tenant_id": "other"})
     assert r.status_code == 403
+
+
+async def test_nav_snapshot(client: AsyncClient) -> None:
+    r = await client.get("/v1/nav/snapshot", params={"tenant_id": DEV_TENANT})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["active_calls"] == 0
+    assert body["waiting_chats"] == 0
+    assert body["avg_answer_s"] is None
+
+    r = await client.post("/v1/inbound/sms", json=telnyx_sms("I need to speak to a human"))
+    assert r.status_code == 202
+    r = await client.post("/v1/inbound/sms", json=telnyx_sms("about an invoice"))
+    assert r.status_code == 202
+    r = await client.get("/v1/nav/snapshot", params={"tenant_id": DEV_TENANT})
+    assert r.json()["waiting_chats"] >= 1
+
+    r = await client.get("/v1/nav/snapshot", params={"tenant_id": "other"})
+    assert r.status_code == 403
