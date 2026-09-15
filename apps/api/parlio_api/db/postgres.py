@@ -195,6 +195,28 @@ def _row_to_contact(r: Row[Any]) -> Contact:
     )
 
 
+async def _hydrate_transcripts(conn: AsyncConnection, calls: list[CallRecord]) -> None:
+    if not calls:
+        return
+    by_id = {c.call_id: c for c in calls}
+    rows = await conn.execute(
+        text(
+            "SELECT call_id, role, text, at, interrupted FROM transcripts"
+            " WHERE call_id = ANY(:ids) ORDER BY call_id, seq"
+        ),
+        {"ids": list(by_id)},
+    )
+    for r in rows:
+        by_id[r.call_id].transcript.append(
+            {
+                "role": r.role,
+                "text": r.text,
+                "at": r.at.isoformat() if r.at else None,
+                "interrupted": r.interrupted,
+            }
+        )
+
+
 async def _hydrate_handoff(conn: AsyncConnection, calls: list[CallRecord]) -> None:
     """Attach transfers/ticket ids (kept in their own tables) to call records."""
     if not calls:
@@ -435,7 +457,9 @@ class PostgresStore:
             ).all()
             calls = [_row_to_call(r, []) for r in rows]
             await _hydrate_handoff(conn, calls)
-        return [c for c in calls if f.matches(c)][: f.limit]
+            calls = [c for c in calls if f.matches(c)][: f.limit]
+            await _hydrate_transcripts(conn, calls)
+        return calls
 
     async def _get_call(
         self, conn: AsyncConnection, where: str, params: dict[str, Any]

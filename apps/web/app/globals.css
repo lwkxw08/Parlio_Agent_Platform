@@ -64,7 +64,7 @@ table { width: 100%; border-collapse: collapse; background: var(--panel); border
 th, td { text-align: left; padding: 0.6rem 0.8rem; border-bottom: 1px solid var(--line); font-size: 0.9rem; }
 th { color: var(--muted); font-weight: 500; }
 a { color: var(--accent); }
-.pill { display: inline-block; padding: 0.1rem 0.5rem; border-radius: 999px; font-size: 0.75rem; background: var(--hover); color: var(--fg); }
+.pill { display: inline-block; padding: 0.1rem 0.5rem; border-radius: 999px; font-size: 0.75rem; background: var(--hover); color: var(--fg); white-space: nowrap; }
 .pill.ok { background: var(--ok-bg); color: var(--ok-fg); }
 .pill.bad { background: var(--bad-bg); color: var(--bad-fg); }
 .transcript { display: flex; flex-direction: column; gap: 0.5rem; }
@@ -94,6 +94,11 @@ a { color: var(--accent); }
 .small { font-size: 0.8rem; }
 .row { display: flex; flex-wrap: wrap; gap: 0.4rem; align-items: center; }
 .row.between { justify-content: space-between; padding: 0.2rem 0; }
+/* Baseline for every field in the app so bare <select>/<input> never render as browser defaults. */
+main :where(select, textarea, input:not([type=checkbox], [type=radio], [type=range], [type=file], [type=color], [type=submit], [type=button])) { background: var(--field); color: var(--fg); border: 1px solid var(--line); border-radius: 6px; padding: 0.45rem 0.6rem; font: inherit; }
+main :where(select, textarea, input):focus-visible { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(59, 123, 255, .18); }
+main :where(select) { cursor: pointer; }
+main :where(input, select, textarea):disabled { opacity: 0.6; cursor: not-allowed; }
 .form input, .form textarea, .form select, .filters input, .filters select, .inline, input.field, select.field { background: var(--field); color: var(--fg); border: 1px solid var(--line); border-radius: 6px; padding: 0.45rem 0.6rem; font: inherit; }
 .inline { padding: 0.25rem 0.55rem; width: 12rem; }
 .board { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1rem; }

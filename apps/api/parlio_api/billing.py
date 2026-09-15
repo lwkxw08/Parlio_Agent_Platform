@@ -580,23 +580,25 @@ class TenantNumber(BaseModel):
 
 
 class SimulatedNumbers(TelephonyProvider):
-    """Hands out fake UK 020 numbers so provisioning is testable without carrier credit."""
+    """Hands out fake UK numbers in the requested area code so provisioning is testable
+    without carrier credit."""
 
     name = "simulated"
 
     def __init__(self) -> None:
         self._n = 0
 
-    async def search_numbers(self, country: str = "GB", limit: int = 5) -> list[PhoneNumber]:
+    async def search_numbers(
+        self, country: str = "GB", limit: int = 5, area_code: str | None = None
+    ) -> list[PhoneNumber]:
+        code = (area_code or "20").lstrip("0")
+        width = 10 - len(code)  # UK national numbers are 10 digits after the trunk 0
         out = []
         for i in range(limit):
             self._n += 1
+            local = (7 * 10 ** (width - 1) + self._n * 37 + i) % 10**width
             out.append(
-                PhoneNumber(
-                    provider=self.name,
-                    e164=f"+4420{7000000 + self._n * 37 + i:07d}",
-                    country=country,
-                )
+                PhoneNumber(provider=self.name, e164=f"+44{code}{local:0{width}d}", country=country)
             )
         return out
 
@@ -1183,8 +1185,10 @@ class BillingService:
         docs = await self.store.list_docs(self.NUMBER_KIND, tenant_id, limit=1000)
         return sorted((TenantNumber.model_validate(d.data) for d in docs), key=lambda n: n.e164)
 
-    async def search_numbers(self, country: str = "GB", limit: int = 5) -> list[PhoneNumber]:
-        return await self.numbers.search_numbers(country, limit)
+    async def search_numbers(
+        self, country: str = "GB", limit: int = 5, area_code: str | None = None
+    ) -> list[PhoneNumber]:
+        return await self.numbers.search_numbers(country, limit, area_code)
 
     async def provision_number(
         self,

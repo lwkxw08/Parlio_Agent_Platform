@@ -1,10 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   type Assistant,
   type Entitlements,
   type AvailableNumber,
+  type NumberRegion,
+  fetchNumberRegions,
   type CheckoutSession,
   type Coupon,
   type LatencyBucket,
@@ -206,12 +208,27 @@ function Numbers({ tenant, canManage, numbers, setNumbers, usage, assistants, se
   const [found, setFound] = useState<AvailableNumber[] | null>(null);
   const [assistant, setAssistant] = useState(assistants[0]?.assistant_id ?? "");
   const [label, setLabel] = useState("");
+  const [regions, setRegions] = useState<NumberRegion[]>([]);
+  const [region, setRegion] = useState("161");
+  const [searching, setSearching] = useState(false);
   const q = `?tenant_id=${tenant}`;
   const asstName = (id: string) => assistants.find((a) => a.assistant_id === id)?.name ?? id;
 
+  useEffect(() => { fetchNumberRegions().then((r) => r && setRegions(r)); }, []);
+
   const search = async () => {
-    const r = await request<AvailableNumber[]>(`/v1/numbers/search${q}&country=GB&limit=6`);
+    setSearching(true);
+    const r = await request<AvailableNumber[]>(`/v1/numbers/search${q}&country=GB&limit=8&area_code=${region}`);
+    setSearching(false);
     if (r.ok) setFound(r.data); else setMsg(`Search failed: ${r.error}`);
+  };
+  const pretty = (e164: string) => {
+    const n = "0" + e164.slice(3);
+    const code = regions.find((x) => n.startsWith("0" + x.code))?.code;
+    if (!code) return n;
+    const rest = n.slice(code.length + 1);
+    const mid = rest.length >= 7 ? Math.ceil(rest.length / 2) : rest.length;
+    return `0${code} ${rest.slice(0, mid)} ${rest.slice(mid)}`.trim();
   };
   const buy = async (e164: string) => {
     const r = await request<TenantNumber>(`/v1/numbers${q}`, { method: "POST", body: JSON.stringify({ e164, assistant_id: assistant, label: label || null }) });
@@ -247,19 +264,26 @@ function Numbers({ tenant, canManage, numbers, setNumbers, usage, assistants, se
       {canManage && (
         <div className="section">
           <h2>Add a UK number</h2>
-          <p className="hint">London (020) numbers, routed straight to an assistant. Live carrier purchases need Telnyx regulatory approval; until then numbers are simulated.</p>
+          <p className="hint">Pick the area code your customers expect to see, then choose a number — it&apos;s routed straight to the assistant you select. Numbers are £1/month beyond your plan&apos;s allowance.</p>
           <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", alignItems: "center" }}>
+            <select value={region} onChange={(e) => { setRegion(e.target.value); setFound(null); }}>
+              <optgroup label="Local (geographic)">{regions.filter((r) => r.kind === "geographic").map((r) => <option key={r.code} value={r.code}>{r.label}</option>)}</optgroup>
+              <optgroup label="UK-wide">{regions.filter((r) => r.kind !== "geographic").map((r) => <option key={r.code} value={r.code}>{r.label}</option>)}</optgroup>
+            </select>
             <select value={assistant} onChange={(e) => setAssistant(e.target.value)}>
               {assistants.map((a) => <option key={a.assistant_id} value={a.assistant_id}>{a.name}</option>)}
             </select>
             <input value={label} onChange={(e) => setLabel(e.target.value)} placeholder="Label (optional)" style={{ maxWidth: 200 }} />
-            <button className="primary" onClick={search}>Search numbers</button>
+            <button className="primary" onClick={search} disabled={searching}>{searching ? "Searching…" : "Search numbers"}</button>
           </div>
           {found && (
-            <div className="chips" style={{ marginTop: "0.8rem" }}>
-              {found.map((n) => <a key={n.e164} onClick={() => buy(n.e164)}>{n.e164}</a>)}
-              {found.length === 0 && <span className="muted small">No numbers available right now.</span>}
-            </div>
+            <>
+              <div className="chips" style={{ marginTop: "0.8rem" }}>
+                {found.map((n) => <a key={n.e164} title={n.e164} onClick={() => buy(n.e164)}>{pretty(n.e164)}</a>)}
+                {found.length === 0 && <span className="muted small">No {regions.find((r) => r.code === region)?.label ?? ""} numbers available right now — try another area code.</span>}
+              </div>
+              {found[0]?.provider === "simulated" && <p className="small muted" style={{ marginTop: "0.4rem" }}>These are simulated numbers (no carrier connected on this environment) — they route in the dashboard but can&apos;t receive real calls.</p>}
+            </>
           )}
         </div>
       )}

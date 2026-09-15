@@ -38,10 +38,23 @@ DIGEST_KIND = "owner_digest"
 DIGEST_TZ = ZoneInfo("Europe/London")
 
 _INTENT = {
-    "emergency": ("urgent", "emergency", "asap", "right now", "leak", "flood", "broken"),
-    "complaint": ("complain", "unhappy", "refund", "wrong"),
-    "booking": ("book", "appointment", "schedule", "slot", "reserve"),
+    "emergency": (
+        "urgent",
+        "emergency",
+        "asap",
+        "right now",
+        "leak",
+        "flood",
+        "burst",
+        "no heating",
+        "no hot water",
+        "broken",
+    ),
+    "complaint": ("complain", "unhappy", "refund", "wrong", "not happy"),
+    "billing": ("invoice", "payment", "bill", "accounts", "statement", "paid"),
+    "booking": ("book", "appointment", "schedule", "slot", "reserve", "come out"),
     "quote": ("quote", "price", "how much", "cost", "estimate"),
+    "callback": ("call me back", "callback", "call back", "ring me", "leave a message"),
     "info": ("open", "hours", "where", "address", "do you"),
 }
 
@@ -55,11 +68,16 @@ class LeadScore(BaseModel):
     grade: str  # hot | warm | cold
     intent: str | None = None
     reasons: list[str] = Field(default_factory=list)
+    caller: str | None = None
+    caller_name: str | None = None
+    started_at: datetime | None = None
 
 
 def detect_intent(call: CallRecord) -> str | None:
-    text = " ".join(str(t.get("text") or "") for t in call.transcript if t.get("role") == "user")
-    low = text.lower()
+    parts = [str(t.get("text") or "") for t in call.transcript if t.get("role") == "user"]
+    if not parts:  # transcript not loaded / empty: fall back to the post-call summary and fields
+        parts = [call.summary or "", str(call.extracted.get("issue") or "")]
+    low = " ".join(parts).lower()
     for intent, keys in _INTENT.items():
         if any(k in low for k in keys):
             return intent
@@ -70,11 +88,16 @@ def lead_score(call: CallRecord, booked: bool = False) -> LeadScore:
     score = 10
     reasons: list[str] = []
     intent = detect_intent(call)
+    who: dict[str, str | datetime | None] = {
+        "caller": call.caller,
+        "caller_name": str(call.extracted.get("name") or "") or None,
+        "started_at": call.started_at,
+    }
     if call.answered_at is None or call.status == "failed":
         reasons.append("missed call")
         score = 15 if call.caller and call.caller != "unknown" else 5
         return LeadScore(
-            call_id=call.call_id, score=score, grade="cold", intent=intent, reasons=reasons
+            call_id=call.call_id, score=score, grade="cold", intent=intent, reasons=reasons, **who
         )
     if call.caller_type == "new":
         score += 15
@@ -108,7 +131,9 @@ def lead_score(call: CallRecord, booked: bool = False) -> LeadScore:
         score -= 5 * len(call.missed_fields)
     score = max(0, min(100, score))
     grade = "hot" if score >= 70 else "warm" if score >= 40 else "cold"
-    return LeadScore(call_id=call.call_id, score=score, grade=grade, intent=intent, reasons=reasons)
+    return LeadScore(
+        call_id=call.call_id, score=score, grade=grade, intent=intent, reasons=reasons, **who
+    )
 
 
 # -- settings & tracking numbers -----------------------------------------------------------------

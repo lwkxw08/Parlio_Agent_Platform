@@ -527,6 +527,8 @@ export type TenantNumber = {
   assistant_id: string; label: string | null; monthly_pence: number; created_at: string;
 };
 export type AvailableNumber = { provider: string; e164: string; country: string; provider_ref: string | null };
+export type NumberRegion = { code: string; label: string; kind: "geographic" | "national" | "freephone" | "mobile" };
+export const fetchNumberRegions = () => get<NumberRegion[]>("/v1/numbers/regions");
 export type LatencyBucket = {
   calls: number; answered: number; answer_p50_s: number | null; answer_p95_s: number | null; turn_p50_s: number | null; turn_p95_s: number | null;
   eou_avg_s: number | null; llm_ttft_avg_s: number | null; tts_ttfb_avg_s: number | null; slow_calls: number;
@@ -888,7 +890,10 @@ export const publishAssistant = (tenant_id: string, config: Assistant, force = f
   request<PublishResult>(`/v1/quality/publish${qs({ tenant_id })}`, { method: "POST", body: JSON.stringify({ config, numbers: [], force }) });
 
 // -- Phase 14: value, white-label, compliance pack, security ---------------------------------------
-export type LeadScore = { call_id: string; score: number; grade: "hot" | "warm" | "cold" | string; intent: string | null; reasons: string[] };
+export type LeadScore = {
+  call_id: string; score: number; grade: "hot" | "warm" | "cold" | string; intent: string | null; reasons: string[];
+  caller: string | null; caller_name: string | null; started_at: string | null;
+};
 export type ValueSettings = {
   tenant_id: string; currency: string; avg_job_value_pence: number; booking_value_pence: number | null; lead_to_sale_rate: number;
   missed_call_lead_rate: number; digest_enabled: boolean; digest_weekday: number; digest_hour: number;

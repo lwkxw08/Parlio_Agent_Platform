@@ -79,7 +79,7 @@ function Report({ tenant, days, ov }: { tenant: string; days: number; ov: ValueO
           {intents.length === 0 ? <p className="muted small">No calls in this period.</p> : (
             <div className="hbars">
               {intents.map(([k, v]) => (
-                <div key={k} className="row"><span style={{ width: 110 }}>{k}</span><div className="bars" style={{ flex: 1 }}><div style={{ width: `${(v / max) * 100}%` }} /></div><span className="small muted">{v}</span></div>
+                <div key={k} className="row"><span style={{ width: 110, textTransform: "capitalize" }}>{k}</span><div className="bars" style={{ flex: 1 }}><div style={{ width: `${(v / max) * 100}%` }} /></div><span className="small muted">{v}</span></div>
               ))}
             </div>
           )}
@@ -88,13 +88,16 @@ function Report({ tenant, days, ov }: { tenant: string; days: number; ov: ValueO
           <h2>Top leads</h2>
           {r.top_leads.length === 0 ? <p className="muted small">No scored leads yet.</p> : (
             <table>
-              <thead><tr><th>Call</th><th>Score</th><th>Intent</th><th>Why</th></tr></thead>
+              <thead><tr><th>Caller</th><th>Score</th><th>Intent</th><th>Why</th></tr></thead>
               <tbody>
                 {r.top_leads.map((l) => (
                   <tr key={l.call_id}>
-                    <td><Link href={`/calls/${l.call_id}`}>{l.call_id.slice(0, 10)}</Link></td>
+                    <td style={{ whiteSpace: "nowrap" }}>
+                      <Link href={`/calls/${l.call_id}`}>{l.caller_name || l.caller || "Unknown caller"}</Link>
+                      {l.started_at && <div className="small muted">{when(l.started_at)}</div>}
+                    </td>
                     <td><span className={`pill ${GRADE[l.grade] ?? ""}`}>{l.grade} · {l.score}</span></td>
-                    <td>{l.intent ?? "—"}</td>
+                    <td style={{ textTransform: "capitalize" }}>{l.intent ?? "—"}</td>
                     <td className="small muted">{l.reasons.join("; ")}</td>
                   </tr>
                 ))}

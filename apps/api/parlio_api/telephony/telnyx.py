@@ -30,15 +30,17 @@ class TelnyxProvider(TelephonyProvider):
             base_url=API, headers={"Authorization": f"Bearer {api_key}"}, timeout=15
         )
 
-    async def search_numbers(self, country: str = "GB", limit: int = 5) -> list[PhoneNumber]:
-        r = await self._client.get(
-            "/available_phone_numbers",
-            params={
-                "filter[country_code]": country,
-                "filter[features]": ["voice", "sms"],
-                "filter[limit]": limit,
-            },
-        )
+    async def search_numbers(
+        self, country: str = "GB", limit: int = 5, area_code: str | None = None
+    ) -> list[PhoneNumber]:
+        params: dict[str, str | int | list[str]] = {
+            "filter[country_code]": country,
+            "filter[features]": ["voice"],  # UK geographic numbers are voice-only at Telnyx
+            "filter[limit]": limit,
+        }
+        if area_code:
+            params["filter[national_destination_code]"] = area_code
+        r = await self._client.get("/available_phone_numbers", params=params)
         r.raise_for_status()
         return [
             PhoneNumber(provider=self.name, e164=n["phone_number"], country=country)
