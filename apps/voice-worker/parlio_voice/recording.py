@@ -7,6 +7,7 @@ playback convenience once the API side stitches them (Phase 4).
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from datetime import UTC, datetime
 
@@ -15,6 +16,8 @@ from livekit import api, rtc
 from parlio_voice.settings import Settings
 
 log = logging.getLogger("parlio.recording")
+
+EGRESS_START_TIMEOUT_S = 8.0
 
 
 class CallRecorder:
@@ -54,7 +57,11 @@ class CallRecorder:
             room_name=self._room.name, track_id=track_sid, file=self._output(key)
         )
         try:
-            info = await self._lk.egress.start_track_egress(req)
+            async with asyncio.timeout(EGRESS_START_TIMEOUT_S):
+                info = await self._lk.egress.start_track_egress(req)
+        except TimeoutError:
+            log.error("egress did not respond within %.0fs for %s leg", EGRESS_START_TIMEOUT_S, leg)
+            return None
         except Exception:
             log.error("failed to start egress for %s", leg, exc_info=True)
             return None
