@@ -756,8 +756,14 @@ class OutboundService:
             out.append(await self._after_attempt(job, Outcome.FAILED, policy, now))
         return out
 
-    async def dispatch(self, job: OutboundCall, now: datetime | None = None) -> OutboundCall:
-        """Final gates at dial time (window, cap, suppression, deadline) then hand to the dialer."""
+    async def dispatch(
+        self, job: OutboundCall, now: datetime | None = None, *, manual: bool = False
+    ) -> OutboundCall:
+        """Final gates at dial time (window, cap, suppression, deadline) then hand to the dialer.
+
+        `manual` is a person clicking "Dial now": the calling window and daily cap are their
+        call to make, but do-not-call, deadline and a disabled policy still stand.
+        """
         now = now or datetime.now(UTC)
         policy = await self.policy(job.tenant_id)
         if job.not_after and now > job.not_after:
@@ -769,10 +775,13 @@ class OutboundService:
         if not policy.enabled:
             job.scheduled_at = now + timedelta(minutes=policy.retry_gap_min)
             return await self._save(job)
-        if not policy.in_window(now):
+        if not manual and not policy.in_window(now):
             job.scheduled_at = policy.next_window(now)
             return await self._save(job)
-        if await self._daily_count(job.tenant_id, job.to, now) >= policy.daily_cap_per_number:
+        if (
+            not manual
+            and await self._daily_count(job.tenant_id, job.to, now) >= policy.daily_cap_per_number
+        ):
             job.scheduled_at = policy.next_window(now + timedelta(hours=24))
             job.reason = "daily contact cap reached; deferred"
             return await self._save(job)

@@ -229,7 +229,7 @@ function Queue({ tenant, calls, assistants, canManage, policy, onCancel, onDial,
               <td className="small">{c.attempts.length}/{c.max_attempts}{c.attempts.length ? <div className="muted">{c.attempts.map((a) => a.outcome.replace("_", " ")).join(", ")}</div> : null}</td>
               <td className="small">{c.outcome ? c.outcome.replace("_", " ") : "—"}{c.outcome_detail && <div className="muted">{c.outcome_detail}</div>}</td>
               <td className="row">
-                {canManage && active.has(c.status) && c.status !== "in_progress" && <button className="small" onClick={() => onDial(c.id)}>Dial now</button>}
+                {canManage && active.has(c.status) && c.status !== "in_progress" && <button className="small" onClick={() => onDial(c.id)} title="Call straight away, even outside calling hours or past the daily cap (do-not-call still applies)">Dial now</button>}
                 {canManage && active.has(c.status) && <button className="small" onClick={() => onCancel(c.id)}>Cancel</button>}
               </td>
             </tr>

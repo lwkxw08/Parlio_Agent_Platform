@@ -263,7 +263,7 @@ async def dial_now(
     tenant_id: str,
     job_id: str,
 ) -> OutboundCall:
-    """Skip the queue wait (the compliance gates still apply at dial time)."""
+    """Dial immediately: overrides the calling window and daily cap, not do-not-call."""
     user.require_tenant(tenant_id)
     job = await svc.get(tenant_id, job_id)
     if job is None:
@@ -271,7 +271,7 @@ async def dial_now(
     if job.status not in (OutboundStatus.SCHEDULED, OutboundStatus.RETRY):
         raise HTTPException(status.HTTP_409_CONFLICT, f"job is {job.status}")
     await audit.record(_audit(request, user, tenant_id, "outbound.dial_now", job_id))
-    return await svc.dispatch(job)
+    return await svc.dispatch(job, manual=True)
 
 
 @router.get("/suppressions", response_model=list[Suppression])
