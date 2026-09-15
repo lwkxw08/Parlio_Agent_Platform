@@ -30,6 +30,7 @@ from parlio_api.inbox import (
     ThreadFilter,
     ThreadStatus,
     WhatsAppAccount,
+    display_name,
     parse_meta_whatsapp,
     parse_telnyx_sms,
     verify_meta_signature,
@@ -461,7 +462,9 @@ def _chat_msg(m: InboxMessage) -> ChatMessageOut:
         id=m.id,
         direction=m.direction.value,
         author=m.author.value,
-        author_name=m.author_name,
+        author_name=display_name(m.author_name)
+        if m.author == "agent" and m.author_name
+        else m.author_name,
         text=m.text,
         created_at=m.created_at.isoformat(),
     )
@@ -495,6 +498,44 @@ async def chat_voice_start(
     if session is None:
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "no assistant configured")
     return session
+
+
+class ChatState(BaseModel):
+    """What the visitor should be told about their conversation."""
+
+    status: str  # none | ai | waiting | human | closed
+    agent_name: str | None = None
+    department: str | None = None
+    messages: list[ChatMessageOut]
+
+
+@public.get("/{token}/state", response_model=ChatState)
+async def chat_state(
+    inbox: InboxDep,
+    token: str,
+    visitor: str = Query(min_length=8, max_length=64, pattern=r"^[A-Za-z0-9_-]+$"),
+) -> ChatState:
+    w = await _widget(inbox, token)
+    t = await inbox.find_existing(w.tenant_id, Channel.WEBCHAT, visitor, include_closed=True)
+    if t is None:
+        return ChatState(status="none", messages=[])
+    msgs = [m for m in await inbox.messages(w.tenant_id, t.id) if m.direction != "note"]
+    agent = next((m.author_name for m in reversed(msgs) if m.author == "agent"), None)
+    agent = display_name(agent) if agent else None
+    if t.status == "closed":
+        st = "closed"
+    elif t.status == "waiting" and not t.ai_enabled:
+        st = "waiting"
+    elif not t.ai_enabled:
+        st = "human"
+    else:
+        st = "ai"
+    return ChatState(
+        status=st,
+        agent_name=agent,
+        department=t.handoff_department,
+        messages=[_chat_msg(m) for m in msgs],
+    )
 
 
 @public.get("/{token}/messages", response_model=list[ChatMessageOut])

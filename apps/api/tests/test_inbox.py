@@ -171,8 +171,9 @@ async def test_rules_agent_faq_and_handoff() -> None:
     assert r.handoff is False
     assert "on site" in r.reply
     r = await agent.respond(cfg, th, _hist("I want to speak to a human please", th))
-    assert r.handoff is True
-    assert r.ticket is not None
+    assert r.handoff is True  # single department: connect straight away
+    assert r.ticket is None  # callback ticket comes from the SLA sweep, not up front
+    assert "couple of minutes" in r.reply
     r = await agent.respond(cfg, th, _hist("what is the meaning of life", th))
     assert r.ticket is not None  # unknown -> take a message and hand to the team
     assert r.handoff is True
@@ -264,6 +265,75 @@ async def test_openai_agent_prompt_lists_department_descriptions() -> None:
     assert "- accounts: invoices, payments, refunds;" in seen[0]["messages"][0]["content"]
 
 
+def _multi_dept_cfg() -> AssistantConfig:
+    cfg = _cfg()
+    cfg.transfer.destinations.extend(
+        [
+            Destination(id="d1", name="Jo", department="accounts", address="+447700900001"),
+            Destination(id="d2", name="Sam", department="bookings", address="+447700900002"),
+        ]
+    )
+    cfg.transfer.department_notes = {
+        "accounts": "invoices, payments, refunds",
+        "bookings": "appointments",
+    }
+    return cfg
+
+
+def _ai(th: Thread, text: str, **kw: Any) -> InboxMessage:
+    return InboxMessage(
+        tenant_id=th.tenant_id,
+        thread_id=th.id,
+        channel=th.channel,
+        direction=Direction.OUT,
+        author=Author.AI,
+        text=text,
+        **kw,
+    )
+
+
+async def test_rules_agent_asks_topic_then_routes_handoff() -> None:
+    agent = RuleTextAgent()
+    cfg = _multi_dept_cfg()
+    th = _thread(Channel.WEBCHAT)
+    r = await agent.respond(cfg, th, _hist("transfer me to a real person", th))
+    assert r.clarifying is True and r.handoff is False and r.ticket is None
+    hist = _hist("transfer me to a real person", th)
+    hist.append(_ai(th, r.reply, clarifying=True))
+    hist.extend(_hist("it's about an invoice", th))
+    r = await agent.respond(cfg, th, hist)
+    assert r.handoff is True and r.department == "accounts" and r.ticket is None
+    assert "couple of minutes" in r.reply
+
+
+async def test_openai_agent_question_plus_handoff_becomes_clarifying() -> None:
+    seen: list[dict[str, Any]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(json.loads(request.content))
+        # model asks the topic but pauses itself in the same turn (the bug the user saw)
+        content = json.dumps(
+            {"reply": "What do you need help with?", "handoff": True, "department": None}
+        )
+        return httpx.Response(200, json={"choices": [{"message": {"content": content}}]})
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handler), base_url="https://x")
+    agent = OpenAITextAgent("k", client=client)
+    cfg = _multi_dept_cfg()
+    th = _thread(Channel.WEBCHAT)
+    r = await agent.respond(cfg, th, _hist("transfer to human", th))
+    assert r.handoff is False and r.clarifying is True
+    assert "ask ONE short question" in seen[0]["messages"][0]["content"]
+
+    # next turn: even if the model wants to ask again, it must connect now
+    hist = _hist("transfer to human", th)
+    hist.append(_ai(th, r.reply, clarifying=True))
+    hist.extend(_hist("an invoice", th))
+    r = await agent.respond(cfg, th, hist)
+    assert r.handoff is True and r.clarifying is False
+    assert "Do not ask again" in seen[1]["messages"][0]["content"]
+
+
 async def test_rules_agent_closing_remark_does_not_hand_off() -> None:
     agent = RuleTextAgent()
     th = _thread()
@@ -334,18 +404,22 @@ async def test_sms_webhook_secret(client: AsyncClient, monkeypatch: pytest.Monke
     assert r.status_code == 202
 
 
-async def test_handoff_pauses_ai_and_creates_ticket(client: AsyncClient) -> None:
+async def test_handoff_pauses_ai_without_upfront_ticket(client: AsyncClient) -> None:
     r = await client.post("/v1/inbound/sms", json=telnyx_sms("I need to speak to a human"))
     assert r.status_code == 202
     r = await client.get("/v1/inbox/threads", params={"tenant_id": DEV_TENANT})
     t = r.json()[0]
-    assert t["ai_enabled"] is False
-    assert t["status"] == "waiting"
     r = await client.get(f"/v1/inbox/threads/{t['id']}", params={"tenant_id": DEV_TENANT})
     ai = [m for m in r.json()["messages"] if m["author"] == "ai"]
-    assert ai and ai[0]["ticket_id"]
-    r = await client.get(f"/v1/tickets/{ai[0]['ticket_id']}", params={"tenant_id": DEV_TENANT})
-    assert r.status_code == 200
+    assert ai
+    if ai[0]["clarifying"]:  # several departments configured: answer the topic question
+        r = await client.post("/v1/inbound/sms", json=telnyx_sms("about an invoice"))
+        assert r.json()["replied"] is True
+        r = await client.get("/v1/inbox/threads", params={"tenant_id": DEV_TENANT})
+        t = r.json()[0]
+    assert t["ai_enabled"] is False
+    assert t["status"] == "waiting"
+    assert t["callback_ticket_id"] is None
 
     # AI paused: next inbound gets no auto-reply
     r = await client.post("/v1/inbound/sms", json=telnyx_sms("hello?"))
@@ -433,11 +507,56 @@ async def test_sla_sweep_flags_breach(client: AsyncClient, app: FastAPI) -> None
     svc = _svc(app)
     svc.sla = timedelta(0)
     await client.post("/v1/inbound/sms", json=telnyx_sms("I need to speak to a human"))
+    r = await client.get("/v1/inbox/threads", params={"tenant_id": DEV_TENANT})
+    if r.json()[0]["status"] != "waiting":
+        await client.post("/v1/inbound/sms", json=telnyx_sms("about an invoice"))
     assert len(await svc.sweep_sla()) == 1
     r = await client.get("/v1/inbox/threads", params={"tenant_id": DEV_TENANT})
     assert r.json()[0]["sla_breached"] is True
     assert r.json()[0]["callback_ticket_id"]
     assert await svc.sweep_sla() == []
+
+
+async def test_webchat_status_lines_and_state(client: AsyncClient, app: FastAPI) -> None:
+    svc = _svc(app)
+    svc.sla = timedelta(0)
+    q = {"tenant_id": DEV_TENANT}
+    token = (await client.get("/v1/inbox/widget", params=q)).json()["token"]
+    visitor = "visitor-status-000001"
+    url = f"/v1/public/chat/{token}"
+    r = await client.get(f"{url}/state", params={"visitor": visitor})
+    assert r.json()["status"] == "none"
+
+    await client.post(f"{url}/messages", json={"visitor": visitor, "text": "transfer to human"})
+    st = (await client.get(f"{url}/state", params={"visitor": visitor})).json()
+    if st["status"] == "ai":  # asked what it's about first
+        await client.post(f"{url}/messages", json={"visitor": visitor, "text": "an invoice"})
+        st = (await client.get(f"{url}/state", params={"visitor": visitor})).json()
+    assert st["status"] == "waiting"
+    system = [m["text"] for m in st["messages"] if m["author"] == "system"]
+    assert any("Connecting you to" in s for s in system)
+
+    # nobody picks up -> callback ticket + visitor told
+    await svc.sweep_sla()
+    st = (await client.get(f"{url}/state", params={"visitor": visitor})).json()
+    assert any("logged your request" in m["text"] for m in st["messages"])
+
+    # a human replies -> joined line, no email leaked, state=human
+    tid = (await client.get("/v1/inbox/threads", params={**q, "channel": "webchat"})).json()[0][
+        "id"
+    ]
+    await client.post(f"/v1/inbox/threads/{tid}/reply", params=q, json={"text": "Hi, Jo here"})
+    st = (await client.get(f"{url}/state", params={"visitor": visitor})).json()
+    assert st["status"] == "human"
+    assert st["agent_name"] and "@" not in st["agent_name"]
+    assert any("has joined the chat" in m["text"] for m in st["messages"])
+    assert all("@" not in (m["author_name"] or "") for m in st["messages"])
+
+    # close -> closed line + state
+    await client.patch(f"/v1/inbox/threads/{tid}", params=q, json={"status": "closed"})
+    st = (await client.get(f"{url}/state", params={"visitor": visitor})).json()
+    assert st["status"] == "closed"
+    assert any("has been closed" in m["text"] for m in st["messages"])
 
 
 async def test_call_ended_appends_to_call_thread(client: AsyncClient, app: FastAPI) -> None:
@@ -631,6 +750,8 @@ async def test_nav_badges_and_handoff_alert(client: AsyncClient, app: FastAPI) -
     try:
         r = await client.post("/v1/inbound/sms", json=telnyx_sms("I need to speak to a human"))
         assert r.status_code == 202
+        r = await client.post("/v1/inbound/sms", json=telnyx_sms("about an invoice"))
+        assert r.status_code == 202
         types = []
         while not q.empty():
             types.append(q.get_nowait().type)
@@ -641,8 +762,7 @@ async def test_nav_badges_and_handoff_alert(client: AsyncClient, app: FastAPI) -
     r = await client.get("/v1/nav/badges", params={"tenant_id": DEV_TENANT})
     body = r.json()
     assert body["inbox"] >= 1
-    assert body["tickets"] >= 1
-    assert body["total"] >= body["inbox"] + body["tickets"]
+    assert body["total"] >= body["inbox"]
 
     r = await client.get("/v1/nav/badges", params={"tenant_id": "other"})
     assert r.status_code == 403
