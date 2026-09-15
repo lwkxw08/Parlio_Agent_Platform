@@ -35,6 +35,22 @@ async def test_search_and_purchase() -> None:
     assert bought.provider_ref == "order-1"
     assert bought.sip_trunk_ref == "conn-1"
     assert seen[0].url.params["filter[country_code]"] == "GB"
+    assert "filter[national_destination_code]" not in seen[0].url.params
+    await p.search_numbers("GB", area_code="161")
+    assert seen[-1].url.params["filter[national_destination_code]"] == "161"
+
+
+async def test_simulated_numbers_follow_area_code() -> None:
+    from parlio_api.billing import SimulatedNumbers
+
+    sim = SimulatedNumbers()
+    london = await sim.search_numbers("GB", 3)
+    manc = await sim.search_numbers("GB", 3, area_code="0161")
+    free = await sim.search_numbers("GB", 2, area_code="800")
+    assert all(n.e164.startswith("+4420") and len(n.e164) == 13 for n in london)
+    assert all(n.e164.startswith("+44161") and len(n.e164) == 13 for n in manc)
+    assert all(n.e164.startswith("+44800") and len(n.e164) == 13 for n in free)
+    assert len({n.e164 for n in london + manc + free}) == 8
 
 
 async def test_sms_and_health_down() -> None:

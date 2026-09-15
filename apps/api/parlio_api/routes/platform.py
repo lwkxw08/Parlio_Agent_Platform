@@ -40,7 +40,7 @@ from parlio_api.deps import (
 )
 from parlio_api.observability import AuditEntry, LatencyReport
 from parlio_api.store import CallStore
-from parlio_api.telephony.base import PhoneNumber
+from parlio_api.telephony.base import UK_REGIONS, NumberRegion, PhoneNumber
 
 router = APIRouter(prefix="/v1", tags=["platform"])
 public = APIRouter(prefix="/v1/public", tags=["public"])
@@ -211,12 +211,25 @@ async def list_numbers(user: UserDep, billing: BillingDep, tenant_id: str) -> li
     return await billing.list_numbers(tenant_id)
 
 
+@router.get("/numbers/regions", response_model=list[NumberRegion])
+async def number_regions(user: UserDep) -> list[NumberRegion]:
+    return UK_REGIONS
+
+
 @router.get("/numbers/search", response_model=list[PhoneNumber])
 async def search_numbers(
-    user: UserDep, billing: BillingDep, tenant_id: str, country: str = "GB", limit: int = 5
+    user: UserDep,
+    billing: BillingDep,
+    tenant_id: str,
+    country: str = "GB",
+    limit: int = 5,
+    area_code: str | None = None,
 ) -> list[PhoneNumber]:
     user.require_tenant(tenant_id)
-    return await billing.search_numbers(country, min(max(limit, 1), 20))
+    code = (area_code or "").strip().lstrip("0") or None
+    if code and not (code.isdigit() and 2 <= len(code) <= 5):
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "area_code must be 2-5 digits")
+    return await billing.search_numbers(country, min(max(limit, 1), 20), code)
 
 
 class ProvisionInput(BaseModel):
