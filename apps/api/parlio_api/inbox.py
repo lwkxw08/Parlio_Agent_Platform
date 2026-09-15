@@ -128,6 +128,7 @@ class InboxMessage(BaseModel):
     call_id: str | None = None
     ticket_id: str | None = None
     handoff: bool = False
+    clarifying: bool = False  # AI asked what the handoff is about before connecting
     status: str = "sent"  # sent | failed | skipped | received
     error: str | None = None
     provider_ref: str | None = None
@@ -227,6 +228,7 @@ class WhatsAppAccount(BaseModel):
 class AgentTurn(BaseModel):
     reply: str
     handoff: bool = False  # human needed: pause AI, mark thread waiting, notify team
+    clarifying: bool = False  # asked the customer what the handoff is about; AI stays on
     department: str | None = None
     ticket: TicketIntake | None = None
 
@@ -256,7 +258,20 @@ class TextAgent(Protocol):
 
 
 _WORD = re.compile(r"[a-z0-9']+")
-_HUMAN = ("speak to someone", "speak to a human", "real person", "talk to a person", "call me")
+_HUMAN = (
+    "speak to someone",
+    "speak to a human",
+    "speak to a person",
+    "talk to a human",
+    "talk to a person",
+    "talk to someone",
+    "real person",
+    "human",
+    "transfer",
+    "an agent",
+    "a representative",
+    "call me",
+)
 _HOURS = ("open", "opening", "hours", "close", "closing")
 _CLOSING = ("thanks", "thank you", "great", "cheers", "ok", "okay", "perfect", "bye", "brilliant")
 _BOOK = ("book", "appointment", "booking", "schedule", "slot")
@@ -265,6 +280,10 @@ _STOP = {"the", "a", "an", "is", "are", "do", "you", "i", "to", "of", "and", "wh
 
 def _tokens(text: str) -> set[str]:
     return {t for t in _WORD.findall(text.lower()) if t not in _STOP}
+
+
+def _stems(text: str) -> set[str]:
+    return {t.rstrip("s") for t in _tokens(text)}
 
 
 class RuleTextAgent:
@@ -287,17 +306,26 @@ class RuleTextAgent:
         if len(inbound) > 1 and len(_tokens(text)) <= 4 and any(k in low for k in _CLOSING):
             return AgentTurn(reply="You're welcome — anything else, just message us here.")
 
-        if any(k in low for k in _HUMAN):
+        prev_ai = next((m for m in reversed(history) if m.direction == Direction.OUT), None)
+        if prev_ai is not None and prev_ai.clarifying:
+            dept = _match_department(cfg, text)
             return AgentTurn(
-                reply=f"{greet}Of course — I've let the team know and someone will reply here "
-                "as soon as they're free.",
+                reply=f"Thanks — I'm connecting you to {dept or 'the team'} now. It may take a "
+                "couple of minutes for someone to pick up; please stay in the chat.",
                 handoff=True,
-                ticket=TicketIntake(
-                    caller_number=thread.identity if thread.channel != Channel.WEBCHAT else None,
-                    caller_name=thread.contact_name,
-                    reason=f"{thread.channel}: caller asked for a person — “{text[:200]}”",
-                    source="escalation",
-                ),
+                department=dept,
+            )
+        if any(k in low for k in _HUMAN):
+            if len(cfg.transfer.departments()) > 1:
+                return AgentTurn(
+                    reply=f"{greet}Of course. So I can get you to the right team, what is it "
+                    "about?",
+                    clarifying=True,
+                )
+            return AgentTurn(
+                reply=f"{greet}Of course — I'm connecting you to the team now. It may take a "
+                "couple of minutes for someone to pick up; please stay in the chat.",
+                handoff=True,
             )
 
         best, score = None, 0
@@ -336,6 +364,22 @@ class RuleTextAgent:
             reply="Noted, thank you — I've added that to your message for the team.",
             handoff=True,
         )
+
+
+def display_name(email: str) -> str:
+    local = email.split("@", 1)[0]
+    return " ".join(p.capitalize() for p in re.split(r"[._-]+", local) if p) or email
+
+
+def _match_department(cfg: AssistantConfig, text: str) -> str | None:
+    """Pick the department whose name/description overlaps most with the customer's words."""
+    q = _stems(text)
+    best, score = None, 0
+    for d in cfg.transfer.departments():
+        s = len(q & _stems(f"{d} {cfg.transfer.department_notes.get(d, '')}"))
+        if s > score:
+            best, score = d, s
+    return best
 
 
 def _handoff_ticket(thread: Thread) -> TicketIntake:
@@ -398,6 +442,16 @@ class OpenAITextAgent:
         already_handed_off = any(
             m.direction == Direction.OUT and m.author == Author.AI and m.handoff for m in history
         )
+        last_ai = next(
+            (
+                m
+                for m in reversed(history)
+                if m.direction == Direction.OUT and m.author == Author.AI
+            ),
+            None,
+        )
+        just_asked_topic = last_ai is not None and last_ai.clarifying
+        multi_dept = len(cfg.transfer.departments()) > 1
         system = "\n".join(
             [
                 cfg.rendered_instructions(),
@@ -406,21 +460,38 @@ class OpenAITextAgent:
                 "no markdown.",
                 *cfg.knowledge_sections(),
                 _departments_section(cfg),
-                'Return JSON: {"reply": <text to send>, "handoff": <true if a human must take '
-                'over>, "department": <department name or null>, "ticket": null | '
-                '{"reason": <what the customer needs>, "category": <string|null>, '
-                '"priority": "low"|"normal"|"high"|"urgent"}}.',
+                'Return JSON: {"reply": <text to send>, "handoff": <true only when you are '
+                'connecting them to a human NOW>, "clarifying": <true if you are asking what '
+                'the handoff is about before connecting>, "department": <department name or '
+                'null>, "ticket": null | {"reason": <what the customer needs>, "category": '
+                '<string|null>, "priority": "low"|"normal"|"high"|"urgent"}}.',
                 "Handoff policy: if the customer asks for a person, a human, a manager, or to be "
-                "transferred, set handoff=true, choose the department that matches their topic "
+                "transferred"
+                + (
+                    " and you do not yet know what it is about, ask ONE short question about "
+                    "what they need (clarifying=true, handoff=false) and wait for the answer. "
+                    "Once you know the topic"
+                    if multi_dept
+                    else ""
+                )
+                + ", set handoff=true, choose the department that matches their topic "
                 "(e.g. invoices/payments -> accounts) and tell them you are connecting them to "
-                "that team. Once you have offered a handoff, keep handoff=true on every later "
-                "turn - do not switch to raising a ticket instead; a callback ticket is raised "
-                "automatically if nobody picks up. Only set a ticket yourself when no handoff is "
-                "wanted and you cannot fully resolve the request. Never invent facts.",
+                "that team and that it may take a couple of minutes for someone to pick up. "
+                "Once handoff is true, keep it true on every later turn - never switch to a "
+                "ticket; a callback ticket is raised automatically if nobody picks up. Only set "
+                "a ticket yourself when no handoff is wanted and you cannot fully resolve the "
+                "request. Never invent facts.",
                 (
                     "A handoff to a human is already in progress on this conversation; "
                     "acknowledge briefly, keep handoff=true and do not raise a ticket."
                     if already_handed_off
+                    else ""
+                ),
+                (
+                    "You already asked what the handoff is about; the customer has now answered. "
+                    "Do not ask again: set handoff=true with the best-matching department (or "
+                    "null for the general team) and tell them you are connecting them."
+                    if just_asked_topic
                     else ""
                 ),
             ]
@@ -445,8 +516,20 @@ class OpenAITextAgent:
             content = r.json()["choices"][0]["message"]["content"]
             raw = _LlmTurn.model_validate_json(content)
             ticket: TicketIntake | None = None
-            handoff = raw.handoff or already_handed_off
-            if raw.ticket is not None and not handoff:
+            handoff = raw.handoff or already_handed_off or just_asked_topic
+            clarifying = raw.clarifying and not handoff
+            if (
+                handoff
+                and not already_handed_off
+                and not just_asked_topic
+                and multi_dept
+                and raw.department is None
+                and raw.reply.rstrip().endswith("?")
+            ):
+                # Asked a question and paused itself in the same turn: keep the AI on to hear
+                # the answer, then connect on the next turn.
+                handoff, clarifying = False, True
+            if raw.ticket is not None and not handoff and not clarifying:
                 ticket = TicketIntake(
                     caller_number=thread.identity if thread.channel != Channel.WEBCHAT else None,
                     caller_name=thread.contact_name,
@@ -458,6 +541,7 @@ class OpenAITextAgent:
             return AgentTurn(
                 reply=raw.reply.strip(),
                 handoff=handoff,
+                clarifying=clarifying,
                 department=raw.department,
                 ticket=ticket,
             )
@@ -475,6 +559,7 @@ class _LlmTicket(BaseModel):
 class _LlmTurn(BaseModel):
     reply: str
     handoff: bool = False
+    clarifying: bool = False
     department: str | None = None
     ticket: _LlmTicket | None = None
 
@@ -727,12 +812,20 @@ class InboxService:
         msgs.sort(key=lambda m: m.created_at)
         return msgs
 
-    async def find_existing(self, tenant_id: str, channel: Channel, identity: str) -> Thread | None:
+    async def find_existing(
+        self, tenant_id: str, channel: Channel, identity: str, *, include_closed: bool = False
+    ) -> Thread | None:
+        """Open thread for this identity; with include_closed, the most recent one of any status."""
+        latest: Thread | None = None
         for d in await self.store.list_docs(THREAD_KIND, tenant_id, 2000):
             t = Thread.from_doc(d)
-            if t.channel == channel and t.identity == identity and t.status != ThreadStatus.CLOSED:
+            if t.channel != channel or t.identity != identity:
+                continue
+            if t.status != ThreadStatus.CLOSED:
                 return t
-        return None
+            if include_closed and (latest is None or t.created_at > latest.created_at):
+                latest = t
+        return latest
 
     async def find_or_open(
         self,
@@ -833,6 +926,9 @@ class InboxService:
                 await self.store.put_doc(reply.to_doc())
             except Exception:
                 log.warning("inbox ticket creation failed for %s", t.id, exc_info=True)
+        if turn.clarifying and not turn.handoff:
+            reply.clarifying = True
+            await self.store.put_doc(reply.to_doc())
         if turn.handoff:
             reply.handoff = True
             await self.store.put_doc(reply.to_doc())
@@ -842,6 +938,11 @@ class InboxService:
             t.callback_ticket_id = reply.ticket_id
             t.sla_due_at = datetime.now(UTC) + self.sla
             await self.store.put_doc(t.to_doc())
+            await self._status(
+                t,
+                f"Connecting you to {turn.department or 'a team member'}… this can take a "
+                "couple of minutes. Please keep this chat open.",
+            )
             self._publish("inbox.thread", t)
             self._publish("inbox.handoff", t, m)
             await self._notify(
@@ -889,10 +990,34 @@ class InboxService:
     async def reply(self, tenant_id: str, thread_id: str, text: str, by: str) -> InboxMessage:
         """Human reply: pauses the AI and takes the thread if unassigned."""
         t = await self._require(tenant_id, thread_id)
+        joining = t.last_direction != Direction.OUT or t.status == ThreadStatus.WAITING
+        if joining:
+            history = await self.messages(tenant_id, t.id)
+            joining = not any(m.author == Author.AGENT and m.author_name == by for m in history)
         t.ai_enabled = False
         t.status = ThreadStatus.OPEN
         t.assigned_to = t.assigned_to or by
+        if joining:
+            await self._status(t, f"{display_name(by)} has joined the chat.")
         m = await self._deliver(t, text, author=Author.AGENT, author_name=by)
+        return m
+
+    async def _status(self, t: Thread, text: str) -> InboxMessage | None:
+        """Visitor-facing status line (web chat only; other channels would need a real send)."""
+        if t.channel != Channel.WEBCHAT:
+            return None
+        m = InboxMessage(
+            tenant_id=t.tenant_id,
+            thread_id=t.id,
+            channel=t.channel,
+            direction=Direction.OUT,
+            author=Author.SYSTEM,
+            text=text,
+        )
+        unread, due, breached = t.unread, t.sla_due_at, t.sla_breached
+        await self._append(t, m, count_unread=False)
+        t.unread, t.sla_due_at, t.sla_breached = unread, due, breached
+        await self.store.put_doc(t.to_doc())
         return m
 
     async def note(self, tenant_id: str, thread_id: str, text: str, by: str) -> InboxMessage:
@@ -924,6 +1049,10 @@ class InboxService:
     ) -> Thread:
         t = await self._require(tenant_id, thread_id)
         if status is not None:
+            if status == ThreadStatus.CLOSED and t.status != ThreadStatus.CLOSED:
+                await self._status(
+                    t, "This chat has been closed. Send a message if you need anything else."
+                )
             t.status = status
             if status == ThreadStatus.CLOSED:
                 t.unread = 0
@@ -1028,6 +1157,11 @@ class InboxService:
                     try:
                         ticket = await self.on_ticket(t.tenant_id, t.company_id, _handoff_ticket(t))
                         t.callback_ticket_id = ticket.id
+                        await self._status(
+                            t,
+                            "Sorry, nobody was free to pick up. We've logged your request "
+                            f"(ref {ticket.id}) and the team will get back to you.",
+                        )
                     except Exception:
                         log.warning("handoff callback ticket failed for %s", t.id, exc_info=True)
                 await self.store.put_doc(t.to_doc())

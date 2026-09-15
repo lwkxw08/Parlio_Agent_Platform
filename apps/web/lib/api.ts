@@ -798,6 +798,9 @@ export type ChatMessage = { id: string; direction: string; author: string; autho
 export const fetchChatConfig = (token: string) => get<ChatConfig>(`/v1/public/chat/${token}`);
 export const sendChat = (token: string, visitor: string, text: string, name?: string) => post<ChatMessage[]>(`/v1/public/chat/${token}/messages`, { visitor, text, name });
 export const pollChat = (token: string, visitor: string) => get<ChatMessage[]>(`/v1/public/chat/${token}/messages${qs({ visitor })}`);
+export type ChatStatus = "none" | "ai" | "waiting" | "human" | "closed";
+export type ChatState = { status: ChatStatus; agent_name: string | null; department: string | null; messages: ChatMessage[] };
+export const pollChatState = (token: string, visitor: string) => get<ChatState>(`/v1/public/chat/${token}/state${qs({ visitor })}`);
 
 // -- Phase 13: quality, insights, simulation, voice cloning --------------------------------------
 export type QAFlag = "hallucination" | "unanswered" | "rude" | "escalated" | "long_silence" | "unresolved" | string;
