@@ -1,22 +1,11 @@
 import Link from "next/link";
 import { fetchAssistants, fetchHandoffAnalytics, fetchTransfers, secs } from "@/lib/api";
+import { Breakdown, humanize } from "@/app/breakdown";
 import Destinations from "./destinations";
 
 export const dynamic = "force-dynamic";
 
-const human = (s: string) => s.replace(/_/g, " ").replace(/^\w/, (c) => c.toUpperCase());
-
-function Breakdown({ title, data }: { title: string; data: Record<string, number> }) {
-  const rows = Object.entries(data).sort((a, b) => b[1] - a[1]);
-  return (
-    <div className="card">
-      <div className="label">{title}</div>
-      {rows.length ? rows.map(([k, v]) => (
-        <div key={k} className="row between"><span>{human(k)}</span><strong>{v}</strong></div>
-      )) : <div className="muted small">No data</div>}
-    </div>
-  );
-}
+const human = humanize;
 
 export default async function Handoff() {
   const [stats, transfers, assistants] = await Promise.all([fetchHandoffAnalytics(), fetchTransfers(), fetchAssistants()]);
@@ -42,6 +31,17 @@ export default async function Handoff() {
         <Breakdown title="Transfers by destination" data={tr?.by_destination ?? {}} />
         <Breakdown title="Tickets by priority" data={tk?.by_priority ?? {}} />
         <Breakdown title="Tickets by category" data={tk?.by_category ?? {}} />
+      </div>
+      <h2>Transferred calls</h2>
+      <p className="hint" style={{ marginTop: 0 }}>
+        How your team handles calls once the assistant puts them through. Talk time needs &ldquo;Record transferred calls&rdquo; on in Assistant Studio → Recording.
+      </p>
+      <div className="grid">
+        <div className="card"><div className="label">Recorded transfers</div><div className="value">{tr?.recorded ?? "—"}</div></div>
+        <div className="card"><div className="label">Avg human talk time</div><div className="value">{secs(tr?.avg_human_duration_s)}</div></div>
+        <div className="card"><div className="label">Total human talk time</div><div className="value">{tr && tr.human_talk_s > 0 ? secs(tr.human_talk_s) : "—"}</div></div>
+        <Breakdown title="Human talk time by department" data={tr?.human_talk_by_department ?? {}} format={(v) => secs(v)} empty="Nothing recorded yet." />
+        <Breakdown title="Human talk time by person" data={tr?.human_talk_by_destination ?? {}} format={(v) => secs(v)} empty="Nothing recorded yet." />
       </div>
       <h2>Recent transfers</h2>
       <table>

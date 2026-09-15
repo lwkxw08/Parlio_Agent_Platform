@@ -32,7 +32,7 @@ export type CallRecord = {
   missed_fields: string[];
   caller_type: string | null;
   contact_id: string | null;
-  transfers: { transfer_id: string; destination: string; department: string | null; mode: string; outcome: string; at: string | null }[];
+  transfers: { transfer_id: string; destination: string; department: string | null; mode: string; outcome: string; at: string | null; human_duration_s?: number | null; recorded?: boolean }[];
   ticket_ids: string[];
   escalated: boolean;
   escalation_keyword: string | null;
@@ -86,6 +86,11 @@ export type TransferStats = {
   by_department: Record<string, number>;
   by_destination: Record<string, number>;
   answer_rate: number | null;
+  recorded: number;
+  human_talk_s: number;
+  avg_human_duration_s: number | null;
+  human_talk_by_department: Record<string, number>;
+  human_talk_by_destination: Record<string, number>;
 };
 export type TicketStats = {
   total: number;
@@ -198,7 +203,7 @@ export type BusinessInfo = {
   services: string[];
 };
 export type VoiceConfig = { provider: string; voice_id: string; speed: number | null };
-export type RecordingConfig = { enabled: boolean; consent_announcement: Record<string, string> };
+export type RecordingConfig = { enabled: boolean; record_transfers: boolean; consent_announcement: Record<string, string> };
 export type Destination = {
   id: string;
   name: string;

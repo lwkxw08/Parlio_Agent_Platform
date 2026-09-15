@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
+import { Breakdown } from "@/app/breakdown";
 import {
   type DigestRecord,
   type TrackingNumber,
@@ -55,7 +56,6 @@ function Report({ tenant, days, ov }: { tenant: string; days: number; ov: ValueO
     <div className={`card ${cls}`}><div className="label">{label}</div><div className="value">{value}</div>{sub && <div className="small muted">{sub}</div>}</div>
   );
   const intents = Object.entries(r.intents).sort((a, b) => b[1] - a[1]);
-  const max = intents[0]?.[1] ?? 1;
   return (
     <>
       <div className="chips" style={{ marginBottom: "0.8rem" }}>
@@ -74,20 +74,7 @@ function Report({ tenant, days, ov }: { tenant: string; days: number; ov: ValueO
         tune them to match your business. Nothing here is billed or shared with callers.
       </p>
       <div className="two-col">
-        <div className="section">
-          <h2>What callers wanted</h2>
-          {intents.length === 0 ? <p className="muted small">No calls in this period.</p> : (
-            <ul className="hbars">
-              {intents.map(([k, v]) => (
-                <li key={k}>
-                  <span style={{ textTransform: "capitalize" }}>{k}</span>
-                  <i style={{ width: `${(v / max) * 100}%` }} />
-                  <b>{v}</b>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
+        <Breakdown className="section" title="What callers wanted" data={Object.fromEntries(intents)} max={8} empty="No calls in this period." />
         <div className="section">
           <h2>Top leads</h2>
           {r.top_leads.length === 0 ? <p className="muted small">No scored leads yet.</p> : (

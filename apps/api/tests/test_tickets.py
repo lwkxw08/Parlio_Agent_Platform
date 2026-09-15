@@ -176,6 +176,33 @@ async def test_transfer_events_are_recorded_and_aggregated(client: AsyncClient) 
     assert s["total"] == 2 and s["answer_rate"] == 0.5
     assert s["by_department"] == {"general": 1, "emergencies": 1}
     assert s["by_outcome"] == {"no_answer": 1, "answered": 1}
+    assert s["recorded"] == 0 and s["avg_human_duration_s"] is None
+
+    # call.ended carries what happened on the human side of the answered transfer
+    e = ev(
+        CallEventType.CALL_ENDED,
+        c,
+        {
+            "duration_s": 130.0,
+            "reason": "transferred",
+            "human_leg": {"transfer_id": "tr-2", "duration_s": 95.5, "recorded": True},
+        },
+    )
+    r = await client.post("/v1/worker/events", json=e, headers=HEADERS)
+    assert r.status_code == 202
+    r = await client.get("/v1/transfers", params={"tenant_id": "demo"})
+    by_id = {t["id"]: t for t in r.json()}
+    assert by_id["tr-2"]["recorded"] is True and by_id["tr-2"]["human_duration_s"] == 95.5
+    assert by_id["tr-1"]["recorded"] is False and by_id["tr-1"]["human_duration_s"] is None
+    r = await client.get("/v1/analytics/handoff", params={"tenant_id": "demo"})
+    s = r.json()["transfers"]
+    assert s["recorded"] == 1 and s["avg_human_duration_s"] == 95.5
+    assert s["human_talk_s"] == 95.5
+    assert s["human_talk_by_department"] == {"emergencies": 95.5}
+    assert s["human_talk_by_destination"] == {"Dave": 95.5}
+    r = await client.get(f"/v1/calls/{c}")
+    tr = {t["transfer_id"]: t for t in r.json()["transfers"]}
+    assert tr["tr-2"]["human_duration_s"] == 95.5 and tr["tr-2"]["recorded"] is True
 
 
 async def test_transfer_config_round_trip_and_validation(client: AsyncClient) -> None:

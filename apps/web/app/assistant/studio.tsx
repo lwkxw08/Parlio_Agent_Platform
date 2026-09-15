@@ -372,6 +372,10 @@ export default function Studio({ initial, versions: initialVersions, requiredFie
           <label style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
             <input type="checkbox" checked={cfg.recording.enabled} onChange={(e) => upd({ recording: { ...cfg.recording, enabled: e.target.checked } })} /> Record calls (dual-channel, stored in your region)
           </label>
+          <label style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+            <input type="checkbox" disabled={!cfg.recording.enabled} checked={cfg.recording.record_transfers} onChange={(e) => upd({ recording: { ...cfg.recording, record_transfers: e.target.checked } })} /> Record transferred calls (keep recording the caller and your team member after a transfer)
+          </label>
+          <p className="hint">Useful for sampling how your team handles calls. Warm transfers only — the team member&apos;s side is saved as its own track, and their talk time appears on the Transfers page. Switch off any time.</p>
           <p className="hint">UK GDPR/PECR: callers must be told calls are recorded. The announcement below is played once at the start of each recorded call, in the caller&apos;s language where available.</p>
           {cfg.languages.map((l) => (
             <label key={l}>Consent announcement ({LANGS.find(([c]) => c === l)?.[1] ?? l})

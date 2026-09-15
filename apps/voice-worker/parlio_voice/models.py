@@ -59,6 +59,9 @@ class TurnTuning(BaseModel):
 
 class RecordingConfig(BaseModel):
     enabled: bool = True
+    # Warm transfers only: the bridged-in human gets their own track file and the caller
+    # track runs on until the call ends.
+    record_transfers: bool = False
     consent_announcement: dict[str, str] = Field(
         default_factory=lambda: {
             "en": "This call may be recorded for quality and training purposes.",

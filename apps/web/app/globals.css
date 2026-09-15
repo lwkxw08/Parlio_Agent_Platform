@@ -189,6 +189,16 @@ code.block, pre.block { display: block; background: var(--field); border: 1px so
 .hbars li span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .hbars li i { display: block; height: 10px; border-radius: 5px; background: var(--accent); min-width: 2px; }
 .hbars li b { text-align: right; font-weight: 500; }
+/* breakdown cards: label · figure · share, proportion bar underneath */
+.breakdown { display: flex; flex-direction: column; }
+.breakdown ul { list-style: none; padding: 0; margin: 0.7rem 0 0; display: grid; gap: 0.6rem; }
+.breakdown li { display: grid; grid-template-columns: 1fr auto 2.6rem; grid-template-areas: "name count share" "bar bar bar"; align-items: baseline; column-gap: 0.6rem; row-gap: 0.3rem; font-size: 0.85rem; }
+.breakdown li .name { grid-area: name; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
+.breakdown li b { grid-area: count; font-weight: 600; font-variant-numeric: tabular-nums; }
+.breakdown li em { grid-area: share; font-style: normal; color: var(--muted); font-size: 0.75rem; text-align: right; font-variant-numeric: tabular-nums; }
+.breakdown li > i { grid-area: bar; display: block; height: 6px; border-radius: 3px; background: var(--hover); overflow: hidden; }
+.breakdown li > i > i { display: block; height: 100%; border-radius: 3px; background: var(--accent-grad); min-width: 3px; transition: width .3s ease; }
+.breakdown .hint { margin-top: auto; padding-top: 0.7rem; }
 .split { display: flex; height: 12px; border-radius: 6px; overflow: hidden; margin: 0.3rem 0 0.8rem; }
 .card.cmp { text-align: center; }
 .card.cmp .pair-vals { display: block; font-size: 1.3rem; margin-top: 0.3rem; }

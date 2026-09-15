@@ -70,6 +70,8 @@ log = logging.getLogger("parlio.agent")
 ATTR_CALL_ID = "sip.callID"
 ATTR_CALLER = "sip.phoneNumber"
 ATTR_DIALED = "sip.trunkPhoneNumber"
+# Identity prefix the transfer engine gives bridged-in staff (see TransferEngine.run).
+HUMAN_PREFIX = "human-"
 
 
 def prewarm(proc: JobProcess) -> None:
@@ -345,13 +347,28 @@ async def entrypoint(ctx: JobContext) -> None:
         )
 
     recorder = CallRecorder(settings, lk, ctx.room)
+    record_transfers = (
+        cfg.recording.enabled and cfg.recording.record_transfers and settings.recording_configured
+    )
+    human_leg: dict[str, object] = {}
+    t_human: float | None = None
 
     def _emit(kind: CallEventType, payload: dict[str, object]) -> None:
         events.emit(cfg, call_id, kind, payload)
 
     async def _leave_after_bridge() -> None:
-        # Human and caller stay in the room; the agent drops out so they talk directly.
-        ctx.shutdown(reason="transferred")
+        nonlocal t_human
+        # Human and caller stay in the room and talk directly. Normally the agent drops out;
+        # when recording transfers it goes deaf and mute instead so the caller-leg egress runs
+        # to the end of the call, and the room (and every egress) is torn down on hangup.
+        if not (record_transfers and recorder.object_keys):
+            ctx.shutdown(reason="transferred")
+            return
+        t_human = time.perf_counter()
+        human_leg.update({"transfer_id": tools.connected_transfer_id, "recorded": True})
+        await session.interrupt(force=True)
+        session.input.set_audio_enabled(False)
+        session.output.set_audio_enabled(False)
 
     bridge = LiveKitSipBridge(
         lk,
@@ -392,6 +409,11 @@ async def entrypoint(ctx: JobContext) -> None:
 
     background: list[asyncio.Task[None]] = []
 
+    @ctx.room.on("participant_disconnected")
+    def _on_participant_gone(p: rtc.RemoteParticipant) -> None:
+        if t_human is not None and p.identity.startswith(HUMAN_PREFIX):
+            background.append(asyncio.create_task(_hangup("transferred")))
+
     async def _record_caller_track() -> None:
         for pub in participant.track_publications.values():
             if pub.kind == rtc.TrackKind.KIND_AUDIO and pub.sid:
@@ -403,6 +425,19 @@ async def entrypoint(ctx: JobContext) -> None:
             if pub.kind == rtc.TrackKind.KIND_AUDIO and pub.sid:
                 await recorder.record_track(cfg.tenant_id, call_id, "agent", pub.sid)
                 return
+
+    async def _record_human_track(sid: str) -> None:
+        await recorder.record_track(cfg.tenant_id, call_id, "human", sid)
+
+    @ctx.room.on("track_published")
+    def _on_human_published(pub: rtc.RemoteTrackPublication, p: rtc.RemoteParticipant) -> None:
+        if (
+            record_transfers
+            and p.identity.startswith(HUMAN_PREFIX)
+            and pub.kind == rtc.TrackKind.KIND_AUDIO
+            and pub.sid
+        ):
+            background.append(asyncio.create_task(_record_human_track(pub.sid)))
 
     async def _on_shutdown(reason: str) -> None:
         if tools.transferred and reason != "transferred":
@@ -417,6 +452,8 @@ async def entrypoint(ctx: JobContext) -> None:
             with suppress(asyncio.CancelledError):
                 await bg
         await audio.sample()
+        if t_human is not None:
+            human_leg["duration_s"] = round(time.perf_counter() - t_human, 1)
         await recorder.stop()
         try:
             await core_api.release(call_id)
@@ -438,6 +475,7 @@ async def entrypoint(ctx: JobContext) -> None:
                 "turns": [t.model_dump() for t in latency.completed],
                 "transcript": history,
                 "recordings": recorder.object_keys,
+                "human_leg": human_leg,
             },
         )
         await events.aclose()
