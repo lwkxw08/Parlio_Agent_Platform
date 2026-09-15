@@ -27,6 +27,17 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
           <tr><th>Callback window</th><td>{t.callback_window ?? "—"}</td></tr>
           <tr><th>Source</th><td>{t.source}</td></tr>
           <tr><th>Call</th><td>{t.call_id ? <Link href={`/calls/${t.call_id}`}>{t.call_id}</Link> : "—"}</td></tr>
+          <tr>
+            <th>Conversation</th>
+            <td>
+              {t.thread_id ? (
+                <>
+                  <Link href={`/inbox?tenant=${t.tenant_id}&thread=${t.thread_id}`}>Open in Inbox</Link>
+                  <span className="muted small"> — claiming or resolving here updates the conversation, and vice versa</span>
+                </>
+              ) : "—"}
+            </td>
+          </tr>
           <tr><th>Created</th><td>{new Date(t.created_at).toLocaleString("en-GB")}</td></tr>
         </tbody>
       </table>

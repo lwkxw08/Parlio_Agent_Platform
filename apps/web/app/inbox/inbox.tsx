@@ -363,6 +363,11 @@ function ThreadPane({ t, me, members, messages, canned, canReply, busy, now, tim
             {t.contact_id && <Link href={`/contacts?tenant=${t.tenant_id}&q=${encodeURIComponent(t.identity)}`}>contact</Link>}
             <span>· {t.message_count} messages</span>
             {sla && <span className={`pill ${sla.cls}`}>{sla.text}</span>}
+            {t.ticket_ids.map((id) => (
+              <Link key={id} href={`/tickets/${id}`} title="Linked ticket — assigning or closing this conversation claims/resolves it">
+                {id === t.callback_ticket_id ? "callback ticket" : "ticket"} {id}
+              </Link>
+            ))}
           </div>
         </div>
         {canReply && (
@@ -399,7 +404,7 @@ function ThreadPane({ t, me, members, messages, canned, canReply, busy, now, tim
               {(m.call_id || m.ticket_id) && (
                 <span className="small row" style={{ marginTop: "0.3rem" }}>
                   {m.call_id && <Link href={`/calls/${m.call_id}`}>View call</Link>}
-                  {m.ticket_id && <Link href={`/tickets?tenant=${t.tenant_id}`}>Ticket {m.ticket_id}</Link>}
+                  {m.ticket_id && <Link href={`/tickets/${m.ticket_id}`}>Ticket {m.ticket_id}</Link>}
                 </span>
               )}
             </div>

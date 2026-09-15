@@ -486,8 +486,8 @@ async def get_ticket(ticket_id: str, store: StoreDep) -> TicketDetail:
 
 
 @router.patch("/tickets/{ticket_id}", response_model=Ticket)
-async def update_ticket(ticket_id: str, upd: TicketUpdate, store: StoreDep) -> Ticket:
-    t = await store.update_ticket(ticket_id, upd)
+async def update_ticket(ticket_id: str, upd: TicketUpdate, tickets: TicketsDep) -> Ticket:
+    t = await tickets.update(ticket_id, upd)
     if t is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "ticket not found")
     return t
@@ -499,8 +499,8 @@ class Actor(BaseModel):
 
 
 @router.post("/tickets/{ticket_id}/claim", response_model=Ticket)
-async def claim_ticket(ticket_id: str, body: Actor, store: StoreDep) -> Ticket:
-    t = await store.update_ticket(
+async def claim_ticket(ticket_id: str, body: Actor, tickets: TicketsDep) -> Ticket:
+    t = await tickets.update(
         ticket_id,
         TicketUpdate(status=TicketStatus.CLAIMED, assigned_to=body.actor, actor=body.actor),
     )
@@ -510,8 +510,8 @@ async def claim_ticket(ticket_id: str, body: Actor, store: StoreDep) -> Ticket:
 
 
 @router.post("/tickets/{ticket_id}/resolve", response_model=Ticket)
-async def resolve_ticket(ticket_id: str, body: Actor, store: StoreDep) -> Ticket:
-    t = await store.update_ticket(
+async def resolve_ticket(ticket_id: str, body: Actor, tickets: TicketsDep) -> Ticket:
+    t = await tickets.update(
         ticket_id, TicketUpdate(status=TicketStatus.RESOLVED, actor=body.actor, note=body.note)
     )
     if t is None:
@@ -535,7 +535,9 @@ class ClickToCall(BaseModel):
 
 
 @router.post("/tickets/{ticket_id}/callback", response_model=ClickToCall)
-async def request_callback(ticket_id: str, body: Actor, store: StoreDep) -> ClickToCall:
+async def request_callback(
+    ticket_id: str, body: Actor, store: StoreDep, tickets: TicketsDep
+) -> ClickToCall:
     """Click-to-call: records the callback attempt and returns a tel: link for the agent's
     softphone. Automatic bridge-dialling via LiveKit SIP lands in the second Phase 3 session."""
     t = await store.get_ticket(ticket_id)
@@ -547,9 +549,7 @@ async def request_callback(ticket_id: str, body: Actor, store: StoreDep) -> Clic
         TicketEvent(ticket_id=ticket_id, type="callback", actor=body.actor, note=t.caller_number)
     )
     if t.status == TicketStatus.OPEN:
-        await store.update_ticket(
-            ticket_id, TicketUpdate(status=TicketStatus.CLAIMED, actor=body.actor)
-        )
+        await tickets.update(ticket_id, TicketUpdate(status=TicketStatus.CLAIMED, actor=body.actor))
     return ClickToCall(tel_uri=f"tel:{t.caller_number}", ticket_id=ticket_id)
 
 

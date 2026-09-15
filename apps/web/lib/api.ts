@@ -60,6 +60,7 @@ export type Ticket = {
   created_at: string;
   updated_at: string;
   resolved_at: string | null;
+  thread_id: string | null;
 };
 
 export type TicketEvent = { ticket_id: string; type: string; actor: string | null; note: string | null; at: string };
@@ -748,7 +749,7 @@ export type Channel = "call" | "voicemail" | "sms" | "whatsapp" | "webchat";
 export type ThreadStatus = "open" | "waiting" | "closed";
 export type InboxThread = {
   id: string; tenant_id: string; channel: Channel; identity: string; contact_id: string | null; contact_name: string | null;
-  subject: string | null; status: ThreadStatus; assigned_to: string | null; ai_enabled: boolean; handoff_department: string | null; callback_ticket_id: string | null; unread: number; message_count: number;
+  subject: string | null; status: ThreadStatus; assigned_to: string | null; ai_enabled: boolean; handoff_department: string | null; callback_ticket_id: string | null; ticket_ids: string[]; unread: number; message_count: number;
   last_preview: string; last_direction: "in" | "out" | "note" | null; last_message_at: string; sla_due_at: string | null;
   sla_breached: boolean; tags: string[]; created_at: string;
 };

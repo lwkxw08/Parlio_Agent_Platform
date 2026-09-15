@@ -173,6 +173,7 @@ async def patch_thread(
             read=body.read,
             tags=body.tags,
             subject=body.subject,
+            by=user.email,
         )
     except KeyError:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "thread not found") from None
