@@ -255,6 +255,55 @@ class Persona(BaseModel):
     extra: str = ""
 
 
+class SpeakingStyle(BaseModel):
+    """How details are read back on the phone (Studio → Speaking style)."""
+
+    one_detail_at_a_time: bool = True
+    digits_individually: bool = True
+    spell_postcodes: bool = True
+    summary_per_line: bool = True
+    confirm_phrase: str = "is that right?"
+    final_confirm_phrase: str = "Is all of that correct?"
+    extra_rules: list[str] = Field(default_factory=list)
+
+    def prompt(self) -> str:
+        lines: list[str] = []
+        if self.one_detail_at_a_time:
+            lines.append(
+                "Confirm one detail at a time, never several in one sentence. After each, ask "
+                f"'{self.confirm_phrase}' and wait for the answer before moving on."
+            )
+        if self.digits_individually:
+            lines.append(
+                "Read phone numbers back as single digits with a space between each and a pause "
+                "between groups, e.g. '0 7 9 3 0, 9 3 4, 0 9 8' - never as whole numbers like 934. "
+                "Say house or flat numbers digit by digit ('flat 1 2')."
+            )
+        if self.spell_postcodes:
+            lines.append(
+                "Read postcodes one character at a time with spaces, e.g. 'M 2 1, 2 D F'. Say "
+                "addresses slowly, one line at a time: house number and street, then town, then "
+                f"postcode, then ask '{self.confirm_phrase}'. If a postcode or name is unclear, "
+                "ask the caller to spell it and repeat it back letter by letter before saving it."
+            )
+        if self.summary_per_line:
+            number = "0 7 9 3 0, 9 3 4, 0 9 8" if self.digits_individually else "07930 934098"
+            postcode = "M 2 1, 2 D F" if self.spell_postcodes else "M21 2DF"
+            lines.append(
+                "Never repeat the caller's name, address and number back together in one go. If a "
+                "final summary is needed, use one short sentence per detail on its own line "
+                f"('Your name is Keith Wilson.' / 'Your callback number is {number}.' / "
+                f"'Your address is 1 High Street, Manchester, {postcode}.') and finish with "
+                f"'{self.final_confirm_phrase}'."
+            )
+        lines.extend(r.strip() for r in self.extra_rules if r.strip())
+        lines.append(
+            "When the caller wants a person, call transfer_to_human straight away in that same "
+            "turn; do not just say you will connect them and then wait."
+        )
+        return "Speaking style on the phone:\n" + "\n".join(f"- {line}" for line in lines)
+
+
 class BusinessInfo(BaseModel):
     description: str = ""
     website: str | None = None
@@ -311,6 +360,7 @@ class AssistantConfig(BaseModel):
     business: BusinessInfo = Field(default_factory=BusinessInfo)
     hours: Schedule = Field(default_factory=Schedule)
     persona: Persona = Field(default_factory=Persona)
+    speaking: SpeakingStyle = Field(default_factory=SpeakingStyle)
     rules: list[BusinessRule] = Field(default_factory=list)
     faqs: list[Faq] = Field(default_factory=list)
     sms_scenarios: list[SmsScenario] = Field(default_factory=list)
@@ -336,7 +386,7 @@ class AssistantConfig(BaseModel):
 
     def rendered_instructions(self) -> str:
         base = self.instructions.format(name=self.name, business_name=self.business_name)
-        return "\n\n".join([base, *self.knowledge_sections(), CONVERSATION_STYLE])
+        return "\n\n".join([base, *self.knowledge_sections(), self.speaking.prompt()])
 
     def knowledge_sections(self) -> list[str]:
         """Studio-managed prompt sections: persona, business, hours, rules, FAQs, languages."""
@@ -396,24 +446,7 @@ class AssistantConfig(BaseModel):
         return ann.get(self.language) or ann.get("en")
 
 
-CONVERSATION_STYLE = (
-    "Speaking style on the phone:\n"
-    "- Confirm one detail at a time, never several in one sentence. After each, ask "
-    "'is that right?' and wait for the answer before moving on.\n"
-    "- Read phone numbers back as single digits with a space between each and a pause "
-    "between groups, e.g. '0 7 9 3 0, 9 3 4, 0 9 8' - never as whole numbers like 934.\n"
-    "- Read postcodes one character at a time with spaces, e.g. 'M 2 1, 2 D F', and house or "
-    "flat numbers digit by digit ('flat 1 2'). Say addresses slowly, one line at a time: "
-    "house number and street, then town, then postcode, then ask 'is that right?'.\n"
-    "- If a postcode or name is unclear, ask the caller to spell it and repeat it back "
-    "letter by letter before saving it.\n"
-    "- Never repeat the caller's name, address and number back together in one go. If a final "
-    "summary is needed, use one short sentence per detail on its own line ('Your name is Keith "
-    "Wilson.' / 'Your callback number is 0 7 9 3 0, 9 3 4, 0 9 8.' / 'Your address is 1 High "
-    "Street, Manchester, M 2 1, 2 D F.') and finish with 'Is all of that correct?'.\n"
-    "- When the caller wants a person, call transfer_to_human straight away in that same "
-    "turn; do not just say you will connect them and then wait."
-)
+CONVERSATION_STYLE = SpeakingStyle().prompt()
 
 
 class CallDirection(StrEnum):

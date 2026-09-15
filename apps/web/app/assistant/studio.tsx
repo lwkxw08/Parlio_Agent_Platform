@@ -5,12 +5,15 @@ import {
   type Assistant,
   type BusinessRule,
   type Faq,
+  type RegressionCheck,
   type RequiredField,
   type SmsScenario,
+  type SpeakingStyle,
   type VersionSummary,
   fetchSuggestedFaqs,
   fetchVersions,
   post,
+  publishAssistant,
   put,
   when,
 } from "@/lib/api";
@@ -18,10 +21,10 @@ import AskAi from "./ask-ai";
 import FaqImport from "./faq-import";
 import VoicePicker from "./voice-picker";
 
-const TABS = ["persona", "business", "hours", "rules", "faqs", "fields", "sms", "languages", "recording", "blocked", "afterhours", "versions"] as const;
+const TABS = ["persona", "speaking", "business", "hours", "rules", "faqs", "fields", "sms", "languages", "recording", "blocked", "afterhours", "versions"] as const;
 type Tab = (typeof TABS)[number];
 const LABELS: Record<Tab, string> = {
-  persona: "Persona & voice", business: "Business", hours: "Hours", rules: "Rules", faqs: "FAQs", fields: "Required fields",
+  persona: "Persona & voice", speaking: "Speaking style", business: "Business", hours: "Hours", rules: "Rules", faqs: "FAQs", fields: "Required fields",
   sms: "SMS", languages: "Languages", recording: "Recording", blocked: "Blocked numbers", afterhours: "After hours", versions: "Versions",
 };
 const DAYS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
@@ -40,19 +43,27 @@ export default function Studio({ initial, versions: initialVersions, requiredFie
   const [suggested, setSuggested] = useState<Faq[] | null>(null);
   const [bulkSms, setBulkSms] = useState("");
   const [bulkBlocked, setBulkBlocked] = useState("");
+  const [blocked, setBlocked] = useState<RegressionCheck | null>(null);
+  const [saving, setSaving] = useState(false);
 
   const upd = (p: Partial<Assistant>) => { setCfg((c) => ({ ...c, ...p })); setDirty(true); };
   const flash = (m: string) => { setToast(m); setTimeout(() => setToast(null), 2500); };
 
-  const save = async () => {
-    const r = await put<Assistant>(`/v1/assistants/${cfg.assistant_id}`, { config: cfg, numbers: [] });
+  const save = async (force = false) => {
+    setSaving(true);
+    const r = await publishAssistant(cfg.tenant_id, cfg, force);
+    setSaving(false);
     if (!r.ok) return flash(`Save failed: ${r.error}`);
+    if (!r.data.config) { setBlocked(r.data.check); return; }
+    setBlocked(null);
     const f = await put<RequiredField[]>(`/v1/assistants/${cfg.assistant_id}/required-fields`, fields);
     if (!f.ok) return flash(`Fields save failed: ${f.error}`);
-    setCfg(r.data);
+    setCfg(r.data.config);
     setDirty(false);
     setVersions((await fetchVersions(cfg.assistant_id)) ?? versions);
-    flash(`Saved as version ${r.data.assistant_version}`);
+    const c = r.data.check;
+    const pack = c.pack_size ? ` · regression pack ${c.candidate_passed}/${c.pack_size} passed` : "";
+    flash(`Saved as version ${r.data.config.assistant_version}${pack}`);
   };
 
   const rollback = async (v: number) => {
@@ -80,7 +91,7 @@ export default function Studio({ initial, versions: initialVersions, requiredFie
         {TABS.map((t) => <button key={t} className={tab === t ? "active" : ""} onClick={() => setTab(t)}>{LABELS[t]}</button>)}
         <span style={{ marginLeft: "auto", display: "flex", gap: 8, alignItems: "center" }}>
           {dirty && <span className="muted small">unsaved changes</span>}
-          <button className="primary" disabled={!dirty} onClick={save}>Save new version</button>
+          <button className="primary" disabled={!dirty || saving} onClick={() => save()}>{saving ? "Checking regression pack…" : "Save new version"}</button>
         </span>
       </div>
 
@@ -117,6 +128,41 @@ export default function Studio({ initial, versions: initialVersions, requiredFie
           <label><span className="row" style={{ alignItems: "center" }}>Core instructions (advanced) <AskAi assistantId={cfg.assistant_id} field="instructions" current={cfg.instructions} website={cfg.business.website} onInsert={(t) => upd({ instructions: t })} /></span><textarea value={cfg.instructions} onChange={(e) => upd({ instructions: e.target.value })} /></label>
         </div>
       )}
+
+      {tab === "speaking" && (() => {
+        const s: SpeakingStyle = cfg.speaking ?? { one_detail_at_a_time: true, digits_individually: true, spell_postcodes: true, summary_per_line: true, confirm_phrase: "is that right?", final_confirm_phrase: "Is all of that correct?", extra_rules: [] };
+        const set = (p: Partial<SpeakingStyle>) => upd({ speaking: { ...s, ...p } });
+        const toggles: [keyof SpeakingStyle & ("one_detail_at_a_time" | "digits_individually" | "spell_postcodes" | "summary_per_line"), string, string][] = [
+          ["one_detail_at_a_time", "Confirm one detail at a time", "Name, then number, then address — each checked before moving on, never all in one sentence."],
+          ["digits_individually", "Phone numbers digit by digit", "\"0 7 9 3 0, 9 3 4, 0 9 8\" rather than \"nine hundred and thirty-four\". Also applied to the spoken audio automatically."],
+          ["spell_postcodes", "Spell postcodes letter by letter", "\"M 2 1, 2 D F\"; addresses read slowly one line at a time and unclear postcodes/names spelt back."],
+          ["summary_per_line", "Final summary one detail per sentence", "\"Your name is Keith Wilson. Your callback number is … \" with a pause between each, ending with a single confirmation question."],
+        ];
+        return (
+          <div className="section form">
+            <p className="muted small">How the assistant reads details back to callers. Pace and voice speed are under Persona &amp; voice.</p>
+            {toggles.map(([k, title, help]) => (
+              <label key={k} className="row" style={{ alignItems: "flex-start", gap: 10 }}>
+                <input type="checkbox" checked={s[k]} onChange={(e) => set({ [k]: e.target.checked } as Partial<SpeakingStyle>)} style={{ marginTop: 4 }} />
+                <span><strong>{title}</strong><br /><span className="muted small">{help}</span></span>
+              </label>
+            ))}
+            <div className="two">
+              <label>Check phrase after each detail <input value={s.confirm_phrase} onChange={(e) => set({ confirm_phrase: e.target.value })} /></label>
+              <label>Final confirmation question <input value={s.final_confirm_phrase} onChange={(e) => set({ final_confirm_phrase: e.target.value })} /></label>
+            </div>
+            <label>Your own read-back rules (one per line)
+              <textarea
+                value={s.extra_rules.join("\n")}
+                placeholder={"e.g. Read job reference numbers as pairs of digits.\nAlways repeat the appointment date and time back before ending the call."}
+                onChange={(e) => set({ extra_rules: e.target.value.split("\n") })}
+                onBlur={() => set({ extra_rules: s.extra_rules.map((r) => r.trim()).filter(Boolean) })}
+              />
+            </label>
+            <p className="muted small">Changes apply to the next call after you save a new version. Use Simulate to hear the effect before publishing.</p>
+          </div>
+        );
+      })()}
 
       {tab === "business" && (
         <div className="section form">
@@ -390,6 +436,23 @@ export default function Studio({ initial, versions: initialVersions, requiredFie
         </div>
       )}
 
+      {blocked && (
+        <div className="section" style={{ borderColor: "var(--bad-fg)", marginTop: "1rem" }}>
+          <h2>Not published — the regression pack found a problem</h2>
+          <p className="hint">
+            {blocked.candidate_passed}/{blocked.pack_size} regression tests pass with this change (live version: {blocked.baseline_passed}/{blocked.pack_size}).
+            Fix the wording below, or force-publish if you&apos;re sure. Manage the pack under Quality → Regression pack.
+          </p>
+          <ul className="small" style={{ color: "var(--bad-fg)", margin: "0 0 0.6rem 1rem" }}>
+            {blocked.regressions.map((r, i) => <li key={i}>{r}</li>)}
+            {blocked.deltas.filter((d) => !d.after_passed && !d.before_passed).map((d) => <li key={d.scenario_id} style={{ color: "var(--muted)" }}>{d.scenario_name}: already failing on the live version ({d.after_failures.join("; ") || "low score"})</li>)}
+          </ul>
+          <div style={{ display: "flex", gap: "0.5rem" }}>
+            <button onClick={() => setBlocked(null)}>Keep editing</button>
+            <button className="ghost" disabled={saving} onClick={() => save(true)}>Publish anyway</button>
+          </div>
+        </div>
+      )}
       {toast && <div className="toast">{toast}</div>}
     </>
   );

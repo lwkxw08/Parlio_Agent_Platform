@@ -5,9 +5,11 @@ import { useState } from "react";
 import {
   type Assistant,
   type Insight,
+  type Proposal,
   type QAOverview,
   type QAScore,
   type QASettings,
+  type RegressionView,
   type Scenario,
   type SimulationRun,
   type VoiceClone,
@@ -22,12 +24,14 @@ import {
   request,
   when,
 } from "@/lib/api";
+import Improve from "./improve";
 
-const TABS = [["scores", "Call scores"], ["insights", "Insights"], ["simulate", "Simulation sandbox"], ["voice", "Owner voice"]] as const;
+const TABS = [["scores", "Call scores"], ["insights", "Insights"], ["simulate", "Simulation sandbox"], ["improve", "Regression pack & auto-improve"], ["voice", "Owner voice"]] as const;
 type Tab = (typeof TABS)[number][0];
 
 type Props = {
   tenant: string; canManage: boolean; overview: QAOverview; scenarios: Scenario[]; runs: SimulationRun[]; clones: VoiceCloneView | null; assistants: Assistant[];
+  regression: RegressionView; proposals: Proposal[];
 };
 
 const scoreCls = (n: number) => (n >= 7 ? "ok" : n >= 5 ? "warn" : "bad");
@@ -46,6 +50,7 @@ export default function Quality(p: Props) {
       {tab === "scores" && <Scores tenant={p.tenant} canManage={p.canManage} overview={p.overview} flash={flash} />}
       {tab === "insights" && <Insights tenant={p.tenant} canManage={p.canManage} initial={p.overview.insights} flash={flash} />}
       {tab === "simulate" && <Simulate tenant={p.tenant} canManage={p.canManage} scenarios={p.scenarios} runs={p.runs} assistants={p.assistants} flash={flash} />}
+      {tab === "improve" && <Improve tenant={p.tenant} canManage={p.canManage} regression={p.regression} proposals={p.proposals} runs={p.runs} assistants={p.assistants} flash={flash} />}
       {tab === "voice" && <Voice tenant={p.tenant} canManage={p.canManage} view={p.clones} assistants={p.assistants} flash={flash} />}
     </>
   );
@@ -187,9 +192,9 @@ function Insights({ tenant, canManage, initial, flash }: { tenant: string; canMa
   );
 }
 
-const EMPTY: Omit<Scenario, "id" | "tenant_id" | "created_at"> = {
+const EMPTY: Omit<Scenario, "id" | "tenant_id" | "created_at" | "origin"> = {
   name: "", persona: "A polite first-time caller", goal: "", turns: ["Hi, I'd like to book an appointment please."],
-  expect: { mentions: [], avoids: [], handoff: null, ticket: null, min_overall: 5 },
+  expect: { mentions: [], avoids: [], handoff: null, ticket: null, min_overall: 5 }, regression: false,
 };
 
 function Simulate({ tenant, canManage, scenarios, runs, assistants, flash }: {
@@ -227,7 +232,7 @@ function Simulate({ tenant, canManage, scenarios, runs, assistants, flash }: {
   const saveScenario = async (e: React.FormEvent) => {
     e.preventDefault();
     const r = await put<Scenario>(`/v1/quality/scenarios${q}`, {
-      id: editing, name: form.name, persona: form.persona, goal: form.goal, turns: form.turns.filter((t) => t.trim()),
+      id: editing, name: form.name, persona: form.persona, goal: form.goal, turns: form.turns.filter((t) => t.trim()), regression: form.regression,
       expect: { ...form.expect, mentions: form.expect.mentions.filter(Boolean), avoids: form.expect.avoids.filter(Boolean) },
     });
     if (!r.ok) return flash(`Could not save: ${r.error}`);
@@ -237,6 +242,13 @@ function Simulate({ tenant, canManage, scenarios, runs, assistants, flash }: {
   };
   const remove = async (id: string) => {
     if (await del(`/v1/quality/scenarios/${id}${q}`)) { setScs((s) => s.filter((x) => x.id !== id)); setSel((s) => s.filter((x) => x !== id)); }
+  };
+  const keepFailures = async (run: SimulationRun) => {
+    const r = await request<Scenario[]>(`/v1/quality/regression/from-run/${run.id}${q}`, { method: "POST" });
+    if (!r.ok) return flash(`Could not save: ${r.error}`);
+    const next = await fetchScenarios(tenant);
+    if (next) setScs(next);
+    flash(r.data.length ? `${r.data.length} failed scenario${r.data.length === 1 ? "" : "s"} added to the regression pack — they now run on every Studio save.` : "Every failed scenario is already in the regression pack.");
   };
   const list = (v: string[]) => v.join(", ");
   const parse = (s: string) => s.split(",").map((x) => x.trim()).filter(Boolean);
@@ -252,12 +264,12 @@ function Simulate({ tenant, canManage, scenarios, runs, assistants, flash }: {
             <label key={s.id} className="check list-row" style={{ alignItems: "flex-start" }}>
               <input type="checkbox" checked={sel.includes(s.id)} onChange={(e) => setSel(e.target.checked ? [...sel, s.id] : sel.filter((x) => x !== s.id))} />
               <div style={{ flex: 1 }}>
-                <strong>{s.name}</strong> <span className="small muted">— {s.persona}{s.goal ? `; wants to ${s.goal}` : ""}</span>
+                <strong>{s.name}</strong> {s.regression && <span className="pill" title="Runs on every Studio save">regression</span>} <span className="small muted">— {s.persona}{s.goal ? `; wants to ${s.goal}` : ""}</span>
                 <div className="small muted">{s.turns.length} turn{s.turns.length === 1 ? "" : "s"}{s.expect.mentions.length ? ` · must mention ${list(s.expect.mentions)}` : ""}{s.expect.handoff != null ? ` · handoff ${s.expect.handoff ? "expected" : "not expected"}` : ""}</div>
               </div>
               {canManage && (
                 <span style={{ display: "flex", gap: 4 }}>
-                  <button className="small" type="button" onClick={() => { setEditing(s.id); setForm({ name: s.name, persona: s.persona, goal: s.goal, turns: s.turns, expect: s.expect }); }}>Edit</button>
+                  <button className="small" type="button" onClick={() => { setEditing(s.id); setForm({ name: s.name, persona: s.persona, goal: s.goal, turns: s.turns, expect: s.expect, regression: s.regression }); }}>Edit</button>
                   <button className="small" type="button" onClick={() => remove(s.id)}>Delete</button>
                 </span>
               )}
@@ -305,6 +317,7 @@ function Simulate({ tenant, canManage, scenarios, runs, assistants, flash }: {
             </label>
             <label>Minimum QA score<input type="number" min={0} max={10} value={form.expect.min_overall} onChange={(e) => setForm({ ...form, expect: { ...form.expect, min_overall: Number(e.target.value) } })} /></label>
           </div>
+          <label className="check"><input type="checkbox" checked={form.regression} onChange={(e) => setForm({ ...form, regression: e.target.checked })} /> Regression test — run on every Studio save and block the save if it starts failing</label>
           {canManage && (
             <div style={{ display: "flex", gap: "0.5rem" }}>
               <button className="primary" type="submit">{editing ? "Save changes" : "Add scenario"}</button>
@@ -325,6 +338,12 @@ function Simulate({ tenant, canManage, scenarios, runs, assistants, flash }: {
         {!open ? <p className="muted small">No runs yet.</p> : (
           <>
             {open.winner && <p className="small"><span className="pill ok">Variant {open.winner} wins</span> higher average QA score across the scenarios.</p>}
+            {canManage && open.results.some((r) => r.label === "A" && !r.passed) && (
+              <p className="small" style={{ display: "flex", gap: "0.5rem", alignItems: "center", flexWrap: "wrap" }}>
+                <button className="small" type="button" onClick={() => keepFailures(open)}>Keep failures as regression tests</button>
+                <span className="muted">then draft fixes under the &ldquo;Regression pack &amp; auto-improve&rdquo; tab.</span>
+              </p>
+            )}
             {open.results.map((r, n) => (
               <div key={n} className="card" style={{ marginBottom: "0.8rem" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: "0.5rem" }}>

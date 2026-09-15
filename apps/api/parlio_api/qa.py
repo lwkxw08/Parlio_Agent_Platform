@@ -761,6 +761,8 @@ class Scenario(BaseModel):
     goal: str = ""
     turns: list[str] = Field(min_length=1, max_length=20, description="scripted caller lines")
     expect: Expectation = Field(default_factory=Expectation)
+    regression: bool = Field(False, description="part of the pack run on every publish")
+    origin: str | None = Field(None, description="call:<id> or run:<id> this test was saved from")
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
     def to_doc(self) -> TenantDoc:

@@ -103,7 +103,12 @@ class Receptionist(Agent):
     def tts_node(
         self, text: AsyncIterable[str], model_settings: ModelSettings
     ) -> AsyncIterable[rtc.AudioFrame] | Coroutine[Any, Any, AsyncIterable[rtc.AudioFrame]]:
-        return Agent.default.tts_node(self, speakable_stream(text), model_settings)
+        s = self.cfg.speaking
+        return Agent.default.tts_node(
+            self,
+            speakable_stream(text, digits=s.digits_individually, postcodes=s.spell_postcodes),
+            model_settings,
+        )
 
 
 def _redis(url: str) -> Redis | None:

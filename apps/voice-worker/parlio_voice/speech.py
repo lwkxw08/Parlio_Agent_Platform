@@ -44,7 +44,7 @@ def _postcode(m: re.Match[str]) -> str:
     return f"{' '.join(m.group(1))}, {' '.join(m.group(2))}"
 
 
-def speakable(text: str) -> str:
+def speakable(text: str, *, digits: bool = True, postcodes: bool = True) -> str:
     """One paragraph -> short, separately-paused sentences with numbers spelt out."""
     text = _MARKDOWN.sub("", text)
     out: list[str] = []
@@ -61,18 +61,22 @@ def speakable(text: str) -> str:
             line += "."
         out.append(line)
     joined = " ".join(out)
-    joined = _PHONE.sub(_phone, joined)
-    joined = _POSTCODE.sub(_postcode, joined)
+    if digits:
+        joined = _PHONE.sub(_phone, joined)
+    if postcodes:
+        joined = _POSTCODE.sub(_postcode, joined)
     return joined
 
 
-async def speakable_stream(text: AsyncIterable[str]) -> AsyncIterator[str]:
+async def speakable_stream(
+    text: AsyncIterable[str], *, digits: bool = True, postcodes: bool = True
+) -> AsyncIterator[str]:
     """Buffer streamed LLM chunks to sentence/line boundaries, then rewrite each segment."""
     buf = ""
     async for chunk in text:
         buf += chunk
         if _FLUSH_AT.search(buf) or len(buf) > 240:
-            yield speakable(buf) + " "
+            yield speakable(buf, digits=digits, postcodes=postcodes) + " "
             buf = ""
     if buf.strip():
-        yield speakable(buf)
+        yield speakable(buf, digits=digits, postcodes=postcodes)
