@@ -92,8 +92,17 @@ services:
     env_file:
       - path: .env
         required: false
+    extra_hosts: ["host.docker.internal:host-gateway"]
     environment:
       PARLIO_REDIS_URL: redis://redis:6379/0
+      # LiveKit server API (host network): live listen/whisper, browser voice and the outbound dialer.
+      PARLIO_LIVEKIT_URL: http://host.docker.internal:7880
+      PARLIO_LIVEKIT_API_KEY: ${LIVEKIT_API_KEY}
+      PARLIO_LIVEKIT_API_SECRET: ${LIVEKIT_API_SECRET}
+      # Outbound AI calls: livekit dials through the platform Telnyx trunk; simulated just logs.
+      PARLIO_OUTBOUND_DIALER: ${OUTBOUND_DIALER:-simulated}
+      PARLIO_OUTBOUND_TRUNK_ID: ${OUTBOUND_SIP_TRUNK_ID:-}
+      PARLIO_OUTBOUND_CALLER_ID: ${OUTBOUND_CALLER_ID:-}
       PARLIO_STORE_BACKEND: postgres
       PARLIO_DATABASE_URL: postgresql+asyncpg://parlio_app:${POSTGRES_APP_PASSWORD}@postgres:5432/parlio
       PARLIO_DASHBOARD_URL: ${DASHBOARD_URL}

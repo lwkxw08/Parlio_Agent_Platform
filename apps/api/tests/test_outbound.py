@@ -17,6 +17,7 @@ from parlio_api.outbound import (
     OutboundPolicy,
     OutboundService,
     OutboundStatus,
+    Outcome,
     Purpose,
     SimulatedDialer,
     jurisdiction_for,
@@ -301,7 +302,25 @@ async def test_public_form_and_inbound_api_intake(client: AsyncClient, app: Fast
 
 
 async def test_ticket_callback_scheduled_from_intake(client: AsyncClient, app: FastAPI) -> None:
-    await _open_window(app)
+    p = await _open_window(app)
+    ticket = {
+        "caller_name": "Tom",
+        "caller_number": "07700900555",
+        "reason": "boiler leak",
+        "callback_window": "asap",
+    }
+    # default: callbacks stay with the team, nothing is queued for the assistant
+    r = await client.post(
+        "/v1/worker/tickets",
+        headers=HEADERS,
+        params={"tenant_id": "demo", "company_id": "demo", "call_id": "c-tk0"},
+        json=ticket,
+    )
+    assert r.status_code == 201, r.text
+    assert (await client.get("/v1/outbound/calls", params=Q)).json() == []
+
+    p.auto_ticket_callbacks = True
+    await _svc(app).save_policy(p)
     r = await client.post(
         "/v1/worker/tickets",
         headers=HEADERS,
@@ -327,6 +346,25 @@ async def test_ticket_callback_scheduled_from_intake(client: AsyncClient, app: F
     assert r.status_code == 201 and r.json()["context"]["reason"] == "boiler leak"
     r = await client.post(f"/v1/outbound/calls/{r.json()['id']}/cancel", params=Q)
     assert r.status_code == 200 and r.json()["status"] == "cancelled"
+
+
+async def test_stale_dial_times_out(client: AsyncClient, app: FastAPI) -> None:
+    p = await _open_window(app)
+    svc = _svc(app)
+    job = await svc.schedule(
+        tenant_id="demo",
+        assistant_id="demo",
+        purpose=Purpose.TICKET_CALLBACK,
+        to="07700900555",
+        when=datetime.now(UTC),
+    )
+    job = await svc.dispatch(job)
+    assert job.status == OutboundStatus.DIALING
+    assert await svc.expire_stale() == []
+    late = datetime.now(UTC) + timedelta(minutes=p.stale_dial_min + 1)
+    (expired,) = await svc.expire_stale(late)
+    assert expired.id == job.id and expired.status == OutboundStatus.RETRY
+    assert expired.attempts[-1].outcome == Outcome.FAILED and expired.reason == "dial timed out"
 
 
 async def test_booking_schedules_reminder_and_review_then_no_show(

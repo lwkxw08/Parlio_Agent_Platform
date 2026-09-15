@@ -303,6 +303,9 @@ function Policy({ tenant, policy, jurisdictions, canManage, onSaved }: {
       <div className="row">
         <label className="check small"><input type="checkbox" checked={f.require_consent} disabled={!canManage} onChange={(e) => setF({ ...f, require_consent: e.target.checked })} /> Only call leads with recorded consent</label>
         <label className="check small"><input type="checkbox" checked={f.leave_voicemail} disabled={!canManage} onChange={(e) => setF({ ...f, leave_voicemail: e.target.checked })} /> Leave a voicemail when unanswered</label>
+        <label className="check small" title="Off: callback tickets wait for your team, who can choose “Send to AI call back” on the ticket. On: every callback request is queued for the assistant automatically.">
+          <input type="checkbox" checked={f.auto_ticket_callbacks} disabled={!canManage} onChange={(e) => setF({ ...f, auto_ticket_callbacks: e.target.checked })} /> Automatically hand callback requests to the assistant
+        </label>
       </div>
       {err && <p className="small" style={{ color: "var(--bad-fg)" }}>{err}</p>}
       {canManage && <div className="row"><button type="submit">Save policy</button></div>}

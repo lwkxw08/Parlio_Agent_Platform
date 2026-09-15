@@ -52,9 +52,11 @@ export default function TicketActions({ ticket: t }: { ticket: Ticket }) {
       </p>
       <div className="row actions">
         {t.status === "open" && <button disabled={busy} onClick={() => act("claim")}>Claim</button>}
-        {open && t.caller_number && <button disabled={busy} onClick={() => act("callback")}>Call back</button>}
         {open && t.caller_number && (
-          <button disabled={busy} onClick={aiCallback} title="Schedule the assistant to ring them back (Outbound policy applies)">AI call back</button>
+          <button disabled={busy} onClick={() => act("callback")} title="Ring the caller yourself now (claims the ticket to you)">Call back myself</button>
+        )}
+        {open && t.caller_number && (
+          <button disabled={busy} onClick={aiCallback} title="Queue the assistant to ring them back and progress the ticket (calling hours and do-not-call list apply)">Send to AI call back</button>
         )}
         {open && <button disabled={busy} onClick={() => act("resolve")}>Resolve</button>}
         {!open && <button disabled={busy} onClick={() => act("reopen")}>Reopen</button>}

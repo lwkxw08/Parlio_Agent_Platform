@@ -261,7 +261,13 @@ def build_sms_provider(settings: Settings) -> SmsProvider:
 
 def build_dialer(settings: Settings) -> Dialer:
     if settings.outbound_dialer == "livekit" and settings.outbound_trunk_id:
-        return LiveKitDialer(settings.outbound_trunk_id)
+        return LiveKitDialer(
+            settings.outbound_trunk_id,
+            url=settings.livekit_url,
+            api_key=settings.livekit_api_key,
+            api_secret=settings.livekit_api_secret,
+            agent_name=settings.agent_name,
+        )
     if settings.outbound_dialer == "livekit":
         log.warning("PARLIO_OUTBOUND_DIALER=livekit but no trunk id; using simulated dialer")
     return SimulatedDialer()

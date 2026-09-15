@@ -713,7 +713,7 @@ export type OutboundCall = {
 export type Suppression = { id: string; tenant_id: string; phone: string; reason: string; source: string; created_at: string };
 export type OutboundPolicy = {
   tenant_id: string; enabled: boolean; purposes: OutboundPurpose[]; jurisdiction: string; timezone: string; window_start: string; window_end: string;
-  days: string[]; max_attempts: number; retry_gap_min: number; daily_cap_per_number: number; speed_to_lead_target_s: number; require_consent: boolean;
+  days: string[]; max_attempts: number; retry_gap_min: number; daily_cap_per_number: number; speed_to_lead_target_s: number; require_consent: boolean; auto_ticket_callbacks: boolean; stale_dial_min: number;
   caller_id: string | null; form_token: string; reminder_hours_before: number; review_request_delay_h: number; leave_voicemail: boolean; opt_out_keywords: string[];
 };
 export type Jurisdiction = { prefix: string; timezone: string; start: string; end: string; days: string[]; max_attempts: number; note: string };
