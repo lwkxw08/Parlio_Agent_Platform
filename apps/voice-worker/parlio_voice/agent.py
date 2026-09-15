@@ -345,6 +345,8 @@ async def entrypoint(ctx: JobContext) -> None:
             packet.data, packet.topic, packet.participant.identity if packet.participant else None
         )
 
+    background: list[asyncio.Task[None]] = []
+
     async def _record_caller_track() -> None:
         for pub in participant.track_publications.values():
             if pub.kind == rtc.TrackKind.KIND_AUDIO and pub.sid:
@@ -365,9 +367,10 @@ async def entrypoint(ctx: JobContext) -> None:
             inferred = "booked" if tools.booking_id else "ticketed" if tools.ticket_id else None
             if inferred:
                 await reporter.record(inferred, "inferred from call actions")
-        audio_task.cancel()
-        with suppress(asyncio.CancelledError):
-            await audio_task
+        for bg in (audio_task, *background):
+            bg.cancel()
+            with suppress(asyncio.CancelledError):
+                await bg
         await audio.sample()
         await recorder.stop()
         try:
@@ -412,13 +415,21 @@ async def entrypoint(ctx: JobContext) -> None:
     )
     log.info("session started %.0fms after job start", answered_after * 1000)
 
-    if cfg.recording.enabled:
-        await _record_caller_track()
-        await _record_agent_track()
+    async def _start_recording() -> None:
+        # Egress is off the critical path: the caller must hear us at once, not wait on it.
+        try:
+            await _record_caller_track()
+            await _record_agent_track()
+        except Exception:
+            log.warning("recording could not be started for %s", call_id, exc_info=True)
+            return
         if recorder.object_keys:
             events.emit(
                 cfg, call_id, CallEventType.RECORDING_STARTED, {"keys": recorder.object_keys}
             )
+
+    if cfg.recording.enabled:
+        background.append(asyncio.create_task(_start_recording()))
 
     consent = cfg.consent_text()
     if consent:
