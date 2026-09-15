@@ -108,3 +108,38 @@ async def test_process_call_flags_missing_and_classifies_returning() -> None:
     assert stored is not None and stored.summary == r2.summary
 
     assert await process_call(store, HeuristicAnalyser(), "missing") is None
+
+
+async def test_contact_card_filled_from_conversation() -> None:
+    store = MemoryStore(None)
+
+    async def ingest(call_id: str, text: str) -> None:
+        for t, p in [
+            (CallEventType.CALL_STARTED, {"caller": "+447700900001"}),
+            (CallEventType.CALL_ENDED, {"transcript": [{"role": "user", "text": text}]}),
+        ]:
+            await store.apply_event(
+                CallEvent(
+                    type=t,
+                    call_id=call_id,
+                    tenant_id="t",
+                    company_id="co",
+                    assistant_id="a",
+                    payload=p,
+                )
+            )
+
+    # No required fields configured: name/email still land on the contact card.
+    await ingest("c1", "Hi, I'm Keith Wilson, keith@example.com")
+    r1 = await process_call(store, HeuristicAnalyser(), "c1")
+    assert r1 is not None and r1.contact_id
+    contact = await store.get_contact(r1.contact_id)
+    assert contact is not None
+    assert contact.name == "Keith Wilson" and contact.email == "keith@example.com"
+
+    # A later call never overwrites what is already on the card.
+    await ingest("c2", "It's Bob here")
+    r2 = await process_call(store, HeuristicAnalyser(), "c2")
+    assert r2 is not None and r2.contact_id == r1.contact_id
+    contact = await store.get_contact(r1.contact_id)
+    assert contact is not None and contact.name == "Keith Wilson"

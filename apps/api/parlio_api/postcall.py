@@ -18,9 +18,22 @@ from typing import Any, Protocol
 import httpx
 from pydantic import BaseModel, Field
 
-from parlio_api.store import CallRecord, CallStore, PostCallResult, RequiredField
+from parlio_api.store import CallRecord, CallStore, ContactUpdate, PostCallResult, RequiredField
 
 log = logging.getLogger("parlio.api.postcall")
+
+# Always extracted (on top of the assistant's own required fields) so the caller's contact card
+# fills itself in from the conversation even when no fields are configured.
+BASELINE_FIELDS = [
+    RequiredField(name="name", description="caller's full name", required=False),
+    RequiredField(name="email", description="caller's email address", required=False),
+]
+
+
+def _with_baseline(fields: list[RequiredField]) -> list[RequiredField]:
+    have = {f.name for f in fields}
+    return fields + [f for f in BASELINE_FIELDS if f.name not in have]
+
 
 _EMAIL = re.compile(r"[\w.+-]+@[\w-]+\.[\w.-]+")
 _PHONE = re.compile(r"(?:\+44|0)\s?\d(?:[\s-]?\d){8,9}")
@@ -114,7 +127,7 @@ async def process_call(store: CallStore, analyser: Analyser, call_id: str) -> Po
     if call is None:
         return None
     fields = await store.required_fields(call.assistant_id)
-    analysis = await analyser.analyse(call, fields)
+    analysis = await analyser.analyse(call, _with_baseline(fields))
 
     caller_type, contact_id = "unknown", None
     if call.caller and call.caller != "unknown" and not call.caller.startswith("web:"):
@@ -122,6 +135,7 @@ async def process_call(store: CallStore, analyser: Analyser, call_id: str) -> Po
             call.tenant_id, call.company_id, call.caller
         )
         caller_type = "returning" if returning else "new"
+        await _fill_contact(store, contact_id, analysis.extracted)
 
     missed = [f.name for f in fields if f.required and not analysis.extracted.get(f.name)]
     result = PostCallResult(
@@ -133,6 +147,21 @@ async def process_call(store: CallStore, analyser: Analyser, call_id: str) -> Po
     )
     await store.record_postcall(call_id, result)
     return result
+
+
+async def _fill_contact(store: CallStore, contact_id: str, extracted: dict[str, Any]) -> None:
+    """Copy name/email the caller gave onto their contact card, never overwriting what's there."""
+    contact = await store.get_contact(contact_id)
+    if contact is None:
+        return
+    upd = ContactUpdate()
+    name, email = extracted.get("name"), extracted.get("email")
+    if not contact.name and isinstance(name, str) and name.strip():
+        upd.name = name.strip()[:120]
+    if not contact.email and isinstance(email, str) and _EMAIL.fullmatch(email.strip()):
+        upd.email = email.strip()
+    if upd.model_dump(exclude_none=True):
+        await store.update_contact(contact_id, upd)
 
 
 class PostCallProcessor:

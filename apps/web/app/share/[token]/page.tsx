@@ -1,4 +1,5 @@
 import { fetchShared, secs, when } from "@/lib/api";
+import { Transcript } from "../../transcript";
 
 export const dynamic = "force-dynamic";
 
@@ -24,14 +25,7 @@ export default async function Shared({ params }: { params: Promise<{ token: stri
       </div>
       <div className="section">
         <h2>Transcript</h2>
-        <div className="transcript">
-          {c.transcript.map((t, i) => (
-            <div key={i} className={`bubble ${t.role}`}>
-              <span className="who">{t.role === "assistant" ? "Assistant" : "Caller"}</span>{t.text}
-            </div>
-          ))}
-          {!c.transcript.length && <p className="muted">No transcript.</p>}
-        </div>
+        <Transcript turns={c.transcript} startedAt={c.started_at} />
       </div>
       <p className="muted small" style={{ textAlign: "center" }}>Shared via Parlio</p>
     </div>
