@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { fetchTickets, post, secs, ticketRef, type OutboundCall, type Ticket, type TicketStatus } from "@/lib/api";
+import { humanize } from "@/app/breakdown";
 
 const COLUMNS: { status: TicketStatus; title: string }[] = [
   { status: "open", title: "Open" },
@@ -67,9 +68,9 @@ export default function TicketBoard({ initial }: { initial: Ticket[] }) {
                 <article key={t.id} className={`ticket ${t.priority}`}>
                   <div className="row">
                     <span className="muted small">{ticketRef(t.id)}</span>
-                    <span className={`pill ${t.priority}`}>{t.priority}</span>
-                    {t.category && <span className="pill">{t.category}</span>}
-                    {t.department && <span className="pill">{t.department}</span>}
+                    <span className={`pill ${t.priority}`}>{humanize(t.priority)}</span>
+                    {t.category && <span className="pill">{humanize(t.category)}</span>}
+                    {t.department && <span className="pill">{humanize(t.department)}</span>}
                     {slaLabel(t, now)}
                   </div>
                   <Link href={`/tickets/${t.id}`} className="reason">{t.reason}</Link>

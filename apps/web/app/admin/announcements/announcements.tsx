@@ -7,6 +7,7 @@ import {
   KIND_LABEL, ROADMAP_LABEL, createAnnouncement, createRoadmapItem, deleteAnnouncement, deleteRoadmapItem, setFeedbackStatus,
   updateAnnouncement, updateRoadmapItem, updateWhiteGlove, when,
 } from "@/lib/api";
+import { humanize } from "@/app/breakdown";
 
 const SECTIONS = ["whiteglove", "announcements", "roadmap", "feedback"] as const;
 type Section = (typeof SECTIONS)[number];
@@ -169,7 +170,7 @@ export default function Announcements({ announcements: a0, roadmap: r0, feedback
             <tbody>
               {roadmap.map((r) => (
                 <tr key={r.id}>
-                  <td><b>{r.title}</b> {r.category && <span className="pill">{r.category}</span>}<div className="small muted">{r.description}</div></td>
+                  <td><b>{r.title}</b> {r.category && <span className="pill">{humanize(r.category)}</span>}<div className="small muted">{r.description}</div></td>
                   <td><span className="pill">{ROADMAP_LABEL[r.status]}</span>{r.eta && <div className="small muted">{r.eta}</div>}</td>
                   <td>▲ {r.votes}</td>
                   <td className="small">
@@ -196,7 +197,7 @@ export default function Announcements({ announcements: a0, roadmap: r0, feedback
                 <tr key={f.id}>
                   <td className="small muted">{when(f.created_at)}</td>
                   <td className="small"><b>{f.tenant_id}</b><br />{f.author}</td>
-                  <td><span className={`pill ${f.kind === "bug" ? "bad" : f.kind === "praise" ? "ok" : ""}`}>{f.kind}</span></td>
+                  <td><span className={`pill ${f.kind === "bug" ? "bad" : f.kind === "praise" ? "ok" : ""}`}>{humanize(f.kind)}</span></td>
                   <td className="small">{f.text}{f.page && <div className="muted">from {f.page}</div>}</td>
                   <td>
                     <select className="field" disabled={!canEdit} value={f.status} onChange={async (e) => { const r = await setFeedbackStatus(f.id, e.target.value as Feedback["status"]); if (r) setFeedback(feedback.map((x) => (x.id === f.id ? r : x))); }}>

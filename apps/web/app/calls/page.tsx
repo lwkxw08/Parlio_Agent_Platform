@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { callParty, fetchCalls, ms, phone, secs, when } from "@/lib/api";
+import { humanize } from "@/app/breakdown";
 
 export const dynamic = "force-dynamic";
 
@@ -71,7 +72,7 @@ export default async function Calls({ searchParams }: { searchParams: Promise<Se
                 {c.caller_type === "returning" && <span className="pill" style={{ marginLeft: 4 }}>returning</span>}
               </td>
               <td>
-                <span className={`pill ${c.kind === "missed" || c.kind === "blocked" ? "bad" : c.kind === "answered" ? "ok" : ""}`}>{c.kind}</span>
+                <span className={`pill ${c.kind === "missed" || c.kind === "blocked" ? "bad" : c.kind === "answered" ? "ok" : ""}`}>{humanize(c.kind)}</span>
                 {c.escalated && <span className="pill urgent" style={{ marginLeft: 4 }}>urgent</span>}
               </td>
               <td className="small muted">{c.summary ?? "—"}</td>

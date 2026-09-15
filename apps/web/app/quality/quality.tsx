@@ -25,6 +25,7 @@ import {
   when,
 } from "@/lib/api";
 import Improve from "./improve";
+import { humanize } from "@/app/breakdown";
 
 const TABS = [["scores", "Call scores"], ["insights", "Insights"], ["simulate", "Simulation sandbox"], ["improve", "Regression pack & auto-improve"], ["voice", "Owner voice"]] as const;
 type Tab = (typeof TABS)[number][0];
@@ -422,7 +423,7 @@ function Voice({ tenant, canManage, view, assistants, flash }: { tenant: string;
                 <tr key={c.id}>
                   <td>{c.name}</td><td>{c.assistant_id}</td><td className="small">{c.consent_by}<div className="muted">{when(c.consent_at)}</div></td>
                   <td className="small">{Math.round(c.sample_seconds)}s · {c.provider}</td>
-                  <td><span className={`pill ${c.status === "ready" ? "ok" : c.status === "failed" ? "bad" : "warn"}`}>{c.status}</span>{c.error && <div className="small muted">{c.error}</div>}</td>
+                  <td><span className={`pill ${c.status === "ready" ? "ok" : c.status === "failed" ? "bad" : "warn"}`}>{humanize(c.status)}</span>{c.error && <div className="small muted">{c.error}</div>}</td>
                   <td>{canManage && <span style={{ display: "flex", gap: 4 }}><button className="small" disabled={c.status !== "ready"} onClick={() => activate(c.id)}>Use for assistant</button><button className="small" onClick={() => remove(c.id)}>Delete</button></span>}</td>
                 </tr>
               ))}

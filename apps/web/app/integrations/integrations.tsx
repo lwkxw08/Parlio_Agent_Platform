@@ -23,6 +23,7 @@ import {
   when,
 } from "@/lib/api";
 import Connectors from "./connectors";
+import { humanize } from "@/app/breakdown";
 
 const EVENTS: [string, string][] = [
   ["ticket.created", "Ticket created"],
@@ -67,7 +68,7 @@ type Props = {
   banner: string | null;
 };
 
-const statusPill = (s: string) => <span className={`pill ${s === "sent" || s === "connected" || s === "confirmed" ? "ok" : s === "failed" || s === "error" ? "bad" : "warn"}`}>{s}</span>;
+const statusPill = (s: string) => <span className={`pill ${s === "sent" || s === "connected" || s === "confirmed" ? "ok" : s === "failed" || s === "error" ? "bad" : "warn"}`}>{humanize(s)}</span>;
 
 export default function Integrations(p: Props) {
   const [tab, setTab] = useState(p.tab);
@@ -131,7 +132,7 @@ function Notifications({ tenant, canManage, rules: initial, log }: Props) {
             {rules.map((r) => (
               <tr key={r.id}>
                 <td>{r.name}</td>
-                <td><span className="pill">{r.channel}</span></td>
+                <td><span className="pill">{humanize(r.channel)}</span></td>
                 <td className="small">{r.target}</td>
                 <td className="small">{r.events.map((e) => EVENTS.find(([id]) => id === e)?.[1] ?? e).join(", ")}</td>
                 <td className="small muted">{r.qualified_only ? "Qualified leads only" : "All"}{r.departments.length ? ` · ${r.departments.join(", ")}` : ""}</td>
@@ -192,7 +193,7 @@ function SmsLog({ messages, assistants }: { messages: Message[]; assistants: Ass
         <table>
           <thead><tr><th>Assistant</th><th>Trigger</th><th>Name</th><th>Template</th><th>Status</th></tr></thead>
           <tbody>
-            {scenarios.map((s) => <tr key={`${s.assistant}-${s.id}`}><td>{s.assistant}</td><td><span className="pill">{s.trigger}</span></td><td>{s.name}</td><td className="small muted">{s.template}</td><td>{s.enabled ? <span className="pill ok">on</span> : <span className="pill">off</span>}</td></tr>)}
+            {scenarios.map((s) => <tr key={`${s.assistant}-${s.id}`}><td>{s.assistant}</td><td><span className="pill">{humanize(s.trigger)}</span></td><td>{s.name}</td><td className="small muted">{s.template}</td><td>{s.enabled ? <span className="pill ok">on</span> : <span className="pill">off</span>}</td></tr>)}
             {!scenarios.length && <tr><td colSpan={5} className="muted">No scenarios configured.</td></tr>}
           </tbody>
         </table>
@@ -256,7 +257,7 @@ function Calendar({ tenant, canManage, connections: initial, bookings, sync }: P
           <tbody>
             {connections.map((c) => (
               <tr key={c.id}>
-                <td>{c.name}</td><td><span className="pill">{c.provider}</span></td>
+                <td>{c.name}</td><td><span className="pill">{humanize(c.provider)}</span></td>
                 <td className="small">{c.account_email ?? c.booking_url ?? c.calendar_id}</td>
                 <td className="small">{c.bookable ? `${c.slot_minutes} min${c.buffer_minutes ? ` + ${c.buffer_minutes} buffer` : ""}` : "link only"}</td>
                 <td>{statusPill(c.status)}</td>

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { type Member, type StaffRole, type StaffSettings, del, put, request, when } from "@/lib/api";
+import { humanize } from "@/app/breakdown";
 
 const ROLES: [StaffRole, string][] = [
   ["owner", "Owner — everything, incl. staff & plans"],
@@ -70,7 +71,7 @@ export default function Staff({ staff: initial, settings: initialSettings, isOwn
                       </select>
                     ) : m.role}
                   </td>
-                  <td><span className={`pill ${m.status === "active" ? "ok" : "warn"}`}>{m.status}</span></td>
+                  <td><span className={`pill ${m.status === "active" ? "ok" : "warn"}`}>{humanize(m.status)}</span></td>
                   {isOwner && <td>{m.user_id !== selfId && <button type="button" className="ghost" onClick={() => remove(m)}>Remove</button>}</td>}
                 </tr>
               ))}

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { type PublicApproval, decidePublicApproval, when } from "@/lib/api";
+import { humanize } from "@/app/breakdown";
 
 export default function Decide({ token, initial }: { token: string; initial: PublicApproval }) {
   const [a, setA] = useState(initial);
@@ -28,7 +29,7 @@ export default function Decide({ token, initial }: { token: string; initial: Pub
     <div className="approve-page">
       <div className="section">
         <p className="muted small" style={{ margin: 0 }}>Parlio · approval requested {when(a.requested_at)}</p>
-        <h2 style={{ marginTop: "0.4rem" }}><span className="pill warn" style={{ marginRight: "0.4rem" }}>{a.kind}</span>{a.title}</h2>
+        <h2 style={{ marginTop: "0.4rem" }}><span className="pill warn" style={{ marginRight: "0.4rem" }}>{humanize(a.kind)}</span>{a.title}</h2>
         {amount && <p style={{ fontSize: "1.6rem", fontWeight: 600, margin: "0.4rem 0" }}>{amount}</p>}
         {a.details && <p>{a.details}</p>}
         {a.caller && <p className="muted small">Caller: {a.caller}{a.call_id ? " (on the line now)" : ""}</p>}
