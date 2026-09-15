@@ -14,6 +14,7 @@ from parlio_api.calendar import CalendarService
 from parlio_api.compliance import ComplianceService
 from parlio_api.connectors import ConnectorService, TenantApiKey
 from parlio_api.drafting import Drafter
+from parlio_api.improve import ImproveService
 from parlio_api.inbox import InboxService
 from parlio_api.integrations import IntegrationHub
 from parlio_api.live import ApprovalService, LiveCallHub, SupervisorService
@@ -126,6 +127,11 @@ def get_qa(request: Request) -> QAService:
 
 def get_simulation(request: Request) -> SimulationService:
     svc: SimulationService = request.app.state.simulation
+    return svc
+
+
+def get_improve(request: Request) -> ImproveService:
+    svc: ImproveService = request.app.state.improve
     return svc
 
 
@@ -251,6 +257,7 @@ PostCallDep = Annotated[PostCallProcessor, Depends(get_postcall)]
 SettingsDep = Annotated[Settings, Depends(get_settings)]
 QADep = Annotated[QAService, Depends(get_qa)]
 SimulationDep = Annotated[SimulationService, Depends(get_simulation)]
+ImproveDep = Annotated[ImproveService, Depends(get_improve)]
 VoiceCloneDep = Annotated[VoiceCloneService, Depends(get_voice_clones)]
 SecurityDep = Annotated[SecurityService, Depends(get_security)]
 ValueDep = Annotated[ValueService, Depends(get_value)]

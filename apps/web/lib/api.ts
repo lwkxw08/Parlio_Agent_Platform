@@ -220,6 +220,16 @@ export type TransferConfig = {
   sla_minutes: Record<string, number>;
 };
 
+export type SpeakingStyle = {
+  one_detail_at_a_time: boolean;
+  digits_individually: boolean;
+  spell_postcodes: boolean;
+  summary_per_line: boolean;
+  confirm_phrase: string;
+  final_confirm_phrase: string;
+  extra_rules: string[];
+};
+
 export type Assistant = {
   tenant_id: string;
   company_id: string;
@@ -232,6 +242,7 @@ export type Assistant = {
   business: BusinessInfo;
   hours: Schedule;
   persona: Persona;
+  speaking: SpeakingStyle;
   rules: BusinessRule[];
   faqs: Faq[];
   sms_scenarios: SmsScenario[];
@@ -836,7 +847,10 @@ export type Insight = {
 };
 export type QAOverview = { settings: QASettings; stats: QAStats; recent: QAScore[]; insights: Insight[] };
 export type Expectation = { mentions: string[]; avoids: string[]; handoff: boolean | null; ticket: boolean | null; min_overall: number };
-export type Scenario = { id: string; tenant_id: string; name: string; persona: string; goal: string; turns: string[]; expect: Expectation; created_at: string };
+export type Scenario = {
+  id: string; tenant_id: string; name: string; persona: string; goal: string; turns: string[]; expect: Expectation;
+  regression: boolean; origin: string | null; created_at: string;
+};
 export type SimTurn = { caller: string; assistant: string; handoff: boolean; ticket: boolean };
 export type SimulationResult = {
   scenario_id: string; scenario_name: string; label: string; config_source: string; turns: SimTurn[]; score: QAScore; passed: boolean; failures: string[]; agent: string;
@@ -852,6 +866,26 @@ export const fetchCallScore = (tenant_id: string, call_id: string) => get<QAScor
 export const fetchScenarios = (tenant_id: string) => get<Scenario[]>(`/v1/quality/scenarios${qs({ tenant_id })}`);
 export const fetchSimRuns = (tenant_id: string) => get<SimulationRun[]>(`/v1/quality/simulate/runs${qs({ tenant_id })}`);
 export const fetchVoiceClones = (tenant_id: string) => get<VoiceCloneView>(`/v1/quality/voice-clones${qs({ tenant_id })}`);
+
+// -- Phase 13b: regression pack + auto-improve -----------------------------------------------------
+export type ScenarioDelta = {
+  scenario_id: string; scenario_name: string; before_passed: boolean; after_passed: boolean; before_score: number; after_score: number; after_failures: string[];
+};
+export type RegressionCheck = {
+  id: string; tenant_id: string; assistant_id: string; label: string; pack_size: number; baseline_passed: number; candidate_passed: number;
+  deltas: ScenarioDelta[]; regressions: string[]; blocked: boolean; forced: boolean; published_version: number | null; created_at: string;
+};
+export type RegressionView = { pack: Scenario[]; checks: RegressionCheck[] };
+export type Proposal = {
+  id: string; tenant_id: string; assistant_id: string; run_id: string; kind: "faq" | "rule"; title: string; question: string; text: string; draft_source: string;
+  scenario_id: string; scenario_name: string; failures_before: string[]; delta: ScenarioDelta; check: RegressionCheck;
+  status: "proposed" | "approved" | "rejected"; applied_version: number | null; created_at: string; updated_at: string;
+};
+export type PublishResult = { check: RegressionCheck; config: Assistant | null };
+export const fetchRegression = (tenant_id: string) => get<RegressionView>(`/v1/quality/regression${qs({ tenant_id })}`);
+export const fetchProposals = (tenant_id: string) => get<Proposal[]>(`/v1/quality/improve/proposals${qs({ tenant_id })}`);
+export const publishAssistant = (tenant_id: string, config: Assistant, force = false) =>
+  request<PublishResult>(`/v1/quality/publish${qs({ tenant_id })}`, { method: "POST", body: JSON.stringify({ config, numbers: [], force }) });
 
 // -- Phase 14: value, white-label, compliance pack, security ---------------------------------------
 export type LeadScore = { call_id: string; score: number; grade: "hot" | "warm" | "cold" | string; intent: string | null; reasons: string[] };

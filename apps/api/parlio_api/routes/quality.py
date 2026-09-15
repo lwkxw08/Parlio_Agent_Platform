@@ -10,12 +10,14 @@ from pydantic import BaseModel, Field
 from parlio_api.auth import UserDep
 from parlio_api.deps import (
     AuditDep,
+    ImproveDep,
     QADep,
     SimulationDep,
     StoreDep,
     VoiceCloneDep,
     require_feature,
 )
+from parlio_api.improve import Proposal, ProposalStatus, RegressionCheck
 from parlio_api.observability import AuditEntry
 from parlio_api.qa import (
     CONSENT_STATEMENT,
@@ -175,6 +177,8 @@ class ScenarioInput(BaseModel):
     goal: str = ""
     turns: list[str] = Field(min_length=1, max_length=20)
     expect: dict[str, object] = Field(default_factory=dict)
+    regression: bool = False
+    origin: str | None = None
 
 
 @router.put("/scenarios", response_model=Scenario)
@@ -234,6 +238,166 @@ async def runs(
 ) -> list[SimulationRun]:
     user.require_tenant(tenant_id)
     return await sim.runs(tenant_id, min(max(limit, 1), 100))
+
+
+# -- regression pack -------------------------------------------------------------------------------
+
+
+class RegressionView(BaseModel):
+    pack: list[Scenario]
+    checks: list[RegressionCheck]
+
+
+@router.get("/regression", response_model=RegressionView)
+async def regression(user: UserDep, improve: ImproveDep, tenant_id: str) -> RegressionView:
+    user.require_tenant(tenant_id)
+    return RegressionView(
+        pack=await improve.pack(tenant_id), checks=await improve.checks(tenant_id)
+    )
+
+
+@router.post("/scenarios/{scenario_id}/regression", response_model=Scenario)
+async def set_regression(
+    scenario_id: str, user: UserDep, improve: ImproveDep, tenant_id: str, on: bool = True
+) -> Scenario:
+    user.require_admin(tenant_id)
+    sc = await improve.set_regression(tenant_id, scenario_id, on)
+    if sc is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "scenario not found")
+    return sc
+
+
+@router.post("/regression/from-run/{run_id}", response_model=list[Scenario])
+async def regression_from_run(
+    run_id: str, user: UserDep, improve: ImproveDep, tenant_id: str
+) -> list[Scenario]:
+    user.require_admin(tenant_id)
+    return await improve.add_from_run(tenant_id, run_id)
+
+
+class FromCallInput(BaseModel):
+    name: str | None = Field(None, max_length=80)
+
+
+@router.post("/regression/from-call/{call_id}", response_model=Scenario)
+async def regression_from_call(
+    call_id: str,
+    user: UserDep,
+    improve: ImproveDep,
+    tenant_id: str,
+    body: FromCallInput | None = None,
+) -> Scenario:
+    user.require_admin(tenant_id)
+    sc = await improve.add_from_call(tenant_id, call_id, name=body.name if body else None)
+    if sc is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "call not found or has no caller turns")
+    return sc
+
+
+class PublishInput(BaseModel):
+    config: AssistantConfig
+    numbers: list[str] = Field(default_factory=list)
+    force: bool = Field(False, description="publish even if the regression pack blocks it")
+
+
+class PublishResult(BaseModel):
+    check: RegressionCheck
+    config: AssistantConfig | None
+
+
+@router.post("/publish", response_model=PublishResult)
+async def publish(
+    body: PublishInput,
+    request: Request,
+    user: UserDep,
+    improve: ImproveDep,
+    audit: AuditDep,
+    tenant_id: str,
+) -> PublishResult:
+    """Studio save: run the regression pack on the candidate, then publish unless blocked."""
+    user.require_admin(tenant_id)
+    try:
+        check, cfg = await improve.publish(tenant_id, body.config, body.numbers, force=body.force)
+    except ValueError as e:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(e)) from e
+    if cfg is not None:
+        await audit.record(
+            _audit(
+                request,
+                user,
+                tenant_id,
+                "assistant.publish.forced" if check.forced else "assistant.publish",
+                f"{cfg.assistant_id}@{cfg.assistant_version}",
+            )
+        )
+    return PublishResult(check=check, config=cfg)
+
+
+# -- auto-improve ----------------------------------------------------------------------------------
+
+
+@router.get("/improve/proposals", response_model=list[Proposal])
+async def proposals(
+    user: UserDep,
+    improve: ImproveDep,
+    tenant_id: str,
+    status_: ProposalStatus | None = None,
+) -> list[Proposal]:
+    user.require_tenant(tenant_id)
+    return await improve.proposals(tenant_id, status_)
+
+
+class ProposeInput(BaseModel):
+    assistant_id: str
+    run_id: str | None = Field(None, description="defaults to the most recent run")
+
+
+@router.post(
+    "/improve/propose",
+    response_model=list[Proposal],
+    dependencies=[Depends(require_feature("simulation"))],
+)
+async def propose(
+    body: ProposeInput, user: UserDep, improve: ImproveDep, tenant_id: str
+) -> list[Proposal]:
+    user.require_admin(tenant_id)
+    try:
+        return await improve.propose(tenant_id, body.assistant_id, body.run_id)
+    except ValueError as e:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(e)) from e
+
+
+class ApproveInput(BaseModel):
+    text: str | None = Field(None, max_length=2000, description="edited wording to apply")
+
+
+@router.post("/improve/proposals/{proposal_id}/approve", response_model=Proposal)
+async def approve_proposal(
+    proposal_id: str,
+    request: Request,
+    user: UserDep,
+    improve: ImproveDep,
+    audit: AuditDep,
+    tenant_id: str,
+    body: ApproveInput | None = None,
+) -> Proposal:
+    user.require_admin(tenant_id)
+    p = await improve.approve(tenant_id, proposal_id, text=body.text if body else None)
+    if p is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "proposal not found")
+    await audit.record(_audit(request, user, tenant_id, "improve.approve", proposal_id))
+    return p
+
+
+@router.post("/improve/proposals/{proposal_id}/reject", response_model=Proposal)
+async def reject_proposal(
+    proposal_id: str, user: UserDep, improve: ImproveDep, tenant_id: str
+) -> Proposal:
+    user.require_admin(tenant_id)
+    p = await improve.reject(tenant_id, proposal_id)
+    if p is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "proposal not found")
+    return p
 
 
 # -- voice cloning ---------------------------------------------------------------------------------

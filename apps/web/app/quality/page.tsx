@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { fetchAssistants, fetchMe, fetchQuality, fetchScenarios, fetchSimRuns, fetchVoiceClones } from "@/lib/api";
+import { fetchAssistants, fetchMe, fetchProposals, fetchQuality, fetchRegression, fetchScenarios, fetchSimRuns, fetchVoiceClones } from "@/lib/api";
 import Quality from "./quality";
 
 export const dynamic = "force-dynamic";
@@ -12,8 +12,9 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ t
   const tenant = sp.tenant ?? active[0]?.tenant_id;
   if (!tenant) return <><h1>Quality</h1><p className="muted">No organisation yet — <Link href="/onboarding">set one up</Link>.</p></>;
   const role = me.data.memberships.find((m) => m.tenant_id === tenant)?.role ?? "viewer";
-  const [overview, scenarios, runs, clones, assistants] = await Promise.all([
+  const [overview, scenarios, runs, clones, assistants, regression, proposals] = await Promise.all([
     fetchQuality(tenant), fetchScenarios(tenant), fetchSimRuns(tenant), fetchVoiceClones(tenant), fetchAssistants(tenant),
+    fetchRegression(tenant), fetchProposals(tenant),
   ]);
   if (!overview) return <><h1>Quality</h1><p className="muted">API unreachable</p></>;
   return (
@@ -32,6 +33,8 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ t
         runs={runs ?? []}
         clones={clones}
         assistants={assistants ?? []}
+        regression={regression ?? { pack: [], checks: [] }}
+        proposals={proposals ?? []}
       />
     </>
   );

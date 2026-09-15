@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { type CallExplanation, type CallRecord, fetchExplanation, ms, post, secs, when } from "@/lib/api";
+import { type CallExplanation, type CallRecord, type Scenario, fetchExplanation, ms, post, request, secs, when } from "@/lib/api";
 import { Transcript } from "../../transcript";
 import { RecordingLeg } from "./recording";
 
@@ -46,6 +46,11 @@ export default function CallView({ initial }: { initial: CallRecord }) {
     setToast("Share link copied");
   };
 
+  const keepAsTest = async () => {
+    const r = await request<Scenario>(`/v1/quality/regression/from-call/${call.call_id}?tenant_id=${call.tenant_id}`, { method: "POST" });
+    setToast(r.ok ? `Saved as regression test “${r.data.name}” — it now runs on every Studio save` : `Could not save: ${r.error}`);
+  };
+
   const sendFeedback = async () => {
     const c = await post<CallRecord>(`/v1/calls/${call.call_id}/feedback`, { type: fbType, note: fbNote || null });
     if (c) {
@@ -82,6 +87,7 @@ export default function CallView({ initial }: { initial: CallRecord }) {
         <span style={{ marginLeft: "auto", display: "flex", gap: "0.4rem" }}>
           <button className="ghost" onClick={toggleRead}>{call.read ? "Mark unread" : "Mark read"}</button>
           <button className="ghost" onClick={share}>Share summary</button>
+          <button className="ghost" title="Replay this caller's words against every future Studio change" onClick={keepAsTest}>Save as regression test</button>
           {call.contact_id && <Link className="btn" href={`/contacts/${call.contact_id}`}>Contact</Link>}
         </span>
       </div>

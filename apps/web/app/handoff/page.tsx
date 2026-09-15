@@ -26,7 +26,6 @@ export default async function Handoff() {
   return (
     <>
       <h1>Transfers &amp; tickets</h1>
-      {assistant ? <Destinations assistant={assistant} /> : <p className="muted">No assistant yet — <Link href="/onboarding">run the setup wizard</Link> to add departments.</p>}
       <div className="grid">
         <div className="card"><div className="label">Transfers</div><div className="value">{tr?.total ?? "—"}</div></div>
         <div className="card"><div className="label">Human answer rate</div><div className="value">{pct(tr?.answer_rate)}</div></div>
@@ -35,21 +34,14 @@ export default async function Handoff() {
         <div className="card"><div className="label">Avg time to claim</div><div className="value">{secs(tk?.avg_time_to_claim_s)}</div></div>
         <div className="card"><div className="label">Avg time to resolve</div><div className="value">{secs(tk?.avg_time_to_resolve_s)}</div></div>
       </div>
-      <div className="grid">
-        <Breakdown title="Transfers by outcome" data={tr?.by_outcome ?? {}} />
-        <Breakdown title="Transfers by department" data={tr?.by_department ?? {}} />
-        <Breakdown title="Transfers by destination" data={tr?.by_destination ?? {}} />
-        <Breakdown title="Tickets by priority" data={tk?.by_priority ?? {}} />
-        <Breakdown title="Tickets by category" data={tk?.by_category ?? {}} />
-      </div>
-      <h1>Recent transfers</h1>
+      <h2>Recent transfers</h2>
       <table>
         <thead><tr><th>Started</th><th>Call</th><th>Destination</th><th>Department</th><th>Mode</th><th>Outcome</th><th>Ring time</th></tr></thead>
         <tbody>
           {(transfers ?? []).map((t) => (
             <tr key={t.id}>
               <td>{new Date(t.started_at).toLocaleString("en-GB")}</td>
-              <td><Link href={`/calls/${t.call_id}`}>{t.call_id}</Link></td>
+              <td><Link href={`/calls/${t.call_id}`}>Open call</Link></td>
               <td>{t.destination}</td>
               <td>{t.department ?? "—"}</td>
               <td>{t.mode}</td>
@@ -60,6 +52,16 @@ export default async function Handoff() {
           {!transfers?.length && <tr><td colSpan={7} className="muted">No transfers yet</td></tr>}
         </tbody>
       </table>
+      <div className="grid">
+        <Breakdown title="Transfers by outcome" data={tr?.by_outcome ?? {}} />
+        <Breakdown title="Transfers by department" data={tr?.by_department ?? {}} />
+        <Breakdown title="Transfers by destination" data={tr?.by_destination ?? {}} />
+        <Breakdown title="Tickets by priority" data={tk?.by_priority ?? {}} />
+        <Breakdown title="Tickets by category" data={tk?.by_category ?? {}} />
+      </div>
+      <h2>Settings</h2>
+      <p className="muted small">Who calls are transferred to. Once set up you rarely need to change this.</p>
+      {assistant ? <Destinations assistant={assistant} /> : <p className="muted">No assistant yet — <Link href="/onboarding">run the setup wizard</Link> to add departments.</p>}
     </>
   );
 }
