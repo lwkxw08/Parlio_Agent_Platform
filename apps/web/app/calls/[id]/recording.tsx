@@ -7,6 +7,7 @@ function legLabel(key: string): string {
   const file = key.split("/").pop() ?? key;
   if (file.startsWith("caller")) return "Caller";
   if (file.startsWith("agent")) return "Assistant";
+  if (file.startsWith("human")) return "Team member";
   return file.replace(/\.[a-z0-9]+$/i, "");
 }
 

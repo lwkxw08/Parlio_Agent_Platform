@@ -192,6 +192,9 @@ class TransferRecord(BaseModel):
     reason: str | None = None
     started_at: datetime
     ended_at: datetime | None = None
+    # Filled from `call.ended` once the human conversation is over (warm transfers only).
+    human_duration_s: float | None = None
+    recorded: bool = False
 
 
 def ticket_ref(ticket_id: str) -> str:
@@ -262,6 +265,12 @@ class TransferStats(BaseModel):
     by_department: dict[str, int] = Field(default_factory=dict)
     by_destination: dict[str, int] = Field(default_factory=dict)
     answer_rate: float | None = None
+    # Human-conversation analytics (needs the "record transferred calls" option on).
+    recorded: int = 0
+    human_talk_s: float = 0
+    avg_human_duration_s: float | None = None
+    human_talk_by_department: dict[str, float] = Field(default_factory=dict)
+    human_talk_by_destination: dict[str, float] = Field(default_factory=dict)
 
 
 class TicketStats(BaseModel):
@@ -405,6 +414,21 @@ class TenantDoc(BaseModel):
     updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
+class HumanLeg(BaseModel):
+    """What the worker reports about the human side of a warm transfer at `call.ended`."""
+
+    transfer_id: str
+    duration_s: float | None = None
+    recorded: bool = False
+
+
+def human_leg_from_event(ev: CallEvent) -> HumanLeg | None:
+    leg = ev.payload.get("human_leg") if ev.type == CallEventType.CALL_ENDED else None
+    if not isinstance(leg, dict) or not leg.get("transfer_id"):
+        return None
+    return HumanLeg.model_validate(leg)
+
+
 def transfer_from_event(ev: CallEvent) -> TransferRecord | None:
     """Build a TransferRecord from a `call.transfer_completed` event (None if no attempt made)."""
     p = ev.payload
@@ -484,6 +508,20 @@ def compute_transfer_stats(rows: list[TransferRecord]) -> TransferStats:
         dep = r.department or "general"
         s.by_department[dep] = s.by_department.get(dep, 0) + 1
         s.by_destination[r.destination] = s.by_destination.get(r.destination, 0) + 1
+        if r.recorded:
+            s.recorded += 1
+        if r.human_duration_s is not None:
+            s.human_talk_s += r.human_duration_s
+            s.human_talk_by_department[dep] = round(
+                s.human_talk_by_department.get(dep, 0) + r.human_duration_s, 1
+            )
+            s.human_talk_by_destination[r.destination] = round(
+                s.human_talk_by_destination.get(r.destination, 0) + r.human_duration_s, 1
+            )
+    timed = [r.human_duration_s for r in rows if r.human_duration_s is not None]
+    if timed:
+        s.human_talk_s = round(s.human_talk_s, 1)
+        s.avg_human_duration_s = round(sum(timed) / len(timed), 1)
     if rows:
         s.answer_rate = round(s.by_outcome.get("answered", 0) / len(rows), 3)
     return s
@@ -556,6 +594,12 @@ def fold_event(call: CallRecord, ev: CallEvent) -> CallRecord:
                 call.transcript = p["transcript"]
             if p.get("recordings"):
                 call.recordings = p["recordings"]
+            leg = human_leg_from_event(ev)
+            if leg is not None:
+                for tr in call.transfers:
+                    if tr.get("transfer_id") == leg.transfer_id:
+                        tr["human_duration_s"] = leg.duration_s
+                        tr["recorded"] = leg.recorded
         case CallEventType.CALL_FAILED:
             call.status = "failed"
             call.ended_at = ev.occurred_at
@@ -717,6 +761,10 @@ class MemoryStore:
         tr = transfer_from_event(ev)
         if tr is not None:
             self._transfers[tr.id] = tr
+        leg = human_leg_from_event(ev)
+        if leg is not None and (tr := self._transfers.get(leg.transfer_id)) is not None:
+            tr.human_duration_s = leg.duration_s
+            tr.recorded = leg.recorded
         return True
 
     async def record_postcall(self, call_id: str, result: PostCallResult) -> None:

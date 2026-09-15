@@ -224,6 +224,7 @@ class ReceptionistTools:
         self.urgent_hit: str | None = None
         self.transferred = False
         self.transfer_attempted = False
+        self.connected_transfer_id: str | None = None
         self.ticket_id: str | None = None
         self.booking_id: str | None = None
         self.sms_sent: list[str] = []
@@ -300,6 +301,8 @@ class ReceptionistTools:
                 },
             )
         self.transferred = res.succeeded
+        if res.succeeded and res.attempts:
+            self.connected_transfer_id = res.attempts[-1].transfer_id
         if res.succeeded and res.connected and self.cfg.transfer.mode == TransferMode.WARM:
             await self.say(self.briefing(res.connected.name, reason))
             await self.engine.bridge.leave()

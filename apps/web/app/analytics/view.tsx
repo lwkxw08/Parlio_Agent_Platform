@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState, useTransition } from "react";
+import { Breakdown } from "@/app/breakdown";
 import {
   type ComparisonAnalytics,
   type OverviewAnalytics,
@@ -261,16 +262,11 @@ export default function AnalyticsView({ overview, initial }: { overview: Overvie
           </div>
 
           <div className="grid" style={{ gridTemplateColumns: "1fr 1fr 1fr" }}>
-            <div className="card">
-              <h2>Calls by department</h2>
-              {cur.by_department.length ? (
-                <ul className="hbars">
-                  {cur.by_department.map((d) => (
-                    <li key={d.name}><span>{d.name}</span><i style={{ width: `${(d.count / cur.by_department[0].count) * 100}%` }} /><b>{d.count}</b></li>
-                  ))}
-                </ul>
-              ) : <p className="small muted">No department routing in this period. Departments and their staff are set up on the <a href="/handoff">Transfers</a> page; calls appear here once the assistant routes or transfers to one.</p>}
-            </div>
+            <Breakdown
+              title="Calls by department"
+              data={cur.by_department}
+              empty={<>No department routing in this period. Departments and their staff are set up on the <a href="/handoff">Transfers</a> page; calls appear here once the assistant routes or transfers to one.</>}
+            />
             <div className="card">
               <h2>First-time vs returning</h2>
               <div className="split">
@@ -291,13 +287,7 @@ export default function AnalyticsView({ overview, initial }: { overview: Overvie
           </div>
 
           <div className="grid">
-            <div className="card">
-              <h2>Outcomes</h2>
-              <dl className="kv">
-                {cur.by_outcome.map((o) => <div key={o.name} style={{ display: "contents" }}><dt>{o.name}</dt><dd>{o.count}</dd></div>)}
-                {!cur.by_outcome.length && <dd className="muted">none</dd>}
-              </dl>
-            </div>
+            <Breakdown title="Outcomes" data={cur.by_outcome} empty="No calls in this period." />
             <div className="card">
               <h2>Usage this month ({overview.usage.month})</h2>
               <dl className="kv">

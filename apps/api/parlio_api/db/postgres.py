@@ -42,6 +42,7 @@ from parlio_api.store import (
     compute_transfer_stats,
     fold_event,
     hash_key,
+    human_leg_from_event,
     new_worker_key,
     transfer_from_event,
 )
@@ -69,7 +70,7 @@ _TICKET_COLS = """
 
 _TRANSFER_COLS = """
     id, organization_id, call_id, destination, destination_id, department, mode, outcome, reason,
-    started_at, ended_at
+    started_at, ended_at, human_duration_s, recorded
 """
 
 
@@ -114,6 +115,8 @@ def _row_to_transfer(r: Row[Any]) -> TransferRecord:
         reason=m["reason"],
         started_at=m["started_at"],
         ended_at=m["ended_at"],
+        human_duration_s=m["human_duration_s"],
+        recorded=bool(m["recorded"]),
     )
 
 
@@ -225,7 +228,8 @@ async def _hydrate_handoff(conn: AsyncConnection, calls: list[CallRecord]) -> No
     ids = list(by_id)
     rows = await conn.execute(
         text(
-            "SELECT call_id, id, destination, department, mode, outcome, reason, started_at"
+            "SELECT call_id, id, destination, department, mode, outcome, reason, started_at,"
+            " human_duration_s, recorded"
             " FROM transfers WHERE call_id = ANY(:ids) ORDER BY started_at"
         ),
         {"ids": ids},
@@ -240,6 +244,8 @@ async def _hydrate_handoff(conn: AsyncConnection, calls: list[CallRecord]) -> No
                 "outcome": r.outcome,
                 "reason": r.reason,
                 "at": r.started_at.isoformat() if r.started_at else None,
+                "human_duration_s": r.human_duration_s,
+                "recorded": bool(r.recorded),
             }
         )
     rows = await conn.execute(
@@ -606,7 +612,7 @@ class PostgresStore:
                         f"""
                         INSERT INTO transfers ({_TRANSFER_COLS})
                         VALUES (:id, :oid, :cid, :dest, :dest_id, :dept, :mode, :outcome, :reason,
-                                :started, :ended)
+                                :started, :ended, NULL, false)
                         ON CONFLICT (id) DO UPDATE SET outcome = EXCLUDED.outcome,
                             ended_at = EXCLUDED.ended_at, reason = EXCLUDED.reason
                         """
@@ -623,6 +629,21 @@ class PostgresStore:
                         "reason": tr.reason,
                         "started": tr.started_at,
                         "ended": tr.ended_at,
+                    },
+                )
+
+            leg = human_leg_from_event(ev)
+            if leg is not None:
+                await conn.execute(
+                    text(
+                        "UPDATE transfers SET human_duration_s = :dur, recorded = :rec"
+                        " WHERE id = :id AND organization_id = :oid"
+                    ),
+                    {
+                        "dur": leg.duration_s,
+                        "rec": leg.recorded,
+                        "id": leg.transfer_id,
+                        "oid": ev.tenant_id,
                     },
                 )
 
