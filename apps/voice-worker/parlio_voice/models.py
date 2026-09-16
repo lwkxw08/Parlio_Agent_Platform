@@ -51,7 +51,7 @@ class ProviderChain(BaseModel):
 
 class TurnTuning(BaseModel):
     min_endpointing_delay: float = 0.2
-    max_endpointing_delay: float = 2.0
+    max_endpointing_delay: float = 1.2
     allow_interruptions: bool = True
     min_interruption_duration: float = 0.4
     preemptive_generation: bool = True

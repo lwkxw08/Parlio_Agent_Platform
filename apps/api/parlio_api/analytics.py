@@ -126,7 +126,7 @@ def channel_usage(
 
     usage.sms = sum(1 for m in this_month(messages) if m.get("status") == "sent")
     for m in this_month(inbox_messages):
-        if m.get("direction") != "outbound" or m.get("status") not in ("sent", None):
+        if m.get("direction") != "out" or m.get("status") not in ("sent", None):
             continue
         if m.get("channel") == "whatsapp":
             usage.whatsapp += 1

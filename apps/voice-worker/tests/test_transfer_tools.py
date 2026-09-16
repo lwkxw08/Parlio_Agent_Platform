@@ -190,10 +190,19 @@ def test_spoken_number(number: str, said: str | None) -> None:
         ("+44 161 496 0000", None, "+441614960000"),
         ("the same one", "+447930934098", "+447930934098"),
         (None, None, None),
+        ("(310) 555-0199", "+12125550100", "+13105550199"),
+        ("212 555 0100", "+12125550100", "+12125550100"),
+        ("011 44 161 496 0000", "+12125550100", "+441614960000"),
+        ("087 123 4567", "+35387000000", "+353871234567"),
     ],
 )
 def test_normalise_number(spoken: str | None, caller: str | None, stored: str | None) -> None:
     assert normalise_number(spoken, caller) == stored
+
+
+def test_normalise_number_withheld_caller_uses_tenant_country() -> None:
+    assert normalise_number("(310) 555-0199", None, "1") == "+13105550199"
+    assert normalise_number("07930 934098", None) == "+447930934098"
 
 
 def test_caller_id_instruction_offers_own_number_or_asks() -> None:

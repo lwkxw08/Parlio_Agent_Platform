@@ -44,6 +44,10 @@ A support ticket is opened automatically. Compare the failing check (`greeting` 
 ### 7. Integration sync failures (`connectors` alert)
 Connectors tab → retry the failed sync job. Repeated auth failures mean the customer's OAuth token expired — ticket with "reconnect" instructions.
 
+## Testing runbooks
+- `e2e-and-load.md` — deterministic E2E suite, deployed `parlio-e2e` runner, load test, latency baseline and tuning notes.
+- `live-call-test.md` — the human-run script for real phones, PBX/SIP, owner SMS, reminders and warm transfers, with the evidence to check.
+
 ## Communication
 - Status page: Ops → Status & incidents (public at `/status` and `/v1/public/status-page`).
 - Tenant banner: Ops → Banner for planned maintenance.
