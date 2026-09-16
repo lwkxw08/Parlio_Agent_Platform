@@ -27,6 +27,7 @@ from parlio_api.analytics_query import (
 )
 from parlio_api.auth import UserDep, current_user
 from parlio_api.deps import (
+    AdminDep,
     BillingDep,
     DrafterDep,
     SettingsDep,
@@ -53,10 +54,12 @@ from parlio_api.store import (
 )
 from parlio_api.voices import (
     CATALOGUE,
+    MARKETS,
     Preview,
     PreviewRequest,
     PreviewUnavailable,
     Voice,
+    default_voice,
 )
 from parlio_voice.models import (
     AssistantConfig,
@@ -130,7 +133,7 @@ class AssistantCreate(BaseModel):
 
 @router.post("/assistants", response_model=AssistantConfig, status_code=status.HTTP_201_CREATED)
 async def create_assistant(
-    body: AssistantCreate, store: StoreDep, billing: BillingDep, user: UserDep
+    body: AssistantCreate, store: StoreDep, billing: BillingDep, user: UserDep, admin: AdminDep
 ) -> AssistantConfig:
     """Add another assistant to the organisation (plan-limited via ``Plan.max_assistants``)."""
     tenants = user.tenant_ids
@@ -168,18 +171,33 @@ async def create_assistant(
             name=body.name,
             business_name=body.business_name,
         )
+    cfg = await _apply_platform_voice(cfg, admin)
     await store.upsert_assistant(cfg, [])
     return cfg
 
 
+async def _apply_platform_voice(cfg: AssistantConfig, admin: AdminDep) -> AssistantConfig:
+    """The TTS provider is a platform decision: pin it and swap the voice if it doesn't fit."""
+    market = (await admin.locale(cfg.tenant_id)).market
+    provider = (await admin.voice_settings()).provider_for(market)
+    if cfg.voice.provider == provider:
+        return cfg
+    fallback = default_voice(provider, market)
+    voice = cfg.voice.model_copy(
+        update={"provider": provider, "voice_id": fallback.id if fallback else cfg.voice.voice_id}
+    )
+    return cfg.model_copy(update={"voice": voice})
+
+
 @router.put("/assistants/{assistant_id}", response_model=AssistantConfig)
 async def upsert_assistant(
-    assistant_id: str, body: AssistantUpsert, store: StoreDep
+    assistant_id: str, body: AssistantUpsert, store: StoreDep, admin: AdminDep
 ) -> AssistantConfig:
     if body.config.assistant_id != assistant_id:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "assistant_id mismatch")
-    await store.upsert_assistant(body.config, body.numbers)
-    return body.config
+    cfg = await _apply_platform_voice(body.config, admin)
+    await store.upsert_assistant(cfg, body.numbers)
+    return cfg
 
 
 @router.get("/assistants/{assistant_id}/versions", response_model=list[VersionSummary])
@@ -226,16 +244,32 @@ async def draft_field(
 
 
 class VoiceCatalogue(BaseModel):
+    provider: TTSProvider
+    market: str
+    accents: list[str]
     voices: list[Voice]
-    preview_available: dict[str, bool]
+    preview_available: bool
 
 
 @router.get("/voices", response_model=VoiceCatalogue)
-async def list_voices(previewer: VoicePreviewDep) -> VoiceCatalogue:
-    """Curated UK/Irish voice catalogue per TTS provider + whether previews work here."""
+async def list_voices(
+    previewer: VoicePreviewDep, admin: AdminDep, user: UserDep, tenant_id: str | None = None
+) -> VoiceCatalogue:
+    """Voices for the tenant's platform-assigned TTS provider, tagged by accent; `accents` are
+    the ones to lead with for the tenant's market (UK -> British/Irish, US -> American...)."""
+    tenants = user.tenant_ids
+    tid = tenant_id or (tenants[0] if tenants else None)
+    if tid is not None:
+        user.require_tenant(tid)
+    settings = await admin.voice_settings()
+    market = (await admin.locale(tid)).market if tid else settings.default_market
+    provider = settings.provider_for(market)
     return VoiceCatalogue(
-        voices=CATALOGUE,
-        preview_available={p.value: previewer.available(p) for p in TTSProvider},
+        provider=provider,
+        market=market,
+        accents=MARKETS.get(market, MARKETS["GB"]).accents,
+        voices=[v for v in CATALOGUE if v.provider == provider],
+        preview_available=previewer.available(provider),
     )
 
 

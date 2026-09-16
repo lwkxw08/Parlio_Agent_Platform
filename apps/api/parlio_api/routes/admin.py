@@ -53,6 +53,7 @@ from parlio_api.deps import (
 )
 from parlio_api.observability import AuditEntry
 from parlio_api.store import Member
+from parlio_api.voices import MARKETS, Market, TenantLocale, VoicePlatformSettings
 
 router = APIRouter(prefix="/v1/admin", tags=["admin"])
 public = APIRouter(prefix="/v1/public", tags=["public"])
@@ -195,6 +196,67 @@ async def set_flags(
         raise _fail(e) from e
     await _audit(audit, request, user, tenant_id, "admin.flags.set", meta={"flags": body.flags})
     return out
+
+
+class LocaleIn(BaseModel):
+    market: str = Field(min_length=2, max_length=2)
+
+
+@router.put("/tenants/{tenant_id}/locale", response_model=TenantLocale)
+async def set_locale(
+    tenant_id: str,
+    body: LocaleIn,
+    request: Request,
+    user: StaffDep,
+    admin: AdminDep,
+    audit: AuditDep,
+) -> TenantLocale:
+    user.require_staff("support")
+    try:
+        out = await admin.set_locale(tenant_id, body.market, user.email)
+    except ValueError as e:
+        raise _fail(e) from e
+    await _audit(audit, request, user, tenant_id, "admin.locale.set", meta={"market": out.market})
+    return out
+
+
+@router.get("/markets", response_model=list[Market])
+async def markets(user: StaffDep) -> list[Market]:
+    return list(MARKETS.values())
+
+
+@router.get("/voice", response_model=VoicePlatformSettings)
+async def get_voice_settings(user: StaffDep, admin: AdminDep) -> VoicePlatformSettings:
+    return await admin.voice_settings()
+
+
+@router.put("/voice", response_model=VoicePlatformSettings)
+async def put_voice_settings(
+    body: VoicePlatformSettings,
+    request: Request,
+    user: StaffDep,
+    admin: AdminDep,
+    audit: AuditDep,
+) -> VoicePlatformSettings:
+    if user.staff_role != "owner":
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "only platform owners set voice providers")
+    try:
+        saved = await admin.save_voice_settings(body, user.email)
+    except ValueError as e:
+        raise _fail(e) from e
+    await _audit(
+        audit,
+        request,
+        user,
+        PLATFORM_TENANT,
+        "admin.voice.set",
+        meta={
+            "default_provider": saved.default_provider.value,
+            "provider_by_market": {k: v.value for k, v in saved.provider_by_market.items()},
+            "default_market": saved.default_market,
+        },
+    )
+    return saved
 
 
 class NoteIn(BaseModel):

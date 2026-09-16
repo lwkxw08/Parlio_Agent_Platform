@@ -996,8 +996,19 @@ export type AssistantBrief = { id: string; name: string; business_name: string; 
 export type TenantDetail = {
   summary: TenantSummary; subscription: Subscription; usage: UsageSummary; limits: TenantLimits; credits: Credit[]; invoices: Invoice[]; refunds: Refund[];
   assistants: AssistantBrief[]; members: Member[]; numbers: Record<string, unknown>[]; trunks: Record<string, unknown>[]; connectors: Record<string, unknown>[];
-  flags: FeatureFlags; notes: SupportNote[]; audit: AuditEntry[];
+  flags: FeatureFlags; notes: SupportNote[]; audit: AuditEntry[]; locale: TenantLocale;
 };
+export type Market = { code: string; name: string; accents: string[] };
+export type TenantLocale = { tenant_id: string; market: string; updated_by: string | null; updated_at: string };
+export type VoicePlatformSettings = {
+  default_provider: string; provider_by_market: Record<string, string>; default_market: string;
+  updated_by?: string | null; updated_at?: string;
+};
+export const fetchMarkets = () => get<Market[]>("/v1/admin/markets");
+export const fetchVoiceSettings = () => get<VoicePlatformSettings>("/v1/admin/voice");
+export const saveVoiceSettings = (body: VoicePlatformSettings) => put<VoicePlatformSettings>("/v1/admin/voice", body);
+export const setTenantLocale = (tenant_id: string, market: string) =>
+  put<TenantLocale>(`/v1/admin/tenants/${tenant_id}/locale`, { market });
 export type SeriesPoint = { key: string; value: number; extra: Record<string, number> };
 export type BusinessAnalytics = {
   tenants: number; signups_period: number; trialing: number; active: number; past_due: number; paused: number; suspended: number; cancelled: number;
@@ -1228,7 +1239,7 @@ export const setFeedbackStatus = (id: string, status: Feedback["status"]) => pat
 export type DraftField = "description" | "services" | "persona_extra" | "instructions" | "greeting" | "faq_answer" | "rule" | "sms_template";
 export type Draft = { field: DraftField; text: string; source: "llm" | "template"; website_used: string | null; notes: string[] };
 export type Voice = { provider: "cartesia" | "elevenlabs"; id: string; name: string; gender: "female" | "male"; accent: string; description: string; recommended: boolean };
-export type VoiceCatalogue = { voices: Voice[]; preview_available: Record<string, boolean> };
+export type VoiceCatalogue = { provider: string; market: string; accents: string[]; voices: Voice[]; preview_available: boolean };
 export const fetchVoices = () => get<VoiceCatalogue>("/v1/voices");
 export type VoicePreview = { provider: string; voice_id: string; mime: string; audio_b64: string };
 export const previewVoice = (body: { provider: string; voice_id: string; text?: string; speed?: number | null }) =>
