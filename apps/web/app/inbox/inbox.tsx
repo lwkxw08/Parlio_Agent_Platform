@@ -28,6 +28,7 @@ import {
   updateCanned,
   when,
 } from "@/lib/api";
+import { humanize } from "@/app/breakdown";
 
 type Props = {
   tenant: string;
@@ -202,7 +203,7 @@ export default function Inbox(p: Props) {
         <Stat label="Unread" value={stats.unread} onClick={() => setFilters({ unread_only: true })} />
         <Stat label="Unassigned" value={stats.unassigned} onClick={() => setFilters({ unassigned: true })} />
         <Stat label="SLA breached" value={stats.breached} tone={stats.breached ? "bad" : undefined} />
-        <div className="card"><div className="label">Live updates</div><div className="value"><span className={`pill ${socket === "live" ? "ok" : socket === "offline" ? "bad" : "warn"}`}>{socket}</span></div></div>
+        <div className="card"><div className="label">Live updates</div><div className="value"><span className={`pill ${socket === "live" ? "ok" : socket === "offline" ? "bad" : "warn"}`}>{humanize(socket)}</span></div></div>
       </div>
 
       <div className="tabs">
@@ -256,7 +257,7 @@ export default function Inbox(p: Props) {
                     </span>
                     <span className="row small">
                       <span className="pill">{CHANNEL_LABEL[t.channel]}</span>
-                      <span className={`pill ${STATUS_PILL[t.status]}`}>{t.status}</span>
+                      <span className={`pill ${STATUS_PILL[t.status]}`}>{humanize(t.status)}</span>
                       {t.unread > 0 && <span className="pill accent">{t.unread} new</span>}
                       {!t.ai_enabled && <span className="pill warn">{t.handoff_department ? `for ${t.handoff_department}` : "human"}</span>}
                       {t.callback_ticket_id && <span className="pill">callback ticket</span>}

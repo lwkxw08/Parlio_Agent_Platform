@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { type Voice, type VoiceCatalogue, type VoiceConfig, fetchVoices, previewVoice } from "@/lib/api";
+import { humanize } from "@/app/breakdown";
 
 type Props = { value: VoiceConfig; businessName: string; onChange: (v: VoiceConfig) => void };
 type GenderFilter = "all" | "female" | "male";
@@ -77,7 +78,7 @@ export default function VoicePicker({ value, businessName, onChange }: Props) {
                 <span className="row" style={{ gap: "0.3rem" }}>
                   {v.recommended && <span className="pill accent">Recommended</span>}
                   <span className="pill">{v.gender === "female" ? "Female" : "Male"}</span>
-                  <span className="pill">{v.accent}</span>
+                  <span className="pill">{humanize(v.accent)}</span>
                 </span>
               </div>
               <p className="small muted" style={{ margin: "0.35rem 0 0.5rem" }}>{v.description}</p>

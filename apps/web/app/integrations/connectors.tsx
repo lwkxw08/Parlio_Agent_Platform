@@ -15,6 +15,7 @@ import {
   request,
   when,
 } from "@/lib/api";
+import { humanize } from "@/app/breakdown";
 
 const TRIGGERS: [ConnectorTrigger, string][] = [
   ["lead.qualified", "Qualified lead"],
@@ -47,7 +48,7 @@ type Props = {
 };
 
 const pill = (s: string) => (
-  <span className={`pill ${s === "sent" || s === "connected" ? "ok" : s === "failed" || s === "error" ? "bad" : s === "skipped" ? "" : "warn"}`}>{s}</span>
+  <span className={`pill ${s === "sent" || s === "connected" ? "ok" : s === "failed" || s === "error" ? "bad" : s === "skipped" ? "" : "warn"}`}>{humanize(s)}</span>
 );
 
 export default function Connectors(p: Props) {

@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { type CallExplanation, type CallRecord, type Scenario, callParty, fetchExplanation, ms, phone, post, request, secs, when } from "@/lib/api";
 import { Transcript } from "../../transcript";
 import { RecordingLeg } from "./recording";
+import { humanize } from "@/app/breakdown";
 
 const TABS = ["overview", "recording", "transfers", "transcript", "why", "all"] as const;
 type Tab = (typeof TABS)[number];
@@ -82,7 +83,7 @@ export default function CallView({ initial }: { initial: CallRecord }) {
       <div style={{ display: "flex", alignItems: "center", gap: "0.8rem", flexWrap: "wrap" }}>
         <h1 style={{ margin: 0 }}>{call.party ? callParty(call) : call.direction === "outbound" ? "Outbound call" : "Unknown caller"}</h1>
         {call.direction === "outbound" && <span className="pill accent">Outbound</span>}
-        <span className={`pill ${call.kind === "missed" || call.kind === "blocked" ? "bad" : call.kind === "answered" ? "ok" : ""}`}>{call.kind}</span>
+        <span className={`pill ${call.kind === "missed" || call.kind === "blocked" ? "bad" : call.kind === "answered" ? "ok" : ""}`}>{humanize(call.kind)}</span>
         {call.escalated && <span className="pill urgent">urgent: {call.escalation_keyword}</span>}
         {call.caller_type && <span className="pill">{call.caller_type} caller</span>}
         <span style={{ marginLeft: "auto", display: "flex", gap: "0.4rem" }}>
@@ -179,8 +180,8 @@ export default function CallView({ initial }: { initial: CallRecord }) {
               <tbody>
                 {call.transfers.map((t) => (
                   <tr key={t.transfer_id}>
-                    <td>{t.at ? when(t.at) : "—"}</td><td>{t.destination}</td><td>{t.department ?? "—"}</td><td>{t.mode}</td>
-                    <td><span className={`pill ${t.outcome === "answered" || t.outcome === "bridged" ? "ok" : "bad"}`}>{t.outcome}</span></td>
+                    <td>{t.at ? when(t.at) : "—"}</td><td>{t.destination}</td><td>{t.department ?? "—"}</td><td>{humanize(t.mode)}</td>
+                    <td><span className={`pill ${t.outcome === "answered" || t.outcome === "bridged" ? "ok" : "bad"}`}>{humanize(t.outcome)}</span></td>
                     <td>{t.human_duration_s != null ? secs(t.human_duration_s) : "—"}{t.recorded ? <span className="pill" style={{ marginLeft: 6 }}>Recorded</span> : null}</td>
                   </tr>
                 ))}
@@ -211,7 +212,7 @@ export default function CallView({ initial }: { initial: CallRecord }) {
                   <div className="bubble assistant" style={{ marginBottom: "0.5rem" }}>{t.text}</div>
                   {t.evidence.map((e, i) => (
                     <div key={i} className="small" style={{ display: "flex", gap: 8, alignItems: "baseline", margin: "0.2rem 0" }}>
-                      <span className={`pill ${e.kind === "none" ? "" : e.score >= 0.5 ? "ok" : "warn"}`}>{e.kind}</span>
+                      <span className={`pill ${e.kind === "none" ? "" : e.score >= 0.5 ? "ok" : "warn"}`}>{humanize(e.kind)}</span>
                       <span><strong>{e.label}</strong>{e.text && <> — <span className="muted">{e.text}</span></>}{e.kind !== "none" && e.kind !== "greeting" && <span className="muted"> · match {Math.round(e.score * 100)}%</span>}</span>
                     </div>
                   ))}

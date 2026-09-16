@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { type RoadmapStatus, ROADMAP_LABEL, fetchPublicRoadmap } from "@/lib/api";
+import { humanize } from "@/app/breakdown";
 
 export const dynamic = "force-dynamic";
 const ORDER: RoadmapStatus[] = ["in_progress", "planned", "considering", "shipped"];
@@ -18,7 +19,7 @@ export default async function Page() {
           {items.filter((r) => r.status === st).map((r) => (
             <div className="list-row" key={r.id} style={{ gridTemplateColumns: "1fr auto", alignItems: "center" }}>
               <div>
-                <b className="small">{r.title}</b> {r.category && <span className="pill">{r.category}</span>} {r.eta && <span className="small muted">· {r.eta}</span>}
+                <b className="small">{r.title}</b> {r.category && <span className="pill">{humanize(r.category)}</span>} {r.eta && <span className="small muted">· {r.eta}</span>}
                 <div className="small muted">{r.description}</div>
               </div>
               <span className="small muted">▲ {r.votes}</span>

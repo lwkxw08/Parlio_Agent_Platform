@@ -15,6 +15,7 @@ import {
   request,
   when,
 } from "@/lib/api";
+import { humanize } from "@/app/breakdown";
 
 const MODES: { id: TrunkMode; title: string; blurb: string }[] = [
   { id: "forward", title: "Forward to your Parlio number", blurb: "Keep your provider. Forward calls (always or on no-answer) to the number Parlio gives you. No SIP setup." },
@@ -135,7 +136,7 @@ export default function Telephony({ tenant, canManage, trunks: initial, guides, 
                 <td className="small">{t.ddis.map((d) => <div key={d.id ?? d.e164}>{d.e164} → {asstName(d.assistant_id)}{d.department ? ` (${d.department})` : ""}{d.when !== "always" ? <span className="muted"> · {WHEN.find(([w]) => w === d.when)?.[1]}</span> : null}</div>)}{!t.ddis.length && <span className="muted">none</span>}</td>
                 <td className="small">max {t.max_concurrent_calls}</td>
                 <td>{regPill(t)}{t.registration.last_seen_at && <div className="small muted">{when(t.registration.last_seen_at)}</div>}</td>
-                <td><span className={`pill ${t.status === "active" ? "ok" : t.status === "error" ? "bad" : "warn"}`}>{t.status}</span>{t.last_error && <div className="small muted">{t.last_error}</div>}
+                <td><span className={`pill ${t.status === "active" ? "ok" : t.status === "error" ? "bad" : "warn"}`}>{humanize(t.status)}</span>{t.last_error && <div className="small muted">{t.last_error}</div>}
                   {test[t.id] && <div className="small" style={{ marginTop: 4 }}>Test call: <span className={`pill ${test[t.id].ok ? "ok" : "bad"}`}>{test[t.id].outcome}</span>{test[t.id].simulated && <span className="muted"> (simulated)</span>}{test[t.id].detail && <div className="muted">{test[t.id].detail}</div>}</div>}
                 </td>
                 <td className="small">

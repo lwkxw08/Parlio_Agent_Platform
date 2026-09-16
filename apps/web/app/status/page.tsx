@@ -1,5 +1,6 @@
 import { fetchPublicStatusPage, when } from "@/lib/api";
 import { STATE_LABEL, stateCls } from "./state";
+import { humanize } from "@/app/breakdown";
 
 export const dynamic = "force-dynamic";
 
@@ -32,7 +33,7 @@ export default async function Page() {
           <div key={i.id} className="card" style={{ marginBottom: "0.8rem" }}>
             <div className="row" style={{ justifyContent: "space-between" }}>
               <strong>{i.title}</strong>
-              <span><span className={`pill ${i.status === "resolved" ? "ok" : "warn"}`}>{i.status}</span> <span className="pill">{i.severity.toUpperCase()}</span></span>
+              <span><span className={`pill ${i.status === "resolved" ? "ok" : "warn"}`}>{humanize(i.status)}</span> <span className="pill">{i.severity.toUpperCase()}</span></span>
             </div>
             <div className="small muted">Started {when(i.started_at)}{i.resolved_at && ` · resolved ${when(i.resolved_at)}`} · {i.components.join(", ") || "platform"}</div>
             {i.updates.map((u, n) => <p key={n} className="small" style={{ margin: "0.3rem 0" }}><span className="muted">{when(u.at)}</span> <strong>{u.status}</strong> — {u.message}</p>)}

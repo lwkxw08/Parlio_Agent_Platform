@@ -17,6 +17,7 @@ import {
 import { Stat } from "../ui";
 import { FaultCard, TrunkTable, fmt, gradeCls } from "../../health/health";
 import { STATE_LABEL, stateCls } from "../../status/state";
+import { humanize } from "@/app/breakdown";
 
 const TABS = [["board", "Tenant health"], ["alerts", "Alerts"], ["status", "Status & incidents"], ["oncall", "On-call & failover"]] as const;
 type Tab = (typeof TABS)[number][0];
@@ -138,7 +139,7 @@ export default function Ops({ overview: initial, incidents: initialInc, canAct }
               <tbody>
                 {o.open_alerts.map((a) => (
                   <tr key={a.id}>
-                    <td><span className={`pill ${sevCls(a.severity)}`}>{a.severity}</span>{a.paged && <span className="pill accent" style={{ marginLeft: 4 }}>paged</span>}</td>
+                    <td><span className={`pill ${sevCls(a.severity)}`}>{humanize(a.severity)}</span>{a.paged && <span className="pill accent" style={{ marginLeft: 4 }}>paged</span>}</td>
                     <td><a onClick={() => { setTab("board"); openTenant(a.tenant_id); }} style={{ cursor: "pointer" }}>{a.tenant_id}</a></td>
                     <td><strong>{a.title}</strong><div className="small muted">{a.detail}</div></td>
                     <td className="small">{when(a.opened_at)}</td>
@@ -187,7 +188,7 @@ export default function Ops({ overview: initial, incidents: initialInc, canAct }
               <div key={i.id} className="card" style={{ marginBottom: "0.8rem" }}>
                 <div className="row" style={{ justifyContent: "space-between" }}>
                   <strong>{i.title}</strong>
-                  <span><span className={`pill ${i.status === "resolved" ? "ok" : "warn"}`}>{i.status}</span> <span className="pill">{i.severity.toUpperCase()}</span></span>
+                  <span><span className={`pill ${i.status === "resolved" ? "ok" : "warn"}`}>{humanize(i.status)}</span> <span className="pill">{i.severity.toUpperCase()}</span></span>
                 </div>
                 <div className="small muted">{when(i.started_at)} · {i.components.join(", ")}{i.rca_due_at && !i.rca && ` · RCA due ${when(i.rca_due_at)}`}</div>
                 {i.updates.map((u, n) => <p key={n} className="small" style={{ margin: "0.2rem 0" }}><span className="muted">{when(u.at)}</span> <strong>{u.status}</strong> — {u.message}</p>)}

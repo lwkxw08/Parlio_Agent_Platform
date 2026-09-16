@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { type Member, del, patch, post } from "@/lib/api";
+import { humanize } from "@/app/breakdown";
 
 type TenantRole = "owner" | "admin" | "member" | "viewer";
 const ROLES: TenantRole[] = ["owner", "admin", "member", "viewer"];
@@ -61,9 +62,9 @@ export default function Members({ tenant, initial, me, canManage }: { tenant: st
                     <select value={m.role} onChange={(e) => changeRole(m, e.target.value as TenantRole)} title={ROLE_HELP[m.role]}>
                       {ROLES.map((r) => <option key={r} value={r}>{r}</option>)}
                     </select>
-                  ) : <span className="pill">{m.role}</span>}
+                  ) : <span className="pill">{humanize(m.role)}</span>}
                 </td>
-                <td><span className={`pill ${m.status === "active" ? "ok" : "warn"}`}>{m.status}</span></td>
+                <td><span className={`pill ${m.status === "active" ? "ok" : "warn"}`}>{humanize(m.status)}</span></td>
                 <td>{canManage && <button className="danger" onClick={() => remove(m)}>Remove</button>}</td>
               </tr>
             ))}

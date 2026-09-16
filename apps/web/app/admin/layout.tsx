@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { fetchMe } from "@/lib/api";
 import AdminTabs from "./tabs";
+import { humanize } from "@/app/breakdown";
 
 export const dynamic = "force-dynamic";
 
@@ -26,7 +27,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
     <>
       <div className="row between">
         <h1>Platform admin</h1>
-        <span className="pill">{me.data.staff_role}</span>
+        <span className="pill">{humanize(me.data.staff_role)}</span>
       </div>
       <AdminTabs />
       {children}

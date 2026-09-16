@@ -13,6 +13,7 @@ import {
   replySupportTicket,
   when,
 } from "@/lib/api";
+import { humanize } from "@/app/breakdown";
 
 export const PRIORITY: Record<SupportPriority, string> = { p1: "P1 — service down", p2: "P2 — major fault", p3: "P3 — question / minor", p4: "P4 — feature request" };
 export const prCls = (p: SupportPriority) => (p === "p1" ? "bad" : p === "p2" ? "warn" : "");
@@ -25,7 +26,7 @@ export function TicketEvents({ t }: { t: SupportTicket }) {
       {t.events.map((e, i) => (
         <div key={i} className="row" style={{ alignItems: "flex-start", opacity: e.public ? 1 : 0.7 }}>
           <span className="muted" style={{ minWidth: 130 }}>{when(e.at)}</span>
-          <span className={`pill ${e.type === "note" ? "warn" : ""}`}>{e.type}</span>
+          <span className={`pill ${e.type === "note" ? "warn" : ""}`}>{humanize(e.type)}</span>
           <span><strong>{e.by}</strong> {e.text}</span>
         </div>
       ))}

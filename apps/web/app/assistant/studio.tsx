@@ -20,6 +20,7 @@ import {
 import AskAi from "./ask-ai";
 import FaqImport from "./faq-import";
 import VoicePicker from "./voice-picker";
+import { humanize } from "@/app/breakdown";
 
 const TABS = ["persona", "speaking", "business", "hours", "rules", "faqs", "fields", "sms", "languages", "recording", "blocked", "afterhours", "versions"] as const;
 type Tab = (typeof TABS)[number];
@@ -255,7 +256,7 @@ export default function Studio({ initial, versions: initialVersions, requiredFie
                   </div>
                   <span>
                     <label className="small"><input type="checkbox" checked={f.enabled} onChange={(e) => listEdit<Faq>("faqs", i, { enabled: e.target.checked })} /> on</label>{" "}
-                    {f.source !== "manual" && <span className="pill">{f.source}</span>}{" "}
+                    {f.source !== "manual" && <span className="pill">{humanize(f.source)}</span>}{" "}
                     <button className="danger" onClick={() => listRemove("faqs", i)}>✕</button>
                   </span>
                 </div>
