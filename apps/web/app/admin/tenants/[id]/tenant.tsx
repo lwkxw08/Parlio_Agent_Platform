@@ -1,12 +1,16 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   type Coupon,
   type Credit,
   type FeatureFlags,
+  type Market,
   type Member,
+  type TenantLocale,
+  fetchMarkets,
+  setTenantLocale,
   type Plan,
   type Refund,
   type StaffRole,
@@ -236,6 +240,15 @@ function SubscriptionTab({ d, plans, coupons, base, canEdit, flash }: { d: Tenan
 function LimitsTab({ d, catalogue, base, canEdit, flash }: { d: TenantDetail; catalogue: Record<string, string>; base: string; canEdit: boolean; flash: (m: string) => void }) {
   const [lim, setLim] = useState<TenantLimits>(d.limits);
   const [flags, setFlags] = useState<FeatureFlags>(d.flags);
+  const [locale, setLocale] = useState<TenantLocale>(d.locale);
+  const [markets, setMarkets] = useState<Market[]>([]);
+  useEffect(() => { fetchMarkets().then((m) => setMarkets(m ?? [])); }, []);
+  const changeMarket = async (market: string) => {
+    const r = await setTenantLocale(d.summary.tenant_id, market);
+    if (!r.ok) return flash(r.error);
+    setLocale(r.data);
+    flash(`Market set to ${market} — assistants move to a ${market} voice on next save`);
+  };
   const numOrNull = (v: string) => (v === "" ? null : Number(v));
   const saveLimits = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -273,6 +286,17 @@ function LimitsTab({ d, catalogue, base, canEdit, flash }: { d: TenantDetail; ca
           </label>
         ))}
         {flags.updated_by && <p className="muted small">Last changed by {flags.updated_by} · {when(flags.updated_at)}</p>}
+      </div>
+      <div className="section">
+        <h2>Market</h2>
+        <p className="hint">Where this business operates. Sets which accents lead the voice catalogue and which voice engine applies (Platform admin → Staff → Voice engine).</p>
+        <label>Market
+          <select value={locale.market} disabled={!canEdit || markets.length === 0} onChange={(e) => changeMarket(e.target.value)}>
+            {markets.length === 0 && <option value={locale.market}>{locale.market}</option>}
+            {markets.map((m) => <option key={m.code} value={m.code}>{m.name} — {m.accents.join(", ")} voices</option>)}
+          </select>
+        </label>
+        {locale.updated_by && <p className="muted small">Last changed by {locale.updated_by} · {when(locale.updated_at)}</p>}
       </div>
     </div>
   );

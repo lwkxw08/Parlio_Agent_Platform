@@ -49,6 +49,7 @@ from .outbound import CALL_KIND as OUTBOUND_KIND
 from .qa import SCORE_KIND
 from .sip import KIND as TRUNK_KIND
 from .store import CallFilter, CallRecord, CallStore, Member, TenantDoc
+from .voices import MARKETS, TenantLocale, VoicePlatformSettings
 
 log = logging.getLogger("parlio.admin")
 
@@ -61,6 +62,8 @@ COUPON_KIND = "coupon"
 NOTE_KIND = "support_note"
 STATUS_KIND = "platform_status"
 STAFF_SETTINGS_KIND = "staff_settings"
+VOICE_SETTINGS_KIND = "voice_settings"
+LOCALE_KIND = "tenant_locale"
 
 BUILTIN_PLANS: dict[str, Plan] = {p.id: p.model_copy(deep=True) for p in PLANS}
 BUILTIN_COUPONS: dict[str, Coupon] = {c.code: c.model_copy(deep=True) for c in COUPONS.values()}
@@ -170,6 +173,7 @@ class TenantDetail(BaseModel):
     trunks: list[dict[str, Any]]
     connectors: list[dict[str, Any]]
     flags: FeatureFlags
+    locale: TenantLocale
     notes: list[SupportNote]
     audit: list[AuditEntry]
 
@@ -503,6 +507,7 @@ class AdminService:
                 {k: d.data.get(k) for k in ("id", "name", "provider", "enabled")} for d in conns
             ],
             flags=await self.flags(tenant_id),
+            locale=await self.locale(tenant_id),
             notes=await self.notes(tenant_id),
             audit=sorted(
                 (AuditEntry.model_validate(d.data) for d in audit),
@@ -510,6 +515,36 @@ class AdminService:
                 reverse=True,
             )[:25],
         )
+
+    # -- voice provider (platform-wide) / tenant locale -----------------------------------------
+    async def voice_settings(self) -> VoicePlatformSettings:
+        doc = await self.store.get_doc(VOICE_SETTINGS_KIND, "current")
+        return VoicePlatformSettings.model_validate(doc.data) if doc else VoicePlatformSettings()
+
+    async def save_voice_settings(self, s: VoicePlatformSettings, by: str) -> VoicePlatformSettings:
+        unknown = sorted({*s.provider_by_market, s.default_market} - set(MARKETS))
+        if unknown:
+            raise ValueError(f"unknown market(s): {', '.join(unknown)}")
+        s = s.model_copy(update={"updated_by": by, "updated_at": datetime.now(UTC)})
+        await self._put(VOICE_SETTINGS_KIND, "current", PLATFORM_TENANT, s)
+        return s
+
+    async def locale(self, tenant_id: str) -> TenantLocale:
+        doc = await self.store.get_doc(LOCALE_KIND, tenant_id)
+        if doc:
+            return TenantLocale.model_validate(doc.data)
+        default_market = (await self.voice_settings()).default_market
+        return TenantLocale(tenant_id=tenant_id, market=default_market)
+
+    async def set_locale(self, tenant_id: str, market: str, by: str) -> TenantLocale:
+        market = market.upper()
+        if market not in MARKETS:
+            raise ValueError(f"unknown market: {market}")
+        loc = TenantLocale(
+            tenant_id=tenant_id, market=market, updated_by=by, updated_at=datetime.now(UTC)
+        )
+        await self._put(LOCALE_KIND, tenant_id, tenant_id, loc)
+        return loc
 
     # -- flags / notes / limits -----------------------------------------------------------------
     async def flags(self, tenant_id: str) -> FeatureFlags:

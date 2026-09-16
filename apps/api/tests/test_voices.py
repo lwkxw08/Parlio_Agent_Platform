@@ -10,12 +10,17 @@ from httpx import AsyncClient
 
 from parlio_api.voices import (
     CATALOGUE,
+    MARKETS,
     PreviewRequest,
     PreviewUnavailable,
+    VoicePlatformSettings,
     VoicePreviewer,
+    default_voice,
     find_voice,
 )
 from parlio_voice.models import TTSProvider, VoiceConfig
+
+OWNER = {"X-Parlio-User": "owner@demo.parlio.local"}
 
 
 def test_catalogue_has_male_and_female_british_voices() -> None:
@@ -75,7 +80,62 @@ async def test_voice_routes(client: AsyncClient) -> None:
     r = await client.get("/v1/voices")
     assert r.status_code == 200
     body = r.json()
+    assert body["provider"] == "cartesia" and body["market"] == "GB"
+    assert body["accents"] == ["British", "Irish"]
+    assert {v["provider"] for v in body["voices"]} == {"cartesia"}
     assert {v["gender"] for v in body["voices"]} == {"female", "male"}
-    assert set(body["preview_available"]) == {"cartesia", "elevenlabs"}
+    assert body["preview_available"] is False
     r = await client.post("/v1/voices/preview", json={"provider": "cartesia", "voice_id": "abc"})
     assert r.status_code == 503
+
+
+def test_markets_have_recommended_voices_in_leading_accent() -> None:
+    for code, m in MARKETS.items():
+        v = default_voice(TTSProvider.CARTESIA, code)
+        assert v is not None and v.accent == m.accents[0] and v.recommended, code
+    assert default_voice(TTSProvider.CARTESIA, "ZZ") == default_voice(TTSProvider.CARTESIA, "GB")
+
+
+def test_platform_settings_provider_per_market() -> None:
+    s = VoicePlatformSettings(provider_by_market={"US": TTSProvider.ELEVENLABS})
+    assert s.provider_for("gb") == TTSProvider.CARTESIA
+    assert s.provider_for("us") == TTSProvider.ELEVENLABS
+
+
+@pytest.mark.asyncio
+async def test_platform_owner_sets_provider_and_market(client: AsyncClient) -> None:
+    # tenants do not get to pick the provider: a saved ElevenLabs config is pinned back
+    a = (await client.get("/v1/assistants")).json()[0]
+    a["voice"] = {"provider": "elevenlabs", "voice_id": "JBFqnCBsd6RMkjVDRZzb", "speed": None}
+    r = await client.put(f"/v1/assistants/{a['assistant_id']}", json={"config": a, "numbers": []})
+    assert r.status_code == 200
+    assert r.json()["voice"]["provider"] == "cartesia"
+    assert find_voice(TTSProvider.CARTESIA, r.json()["voice"]["voice_id"]).accent == "British"
+
+    # platform owner moves the US market to ElevenLabs and puts the demo tenant in the US
+    r = await client.put(
+        "/v1/admin/voice",
+        json={"default_provider": "cartesia", "provider_by_market": {"US": "elevenlabs"}},
+        headers=OWNER,
+    )
+    assert r.status_code == 200, r.text
+    r = await client.put(
+        "/v1/admin/voice", json={"provider_by_market": {"XX": "elevenlabs"}}, headers=OWNER
+    )
+    assert r.status_code == 400
+    r = await client.put(
+        f"/v1/admin/tenants/{a['tenant_id']}/locale", json={"market": "us"}, headers=OWNER
+    )
+    assert r.status_code == 200 and r.json()["market"] == "US"
+
+    body = (await client.get("/v1/voices")).json()
+    assert body["provider"] == "elevenlabs" and body["market"] == "US"
+    assert body["accents"] == ["American"]
+    assert {v["provider"] for v in body["voices"]} == {"elevenlabs"}
+
+    # the tenant's existing Cartesia voice is swapped for the market default on next save
+    a = (await client.get("/v1/assistants")).json()[0]
+    r = await client.put(f"/v1/assistants/{a['assistant_id']}", json={"config": a, "numbers": []})
+    assert r.json()["voice"]["provider"] == "elevenlabs"
+    detail = (await client.get(f"/v1/admin/tenants/{a['tenant_id']}", headers=OWNER)).json()
+    assert detail["locale"]["market"] == "US"
