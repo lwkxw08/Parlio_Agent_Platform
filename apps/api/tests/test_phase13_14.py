@@ -314,6 +314,26 @@ async def test_simulation_scripted_callers_and_ab() -> None:
     assert await sim.runs("other") == []
 
 
+async def test_simulation_mentions_accepts_alternatives() -> None:
+    store = MemoryStore(None)
+    base = AssistantConfig(
+        tenant_id="demo", company_id="demo", assistant_id="demo", business_name="Demo"
+    )
+    base.faqs.append(Faq(question="gas safety", answer="Yes, £75 for landlords."))
+    await store.upsert_assistant(base, [])
+    sim = SimulationService(store, EchoAgent(), HeuristicScorer())
+    sc = await sim.save_scenario(
+        Scenario(
+            tenant_id="demo",
+            name="Alt phrasing",
+            turns=["Do you do gas safety?"],
+            expect=Expectation(mentions=["certificate|landlord", "missing|absent"], min_overall=0),
+        )
+    )
+    (res,) = (await sim.run("demo", "demo", [sc.id], draft=base)).results
+    assert res.failures == ["expected reply to mention 'missing|absent'"]
+
+
 async def test_simulation_route_uses_draft_and_is_tenant_scoped(client: AsyncClient) -> None:
     r = await client.put(
         "/v1/quality/scenarios",

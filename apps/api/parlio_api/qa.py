@@ -746,7 +746,10 @@ class QAService:
 
 
 class Expectation(BaseModel):
-    mentions: list[str] = Field(default_factory=list, description="phrases expected in replies")
+    mentions: list[str] = Field(
+        default_factory=list,
+        description="phrases expected in replies; 'a|b' passes if any alternative appears",
+    )
     avoids: list[str] = Field(default_factory=list, description="phrases that must not appear")
     handoff: bool | None = Field(None, description="expect (or forbid) a human handoff")
     ticket: bool | None = Field(None, description="expect (or forbid) a ticket/message taken")
@@ -791,7 +794,7 @@ DEFAULT_SCENARIOS: list[dict[str, Any]] = [
             "Hello, I'd like to book an appointment please.",
             "Thursday afternoon if possible.",
         ],
-        "expect": {"mentions": ["book"]},
+        "expect": {"mentions": ["book|appointment|availab|slot|thursday"]},
     },
     {
         "name": "Wants a human",
@@ -951,7 +954,7 @@ class SimulationService:
         failures: list[str] = []
         replies = " ".join(t.assistant for t in turns).lower()
         for m in scenario.expect.mentions:
-            if m.lower() not in replies:
+            if not any(alt.strip().lower() in replies for alt in m.split("|") if alt.strip()):
                 failures.append(f"expected reply to mention '{m}'")
         for a in scenario.expect.avoids:
             if a.lower() in replies:
