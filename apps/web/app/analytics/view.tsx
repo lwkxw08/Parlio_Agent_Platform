@@ -3,8 +3,11 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { Breakdown } from "@/app/breakdown";
+import { AreaLine, Donut } from "@/app/charts";
+import Insights from "./insights";
 import {
   type ComparisonAnalytics,
+  type InsightsReport,
   type OverviewAnalytics,
   type Segment,
   type SegmentAnalytics,
@@ -82,31 +85,6 @@ function PairedBars({ a, b, labels }: { a: number[]; b: number[]; labels: string
   );
 }
 
-function Lines({ series, labels }: { series: { values: number[]; color: string }[]; labels: string[] }) {
-  const w = 600, h = 160, pad = 24;
-  const n = Math.max(2, ...series.map((s) => s.values.length));
-  const max = Math.max(1, ...series.flatMap((s) => s.values));
-  const x = (i: number) => pad + (i * (w - pad * 2)) / (n - 1);
-  const y = (v: number) => h - pad - (v / max) * (h - pad * 2);
-  return (
-    <svg viewBox={`0 0 ${w} ${h}`} className="lines" preserveAspectRatio="none">
-      {[0, 0.5, 1].map((t) => (
-        <g key={t}>
-          <line x1={pad} x2={w - pad} y1={y(max * t)} y2={y(max * t)} stroke="var(--line)" />
-          <text x={2} y={y(max * t) + 4} fontSize="10" fill="var(--muted)">{Math.round(max * t)}</text>
-        </g>
-      ))}
-      {series.map((s, k) => (
-        <g key={k}>
-          <path d={s.values.map((v, i) => `${i ? "L" : "M"}${x(i)},${y(v)}`).join(" ")} fill="none" stroke={s.color} strokeWidth={2} />
-          <path d={`${s.values.map((v, i) => `${i ? "L" : "M"}${x(i)},${y(v)}`).join(" ")} L${x(s.values.length - 1)},${y(0)} L${x(0)},${y(0)} Z`} fill={s.color} opacity={0.08} />
-        </g>
-      ))}
-      {labels.map((l, i) => (i % Math.ceil(n / 10) === 0 ? <text key={i} x={x(i)} y={h - 6} fontSize="9" fill="var(--muted)" textAnchor="middle">{l}</text> : null))}
-    </svg>
-  );
-}
-
 function Legend({ a, b }: { a: Segment; b: Segment }) {
   return (
     <span className="legend small">
@@ -145,7 +123,19 @@ function SegmentPicker({ value, onChange, color, label }: { value: Segment; onCh
   );
 }
 
-export default function AnalyticsView({ overview, initial }: { overview: OverviewAnalytics; initial: ComparisonAnalytics }) {
+const USAGE: { key: Exclude<keyof OverviewAnalytics["usage"], "month">; label: string; round?: boolean }[] = [
+  { key: "calls", label: "Calls" },
+  { key: "minutes", label: "Minutes", round: true },
+  { key: "transfers", label: "Transfers" },
+  { key: "tickets", label: "Tickets" },
+  { key: "bookings", label: "Bookings" },
+  { key: "sms", label: "SMS sent" },
+  { key: "whatsapp", label: "WhatsApp" },
+  { key: "web_chats", label: "Web chats" },
+  { key: "emails", label: "Emails" },
+];
+
+export default function AnalyticsView({ overview, initial, insights }: { overview: OverviewAnalytics; initial: ComparisonAnalytics; insights: InsightsReport | null }) {
   const [mode, setMode] = useState<Mode>("overview");
   const [data, setData] = useState<ComparisonAnalytics>(initial);
   const [p1, setP1] = useState<Segment>(initial.current.segment);
@@ -253,7 +243,7 @@ export default function AnalyticsView({ overview, initial }: { overview: Overvie
           <div className="grid" style={{ gridTemplateColumns: "2fr 1fr" }}>
             <div className="card">
               <h2>Call volume</h2>
-              <Lines series={[{ values: cur.daily.map((d) => d.calls), color: P1 }]} labels={dayLabels} />
+              <AreaLine id="vol" series={[{ values: cur.daily.map((d) => d.calls), color: P1, label: "Calls" }]} labels={dayLabels} />
             </div>
             <div className="card">
               <h2>Day of week</h2>
@@ -262,11 +252,14 @@ export default function AnalyticsView({ overview, initial }: { overview: Overvie
           </div>
 
           <div className="grid" style={{ gridTemplateColumns: "1fr 1fr 1fr" }}>
-            <Breakdown
-              title="Calls by department"
-              data={cur.by_department}
-              empty={<>No department routing in this period. Departments and their staff are set up on the <a href="/handoff">Transfers</a> page; calls appear here once the assistant routes or transfers to one.</>}
-            />
+            <div className="card">
+              <h2>Calls by department</h2>
+              <Donut
+                data={cur.by_department}
+                total="Calls"
+                empty={<>No department routing in this period. Departments and their staff are set up on the <a href="/handoff">Transfers</a> page; calls appear here once the assistant routes or transfers to one.</>}
+              />
+            </div>
             <div className="card">
               <h2>First-time vs returning</h2>
               <div className="split">
@@ -289,13 +282,15 @@ export default function AnalyticsView({ overview, initial }: { overview: Overvie
           <div className="grid">
             <Breakdown title="Outcomes" data={cur.by_outcome} empty="No calls in this period." />
             <div className="card">
-              <h2>Usage this month ({overview.usage.month})</h2>
-              <dl className="kv stats">
-                <dt>Calls</dt><dd>{overview.usage.calls}</dd>
-                <dt>Minutes</dt><dd>{Math.round(overview.usage.minutes)}</dd>
-                <dt>Transfers</dt><dd>{overview.usage.transfers}</dd>
-                <dt>Tickets</dt><dd>{overview.usage.tickets}</dd>
-              </dl>
+              <h2>Usage this month <span className="sub">{new Date(overview.usage.month + "-01T00:00:00Z").toLocaleDateString("en-GB", { month: "long", year: "numeric" })} · every channel</span></h2>
+              <div className="usage-grid">
+                {USAGE.map((u) => (
+                  <div key={u.key}>
+                    <div className="label">{u.label}</div>
+                    <div className="value">{u.round ? Math.round(overview.usage[u.key]) : overview.usage[u.key]}</div>
+                  </div>
+                ))}
+              </div>
             </div>
             <Breakdown
               title="Information not captured"
@@ -320,6 +315,8 @@ export default function AnalyticsView({ overview, initial }: { overview: Overvie
               <p className="small"><Link href="/handoff">Full handoff analytics →</Link></p>
             </div>
           </div>
+
+          <Insights initial={insights} timezone={overview.timezone} />
         </>
       ) : (
         <>
@@ -339,8 +336,9 @@ export default function AnalyticsView({ overview, initial }: { overview: Overvie
           <div className="grid" style={{ gridTemplateColumns: "1fr 1fr" }}>
             <div className="card">
               <div className="an-head" style={{ marginBottom: 4 }}><h2 style={{ margin: 0 }}>Daily trend comparison</h2><span className="legend small"><i style={{ background: P1 }} /> Period 1 <i style={{ background: P2 }} /> Period 2</span></div>
-              <Lines
-                series={[{ values: cur.daily.map((d) => d.calls), color: P1 }, { values: cmp.daily.map((d) => d.calls), color: P2 }]}
+              <AreaLine
+                id="cmp"
+                series={[{ values: cur.daily.map((d) => d.calls), color: P1, label: "Period 1" }, { values: cmp.daily.map((d) => d.calls), color: P2, label: "Period 2" }]}
                 labels={cur.daily.map((_, i) => `Day ${i + 1}`)}
               />
             </div>

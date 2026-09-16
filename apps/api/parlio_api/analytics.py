@@ -8,11 +8,12 @@ from __future__ import annotations
 
 from collections import Counter
 from datetime import UTC, datetime, timedelta
+from typing import Any
 from zoneinfo import ZoneInfo
 
 from pydantic import BaseModel, Field
 
-from parlio_api.store import CallRecord, Contact, TicketStats, TransferStats
+from parlio_api.store import CallRecord, Contact, TenantDoc, TicketStats, TransferStats
 
 
 class PeriodSummary(BaseModel):
@@ -57,6 +58,11 @@ class UsageSummary(BaseModel):
     minutes: float = 0.0
     tickets: int = 0
     transfers: int = 0
+    sms: int = 0
+    whatsapp: int = 0
+    web_chats: int = 0
+    emails: int = 0
+    bookings: int = 0
 
 
 class OverviewAnalytics(BaseModel):
@@ -102,6 +108,37 @@ def summarise(calls: list[CallRecord], start: datetime, end: datetime) -> Period
     s.new_callers = sum(1 for c in calls if c.caller_type == "new")
     s.avg_calls_per_caller = round(len(calls) / len(callers), 2) if callers else None
     return s
+
+
+def channel_usage(
+    usage: UsageSummary,
+    *,
+    messages: list[TenantDoc],
+    inbox_messages: list[TenantDoc],
+    notifications: list[TenantDoc],
+    bookings: list[TenantDoc],
+    month_start: datetime,
+) -> UsageSummary:
+    """Add this month's non-call usage (texts, chats, emails, bookings) to `usage`."""
+
+    def this_month(docs: list[TenantDoc]) -> list[dict[str, Any]]:
+        return [d.data for d in docs if d.created_at >= month_start]
+
+    usage.sms = sum(1 for m in this_month(messages) if m.get("status") == "sent")
+    for m in this_month(inbox_messages):
+        if m.get("direction") != "outbound" or m.get("status") not in ("sent", None):
+            continue
+        if m.get("channel") == "whatsapp":
+            usage.whatsapp += 1
+        elif m.get("channel") == "webchat":
+            usage.web_chats += 1
+    usage.emails = sum(
+        1
+        for n in this_month(notifications)
+        if n.get("channel") == "email" and n.get("status") == "sent"
+    )
+    usage.bookings = sum(1 for b in this_month(bookings) if b.get("status") != "cancelled")
+    return usage
 
 
 def compute_overview(

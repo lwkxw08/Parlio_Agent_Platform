@@ -1,4 +1,4 @@
-import { fetchOverview, queryAnalytics, type Segment } from "@/lib/api";
+import { fetchInsights, fetchOverview, queryAnalytics, type Segment } from "@/lib/api";
 import AnalyticsView from "./view";
 
 export const dynamic = "force-dynamic";
@@ -20,7 +20,11 @@ export default async function Analytics({ searchParams }: { searchParams: Promis
     label: `Previous ${days} days`,
   };
 
-  const [overview, initial] = await Promise.all([fetchOverview({ days }), queryAnalytics({ period, compare })]);
+  const [overview, initial, insights] = await Promise.all([
+    fetchOverview({ days }),
+    queryAnalytics({ period, compare }),
+    fetchInsights({ days: Math.max(30, days) }),
+  ]);
   if (!overview || !initial.ok) return <><h1>Analytics</h1><p className="muted">API unreachable</p></>;
-  return <AnalyticsView overview={overview} initial={initial.data} />;
+  return <AnalyticsView overview={overview} initial={initial.data} insights={insights.ok ? insights.data : null} />;
 }

@@ -183,7 +183,74 @@ export type OverviewAnalytics = {
     returning_rate: number | null;
     top_callers: { e164: string; name: string; calls: number }[];
   };
-  usage: { month: string; calls: number; minutes: number; tickets: number; transfers: number };
+  usage: {
+    month: string; calls: number; minutes: number; tickets: number; transfers: number;
+    sms: number; whatsapp: number; web_chats: number; emails: number; bookings: number;
+  };
+};
+
+// -- Phase 21a: Insights read model (mirrors parlio_api.insights) ---------------------------------
+
+export type Slice = { label: string; count: number; share: number | null; value: number | null };
+export type ForecastDay = { day: string; weekday: string; expected_calls: number; low: number; high: number; busiest_hours: number[] };
+export type FunnelStep = { key: string; label: string; count: number; share: number | null };
+export type TransferRow = { label: string; attempts: number; answered: number; answer_rate: number | null; abandoned: number; avg_human_s: number | null; human_minutes: number };
+export type TrendPoint = {
+  period: string; label: string; calls: number; answered: number; missed: number; transfers: number; tickets: number;
+  bookings: number; leads: number; answer_rate: number | null; est_value_pence: number;
+};
+export type MemberRow = {
+  label: string; claimed: number; resolved: number; callbacks: number; notes: number; transfers_answered: number;
+  transfers_missed: number; avg_resolution_h: number | null; active_days: number; vs_team_pct: number | null;
+};
+export type InsightsReport = {
+  tenant_id: string; timezone: string; start: string; end: string; days: number; generated_at: string;
+  demand: {
+    heatmap: number[][]; avg_by_hour: number[]; avg_by_weekday: number[]; forecast: ForecastDay[]; forecast_total: number;
+    forecast_vs_last_week_pct: number | null; would_have_missed_by_hour: number[]; would_have_missed_total: number;
+    after_hours_calls: number; overlapping_calls: number; peak_concurrency: number; peak_concurrency_at: string | null;
+    busiest_hours: Slice[]; quietest_hours: Slice[];
+  };
+  resolution: {
+    funnel: FunnelStep[]; resolved_by_ai: number; transferred: number; transfer_answered: number; ticketed: number;
+    ai_callbacks: number; ai_callbacks_resolved: number; resolved_by_human: number; first_contact_resolution_rate: number | null;
+    leakage_rate: number | null; median_time_to_resolve_h: number | null; by_intent: Slice[];
+  };
+  sla: {
+    tickets: number; median_time_to_claim_h: number | null; median_time_to_first_callback_h: number | null;
+    median_time_to_resolve_h: number | null; breach_rate: number | null; breached: number; reopened: number; reopen_rate: number | null;
+    callback_first_attempt_rate: number | null; backlog: { department: string; open: number; oldest_h: number | null; avg_age_h: number | null }[];
+    breach_trend: Slice[];
+  };
+  transfers: {
+    attempts: number; answered: number; answer_rate: number | null; abandoned: number; avg_human_s: number | null; human_minutes: number;
+    recorded: number; by_department: TransferRow[]; by_destination: TransferRow[]; by_hour: number[]; est_transfer_cost_pence: number; est_ai_cost_pence: number;
+  };
+  intents: {
+    top: Slice[]; rising: Slice[]; falling: Slice[]; unanswered_questions: number;
+    gaps: { question: string; count: number; status: string; est_value_pence: number }[]; est_gap_value_pence: number;
+  };
+  revenue: {
+    currency: string; calls: number; leads: number; bookings: number; lead_rate: number | null; booking_rate: number | null;
+    attributed_pence: number; missed_pence: number; unresolved_pence: number; avg_job_value_pence: number;
+    median_lead_to_booking_h: number | null; repeat_caller_share: number | null; by_intent: Slice[]; by_source: Slice[]; by_hour: number[]; top_customers: Slice[];
+  };
+  cx: {
+    qa_scored: number; avg_qa: number | null; avg_tone: number | null; avg_resolution: number | null; frustration_rate: number | null;
+    frustrated: number; repeat_within_7d: number; repeat_rate: number | null; positive_feedback: number; negative_feedback: number;
+    qa_trend: Slice[]; qa_by_intent: Slice[]; qa_by_version: Slice[];
+  };
+  workforce: { members: MemberRow[]; team_avg_resolved: number | null; team_avg_resolution_h: number | null; unassigned_open: number };
+  attribution: { channels: Slice[]; leads_by_channel: Slice[]; bookings_by_channel: Slice[]; untracked_calls: number };
+  cost: {
+    ai_minutes: number; human_minutes: number; ai_share: number | null; ai_handled_calls: number; hours_saved: number;
+    est_human_cost_pence: number; est_ai_cost_pence: number; cost_per_resolved_pence: number | null;
+  };
+  trends: {
+    window_days: number; avg_by_hour: number[]; avg_by_weekday: number[]; monthly: TrendPoint[]; quarterly: TrendPoint[]; yearly: TrendPoint[];
+    intent_monthly: Slice[]; busiest_days: Slice[]; busiest_months: Slice[]; same_period_last_year: TrendPoint | null;
+    this_period: TrendPoint | null; yoy_calls_pct: number | null;
+  };
 };
 
 // -- assistant config (mirrors parlio_voice.models.AssistantConfig) ---------------------------
@@ -654,6 +721,8 @@ export const fetchTransfers = () => get<TransferRecord[]>("/v1/transfers");
 export const fetchHandoffAnalytics = () => get<HandoffAnalytics>("/v1/analytics/handoff");
 export const fetchOverview = (params: { tenant_id?: string; days?: number; timezone?: string } = {}) =>
   get<OverviewAnalytics>(`/v1/analytics/overview${qs(params)}`);
+export const fetchInsights = (params: { tenant_id?: string; days?: number; timezone?: string } = {}) =>
+  request<InsightsReport>(`/v1/analytics/insights${qs(params)}`);
 export const queryAnalytics = (body: {
   question?: string;
   period?: Segment;
