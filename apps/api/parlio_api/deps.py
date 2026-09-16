@@ -26,6 +26,8 @@ from parlio_api.outbound import OutboundService
 from parlio_api.payments import PaymentService
 from parlio_api.postcall import PostCallProcessor
 from parlio_api.qa import QAService, SimulationService, VoiceCloneService
+from parlio_api.reminders import ReminderService
+from parlio_api.screening import ScreeningService
 from parlio_api.security import SecurityService
 from parlio_api.settings import Settings, get_settings
 from parlio_api.sip import SipService
@@ -87,6 +89,16 @@ def get_calendar(request: Request) -> CalendarService:
 
 def get_sip(request: Request) -> SipService:
     svc: SipService = request.app.state.sip
+    return svc
+
+
+def get_reminders(request: Request) -> ReminderService:
+    svc: ReminderService = request.app.state.reminders
+    return svc
+
+
+def get_screening(request: Request) -> ScreeningService:
+    svc: ScreeningService = request.app.state.screening
     return svc
 
 
@@ -248,6 +260,8 @@ ApprovalsDep = Annotated[ApprovalService, Depends(get_approvals)]
 SmsDep = Annotated[MessageService, Depends(get_sms)]
 NotificationsDep = Annotated[NotificationService, Depends(get_notifications)]
 CalendarDep = Annotated[CalendarService, Depends(get_calendar)]
+ScreeningDep = Annotated[ScreeningService, Depends(get_screening)]
+RemindersDep = Annotated[ReminderService, Depends(get_reminders)]
 SipDep = Annotated[SipService, Depends(get_sip)]
 HubDep = Annotated[IntegrationHub, Depends(get_hub)]
 TicketsDep = Annotated[TicketService, Depends(get_tickets)]

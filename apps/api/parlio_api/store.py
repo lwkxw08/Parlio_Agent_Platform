@@ -72,7 +72,7 @@ class CallRecord(BaseModel):
     @property
     def kind(self) -> str:
         """Dashboard bucket: blocked | missed | transferred | ticketed | answered | active."""
-        if self.end_reason == "blocked":
+        if self.end_reason in ("blocked", "screened", "spam"):
             return "blocked"
         if self.status == "failed" or (self.status == "completed" and self.answered_at is None):
             return "missed"

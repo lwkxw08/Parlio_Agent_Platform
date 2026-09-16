@@ -7,6 +7,7 @@ import {
   type Faq,
   type RegressionCheck,
   type RequiredField,
+  type ScreeningMode,
   type SmsScenario,
   type SpeakingStyle,
   type VersionSummary,
@@ -26,7 +27,7 @@ const TABS = ["persona", "speaking", "business", "hours", "rules", "faqs", "fiel
 type Tab = (typeof TABS)[number];
 const LABELS: Record<Tab, string> = {
   persona: "Persona & voice", speaking: "Speaking style", business: "Business", hours: "Hours", rules: "Rules", faqs: "FAQs", fields: "Required fields",
-  sms: "SMS", languages: "Languages", recording: "Recording", blocked: "Blocked numbers", afterhours: "After hours", versions: "Versions",
+  sms: "SMS", languages: "Languages", recording: "Recording", blocked: "Screening & blocking", afterhours: "After hours", versions: "Versions",
 };
 const DAYS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
 const SMS_TRIGGERS = ["after_call", "missed_call", "booking_link", "address", "payment_link", "ticket_confirmation", "custom"];
@@ -44,6 +45,7 @@ export default function Studio({ initial, versions: initialVersions, requiredFie
   const [suggested, setSuggested] = useState<Faq[] | null>(null);
   const [bulkSms, setBulkSms] = useState("");
   const [bulkBlocked, setBulkBlocked] = useState("");
+  const [bulkAllowed, setBulkAllowed] = useState("");
   const [blocked, setBlocked] = useState<RegressionCheck | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -388,7 +390,21 @@ export default function Studio({ initial, versions: initialVersions, requiredFie
 
       {tab === "blocked" && (
         <div className="section form">
-          <h2>Blocked numbers</h2>
+          <h2>Call screening</h2>
+          <p className="hint">Screened callers are asked who they are and why they are calling before the assistant helps; sales pitches, robocalls and silent lines are ended politely. Known contacts and the numbers you allow below are never screened.</p>
+          <label>Screen
+            <select value={cfg.screening.mode} onChange={(e) => upd({ screening: { ...cfg.screening, mode: e.target.value as ScreeningMode } })}>
+              <option value="off">Nobody (answer every call normally)</option>
+              <option value="unknown">Unknown callers only (no contact record)</option>
+              <option value="all">Every caller</option>
+            </select>
+          </label>
+          <label className="small check"><input type="checkbox" checked={cfg.screening.block_spam} onChange={(e) => upd({ screening: { ...cfg.screening, block_spam: e.target.checked } })} /> Reject numbers on your spam list and the platform-wide spam list before answering</label>
+          <label className="small check"><input type="checkbox" checked={cfg.screening.block_withheld} onChange={(e) => upd({ screening: { ...cfg.screening, block_withheld: e.target.checked } })} /> Reject withheld / anonymous caller IDs (off by default: many genuine customers withhold their number)</label>
+          <label>Always allow (never screened or blocked)
+            <textarea value={bulkAllowed || cfg.screening.allow_numbers.join("\n")} onChange={(e) => setBulkAllowed(e.target.value)} onBlur={() => { if (bulkAllowed) { upd({ screening: { ...cfg.screening, allow_numbers: Array.from(new Set(bulkAllowed.split(/[\s,]+/).map((s) => s.trim()).filter(Boolean))) } }); setBulkAllowed(""); } }} placeholder="+447700900123" />
+          </label>
+          <h2 style={{ marginTop: "1.2rem" }}>Blocked numbers</h2>
           <p className="hint">Calls from these numbers are ended immediately without answering and logged as “blocked”. Use E.164 (e.g. +447700900123).</p>
           <textarea value={bulkBlocked || cfg.blocked_numbers.join("\n")} onChange={(e) => setBulkBlocked(e.target.value)} onBlur={() => { if (bulkBlocked) { upd({ blocked_numbers: Array.from(new Set(bulkBlocked.split(/[\s,]+/).map((s) => s.trim()).filter(Boolean))) }); setBulkBlocked(""); } }} />
           <p className="small muted">{cfg.blocked_numbers.length} blocked</p>

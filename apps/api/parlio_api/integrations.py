@@ -31,6 +31,7 @@ from parlio_api.notifications import (
 from parlio_api.observability import Telemetry
 from parlio_api.outbound import OutboundService
 from parlio_api.qa import QAService
+from parlio_api.reminders import ReminderService
 from parlio_api.sip import SipService
 from parlio_api.store import CallRecord, CallStore, Ticket
 from parlio_voice.models import AssistantConfig, CallEvent, CallEventType
@@ -62,8 +63,9 @@ class IntegrationHub:
         self.live = live
         self.inbox: InboxService | None = None
         self.qa: QAService | None = None
+        self.reminders: ReminderService | None = None
 
-    async def _business_name(self, tenant_id: str, assistant_id: str | None = None) -> str:
+    async def business_name_for(self, tenant_id: str, assistant_id: str | None = None) -> str:
         cfg = await self.store.get_assistant(assistant_id) if assistant_id else None
         if cfg is None:
             cfgs = await self.store.list_assistants(tenant_id)
@@ -119,7 +121,7 @@ class IntegrationHub:
             log.warning("post-call notifications failed for %s", call.call_id, exc_info=True)
         if self.connectors is not None and call.kind != "blocked":
             try:
-                name = await self._business_name(call.tenant_id, call.assistant_id)
+                name = await self.business_name_for(call.tenant_id, call.assistant_id)
                 await self.connectors.dispatch(
                     payload_from_call(
                         call, name, is_qualified_lead(call), self.connectors.public_url
@@ -154,7 +156,7 @@ class IntegrationHub:
             log.warning("ticket SMS failed for %s", ticket.id, exc_info=True)
         if self.connectors is not None:
             try:
-                name = cfg.business_name if cfg else await self._business_name(ticket.tenant_id)
+                name = cfg.business_name if cfg else await self.business_name_for(ticket.tenant_id)
                 await self.connectors.dispatch(payload_from_ticket(ticket, name))
             except Exception:
                 log.warning("connector sync failed for ticket %s", ticket.id, exc_info=True)
@@ -165,6 +167,11 @@ class IntegrationHub:
                 log.warning("ticket callback scheduling failed for %s", ticket.id, exc_info=True)
 
     async def on_booking(self, booking: Booking) -> None:
+        if self.reminders is not None:
+            try:
+                await self.reminders.on_booking(booking)
+            except Exception:
+                log.warning("SMS reminder scheduling failed for %s", booking.id, exc_info=True)
         if self.outbound is not None:
             try:
                 await self.outbound.on_booking(
@@ -179,7 +186,7 @@ class IntegrationHub:
         if self.connectors is None:
             return
         try:
-            name = await self._business_name(booking.tenant_id)
+            name = await self.business_name_for(booking.tenant_id)
             await self.connectors.dispatch(payload_from_booking(booking, name))
         except Exception:
             log.warning("connector sync failed for booking %s", booking.id, exc_info=True)

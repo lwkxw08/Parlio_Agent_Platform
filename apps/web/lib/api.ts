@@ -203,6 +203,8 @@ export type BusinessInfo = {
   services: string[];
 };
 export type VoiceConfig = { provider: string; voice_id: string; speed: number | null };
+export type ScreeningMode = "off" | "unknown" | "all";
+export type ScreeningConfig = { mode: ScreeningMode; block_withheld: boolean; block_spam: boolean; allow_numbers: string[] };
 export type RecordingConfig = { enabled: boolean; record_transfers: boolean; consent_announcement: Record<string, string> };
 export type Destination = {
   id: string;
@@ -263,6 +265,7 @@ export type Assistant = {
   voice: VoiceConfig;
   turn: Record<string, unknown>;
   recording: RecordingConfig;
+  screening: ScreeningConfig;
   transfer: TransferConfig;
 };
 
@@ -436,6 +439,14 @@ export type Booking = {
   created_at: string;
 };
 export type SyncLogEntry = { id: string; connection_id: string; action: string; ok: boolean; detail: string | null; at: string };
+export type ReminderPolicy = {
+  tenant_id: string; enabled: boolean; timezone: string; hours_before: number[];
+  template: string; confirm_reply: string; reschedule_reply: string;
+};
+export type Reminder = {
+  id: string; booking_id: string; phone: string; name: string; start: string; send_at: string;
+  status: string; sent_at: string | null; reply: string | null; ticket_id: string | null; error: string | null;
+};
 
 export type ConnectorProvider =
   | "webhook" | "zapier" | "make" | "google_sheets" | "hubspot" | "salesforce"
@@ -660,6 +671,8 @@ export const fetchRules = (tenant_id: string) => get<NotificationRule[]>(`/v1/no
 export const fetchNotificationLog = (tenant_id: string) => get<Notification[]>(`/v1/notifications/log${qs({ tenant_id })}`);
 export const fetchConnections = (tenant_id: string) => get<CalendarConnection[]>(`/v1/calendar/connections${qs({ tenant_id })}`);
 export const fetchBookings = (tenant_id: string) => get<Booking[]>(`/v1/calendar/bookings${qs({ tenant_id })}`);
+export const fetchReminderPolicy = (tenant_id: string) => get<ReminderPolicy>(`/v1/reminders/policy${qs({ tenant_id })}`);
+export const fetchReminders = (tenant_id: string) => get<Reminder[]>(`/v1/reminders${qs({ tenant_id })}`);
 export const fetchSyncLog = (tenant_id: string) => get<SyncLogEntry[]>(`/v1/calendar/sync-log${qs({ tenant_id })}`);
 export const fetchProviders = () => get<{ providers: ProviderInfo[]; payload_fields: string[] }>("/v1/connectors/providers");
 export const fetchConnectors = (tenant_id: string) => get<Connector[]>(`/v1/connectors${qs({ tenant_id })}`);

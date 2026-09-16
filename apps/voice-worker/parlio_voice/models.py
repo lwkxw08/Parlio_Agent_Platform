@@ -238,6 +238,7 @@ class SmsTrigger(StrEnum):
     ADDRESS = "address"
     PAYMENT_LINK = "payment_link"
     TICKET_CONFIRMATION = "ticket_confirmation"
+    APPOINTMENT_REMINDER = "appointment_reminder"
     CUSTOM = "custom"
 
 
@@ -351,6 +352,30 @@ class PaymentsConfig(BaseModel):
     card_by_phone: bool = False
 
 
+class ScreeningMode(StrEnum):
+    OFF = "off"
+    UNKNOWN = "unknown"  # callers we have no contact record for
+    ALL = "all"
+
+
+class ScreeningConfig(BaseModel):
+    """Call screening & spam filtering (Phase 20d).
+
+    Screened callers are asked who they are and why they are calling before the assistant helps;
+    sales/robocalls are ended early. Rejected callers (withheld IDs, spam-listed numbers) never
+    reach the assistant at all, so they cost no minutes.
+    """
+
+    mode: ScreeningMode = ScreeningMode.OFF
+    block_withheld: bool = False
+    block_spam: bool = True
+    allow_numbers: list[str] = Field(default_factory=list)
+
+    @property
+    def enabled(self) -> bool:
+        return self.mode != ScreeningMode.OFF or self.block_withheld or self.block_spam
+
+
 class AssistantConfig(BaseModel):
     tenant_id: str
     company_id: str
@@ -383,6 +408,7 @@ class AssistantConfig(BaseModel):
     transfer: TransferConfig = Field(default_factory=TransferConfig)
     verification: VerificationConfig = Field(default_factory=VerificationConfig)
     payments: PaymentsConfig = Field(default_factory=PaymentsConfig)
+    screening: ScreeningConfig = Field(default_factory=ScreeningConfig)
 
     def rendered_greeting(self) -> str:
         return self.greeting.format(name=self.name, business_name=self.business_name)

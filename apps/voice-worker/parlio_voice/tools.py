@@ -180,6 +180,14 @@ class CoreApiClient:
         r = await self._http.post("/v1/worker/telephony/release", params={"call_id": call_id})
         r.raise_for_status()
 
+    async def screen(self, cfg: AssistantConfig, caller: str | None) -> dict[str, Any]:
+        r = await self._http.get(
+            "/v1/worker/screening",
+            params={"assistant_id": cfg.assistant_id, "caller": caller or ""},
+        )
+        r.raise_for_status()
+        return dict(r.json())
+
     async def request_approval(self, cfg: AssistantConfig, req: dict[str, Any]) -> dict[str, Any]:
         r = await self._http.post(
             "/v1/worker/approvals",
@@ -232,6 +240,22 @@ class ReceptionistTools:
         self.verified = False
         self.verification_locked = False
         self.payment_ids: list[str] = []
+        self.screening: dict[str, Any] | None = None
+        self.hangup: Callable[[str], Awaitable[None]] | None = None
+        self.ended_as_spam = False
+
+    # -- call screening (Phase 20d) --------------------------------------------------------
+    async def end_call(self, reason: str, farewell: str | None = None) -> dict[str, Any]:
+        """Politely end a screened-out call (sales, robocall, refused to say who they are)."""
+        self.ended_as_spam = True
+        log.info("screened-out call %s ended: %s", self.call_id, reason)
+        try:
+            await self.say(farewell or "Thanks for calling. Goodbye.")
+        except Exception:
+            log.debug("farewell playout failed", exc_info=True)
+        if self.hangup is not None:
+            await self.hangup("spam")
+        return {"ended": True, "reason": reason}
 
     def sms_triggers(self) -> list[SmsTrigger]:
         """Scenarios the LLM may fire mid-call (post-call ones are sent by the API)."""
@@ -734,7 +758,51 @@ def build_tools(t: ReceptionistTools) -> list[Any]:
     if t.reporter is not None:
         tools.append(outcome_tool(t.reporter))
 
+    if t.screening is not None and t.screening.get("action") == "screen":
+
+        @function_tool(
+            name="end_call",
+            description=(
+                "End the call politely. Use ONLY for unwanted calls: sales or marketing pitches, "
+                "recorded/robotic messages, silent lines, or a caller who refuses to say who they "
+                "are or why they are calling after being asked twice. Never use it on a genuine "
+                "customer or someone who needs help."
+            ),
+        )
+        async def end_call(reason: str) -> dict[str, Any]:
+            return await t.end_call(reason)
+
+        tools.append(end_call)
+
     return tools
+
+
+def screening_instruction(verdict: dict[str, Any] | None) -> str:
+    """Prompt section for a screened call: find out who is calling and why before helping."""
+    if verdict is None:
+        return ""
+    name = verdict.get("known_name")
+    if verdict.get("action") != "screen":
+        if name:
+            return (
+                f"The caller's number matches an existing contact, {name}"
+                + (
+                    f" ({verdict.get('contact_status')})"
+                    if verdict.get("contact_status") in ("customer", "vip")
+                    else ""
+                )
+                + ". Greet them by name once they confirm who they are."
+            )
+        return ""
+    return (
+        "Call screening is on for this call. Before helping with anything, ask for the "
+        "caller's name and the reason for their call, in one friendly question. Genuine "
+        "customers, suppliers, patients and enquiries then get your normal full help; do not "
+        "make them repeat themselves. If the call is a sales or marketing pitch, a recorded "
+        "message, a silent line, or the caller refuses twice to say who they are or what they "
+        "want, say a brief polite goodbye and call end_call with the reason. When unsure, help "
+        "the caller - a wrongly screened-out customer is far worse than a wasted minute."
+    )
 
 
 def after_hours_instruction(cfg: AssistantConfig, someone_available: bool) -> str:

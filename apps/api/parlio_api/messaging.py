@@ -23,6 +23,17 @@ from parlio_voice.models import AssistantConfig, SmsScenario, SmsTrigger
 log = logging.getLogger("parlio.api.messaging")
 
 KIND = "message"
+OPTOUT_KIND = "sms_optout"
+STOP_WORDS = {"stop", "stopall", "unsubscribe", "cancel", "end", "quit", "optout", "opt out"}
+START_WORDS = {"start", "unstop", "subscribe", "resume"}
+OPTOUT_REPLY = "You've been unsubscribed from {business} text messages. Reply START to opt back in."
+OPTIN_REPLY = "You're opted back in to {business} text messages."
+
+
+def _optout_id(tenant_id: str, phone: str) -> str:
+    return f"{tenant_id}:{phone}"
+
+
 _PLACEHOLDER = re.compile(r"\{([a-z_]+)\}")
 
 
@@ -138,6 +149,32 @@ class MessageService:
     async def for_call(self, tenant_id: str, call_id: str) -> list[Message]:
         return [m for m in await self.recent(tenant_id, 1000) if m.call_id == call_id]
 
+    # -- opt-out (STOP / START) -----------------------------------------------------------------
+    async def opted_out(self, tenant_id: str, phone: str) -> bool:
+        return await self.store.get_doc(OPTOUT_KIND, _optout_id(tenant_id, phone)) is not None
+
+    async def set_opt_out(self, tenant_id: str, phone: str, out: bool) -> None:
+        did = _optout_id(tenant_id, phone)
+        if out:
+            await self.store.put_doc(
+                TenantDoc(kind=OPTOUT_KIND, id=did, tenant_id=tenant_id, data={"phone": phone})
+            )
+        else:
+            await self.store.delete_doc(OPTOUT_KIND, did)
+
+    async def handle_opt_keyword(
+        self, tenant_id: str, phone: str, text: str, business: str
+    ) -> str | None:
+        """Apply a STOP/START keyword reply; returns the confirmation text, or None if not one."""
+        word = re.sub(r"[^a-z ]", "", text.strip().lower())
+        if word in STOP_WORDS:
+            await self.set_opt_out(tenant_id, phone, True)
+            return OPTOUT_REPLY.format(business=business)
+        if word in START_WORDS:
+            await self.set_opt_out(tenant_id, phone, False)
+            return OPTIN_REPLY.format(business=business)
+        return None
+
     async def _already_sent(self, tenant_id: str, call_id: str | None, trigger: SmsTrigger) -> bool:
         if not call_id:
             return False
@@ -157,6 +194,7 @@ class MessageService:
         trigger: SmsTrigger = SmsTrigger.CUSTOM,
         scenario_id: str | None = None,
         sender: str | None = None,
+        opt_keyword_reply: bool = False,
     ) -> Message:
         sender = sender or self.from_number
         msg = Message(
@@ -176,6 +214,9 @@ class MessageService:
         elif not body:
             msg.status = MessageStatus.SKIPPED
             msg.error = "empty message"
+        elif not opt_keyword_reply and await self.opted_out(tenant_id, to):
+            msg.status = MessageStatus.SKIPPED
+            msg.error = "recipient opted out (STOP)"
         else:
             try:
                 msg.provider_ref = await self.provider.send(sender, to, body)

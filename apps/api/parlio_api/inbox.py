@@ -585,15 +585,21 @@ class Delivery(BaseModel):
 
 
 class ChannelSender(Protocol):
-    async def send(self, thread: Thread, text: str) -> Delivery: ...
+    async def send(self, thread: Thread, text: str, *, force: bool = False) -> Delivery: ...
 
 
 class SmsSender:
     def __init__(self, sms: MessageService) -> None:
         self._sms = sms
 
-    async def send(self, thread: Thread, text: str) -> Delivery:
-        m = await self._sms.send(thread.tenant_id, thread.company_id, thread.identity, text)
+    @property
+    def service(self) -> MessageService:
+        return self._sms
+
+    async def send(self, thread: Thread, text: str, *, force: bool = False) -> Delivery:
+        m = await self._sms.send(
+            thread.tenant_id, thread.company_id, thread.identity, text, opt_keyword_reply=force
+        )
         status = {
             MessageStatus.SENT: "sent",
             MessageStatus.FAILED: "failed",
@@ -616,7 +622,7 @@ class WhatsAppSender:
         self._client = client or httpx.AsyncClient(timeout=15)
         self.sent: list[tuple[str, str]] = []
 
-    async def send(self, thread: Thread, text: str) -> Delivery:
+    async def send(self, thread: Thread, text: str, *, force: bool = False) -> Delivery:
         acct = await self._accounts(thread.tenant_id)
         if acct is None:
             return Delivery(status="skipped", error="no WhatsApp account connected")
@@ -645,7 +651,7 @@ class WhatsAppSender:
 class StoreOnlySender:
     """Web chat: the message is persisted and the widget polls for it."""
 
-    async def send(self, thread: Thread, text: str) -> Delivery:
+    async def send(self, thread: Thread, text: str, *, force: bool = False) -> Delivery:
         return Delivery(status="sent")
 
 
@@ -761,6 +767,9 @@ class InboxService:
         self.on_ticket = on_ticket
         self.on_ticket_update = on_ticket_update
         self.sla = timedelta(minutes=sla_minutes)
+        # Short-circuit for SMS replies to appointment reminders ("1" / "2"); returns the reply
+        # text when the message was consumed, None to let the AI answer as normal.
+        self.on_sms_reply: Callable[[str, str, str], Awaitable[str | None]] | None = None
 
     # -- lookups --------------------------------------------------------------------------------
     async def config_for(self, tenant_id: str, to: str | None = None) -> AssistantConfig | None:
@@ -925,6 +934,29 @@ class InboxService:
             provider_ref=inb.provider_ref,
         )
         await self._append(t, m, count_unread=True)
+        if inb.channel == Channel.SMS:
+            sms = self.senders.get(Channel.SMS)
+            if isinstance(sms, SmsSender):
+                business = cfg.business_name if cfg else "us"
+                ack = await sms.service.handle_opt_keyword(
+                    tenant_id, inb.identity, inb.text, business
+                )
+                if ack:
+                    reply = await self._deliver(
+                        t, ack, author=Author.AI, author_name=cfg.name if cfg else None, force=True
+                    )
+                    return t, reply
+        if inb.channel == Channel.SMS and self.on_sms_reply is not None:
+            try:
+                canned = await self.on_sms_reply(tenant_id, inb.identity, inb.text)
+            except Exception:
+                log.warning("reminder reply handling failed for %s", t.id, exc_info=True)
+                canned = None
+            if canned:
+                reply = await self._deliver(
+                    t, canned, author=Author.AI, author_name=cfg.name if cfg else None
+                )
+                return t, reply
         if cfg is None or not t.ai_enabled or inb.channel not in TEXT_CHANNELS:
             return t, None
         history = await self.messages(tenant_id, t.id)
@@ -976,10 +1008,11 @@ class InboxService:
         author: Author,
         author_name: str | None,
         unread_after: int = 0,
+        force: bool = False,
     ) -> InboxMessage:
         sender = self.senders.get(t.channel)
         d = (
-            await sender.send(t, text)
+            await sender.send(t, text, force=force)
             if sender is not None
             else Delivery(status="skipped", error=f"no sender for {t.channel}")
         )
