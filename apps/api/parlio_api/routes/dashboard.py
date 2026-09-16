@@ -16,7 +16,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, s
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
-from parlio_api.analytics import OverviewAnalytics, compute_overview
+from parlio_api.analytics import OverviewAnalytics, channel_usage, compute_overview
 from parlio_api.analytics_query import (
     ComparisonAnalytics,
     LlmQuestionParser,
@@ -33,9 +33,11 @@ from parlio_api.deps import (
     SettingsDep,
     StoreDep,
     TicketsDep,
+    ValueDep,
     VoicePreviewDep,
 )
 from parlio_api.drafting import Draft, DraftRequest
+from parlio_api.insights import InsightInputs, InsightsReport, build_insights
 from parlio_api.onboarding import suggest_faqs
 from parlio_api.recordings import RecordingStorage, content_type_for
 from parlio_api.store import (
@@ -394,6 +396,41 @@ async def share_call(call_id: str, store: StoreDep, settings: SettingsDep) -> Sh
 # -- analytics ---------------------------------------------------------------------------------
 
 
+@router.get("/analytics/insights", response_model=InsightsReport)
+async def insights_analytics(
+    store: StoreDep,
+    value: ValueDep,
+    user: UserDep,
+    tenant_id: str | None = None,
+    days: Annotated[int, Query(ge=7, le=730)] = 30,
+    timezone: str = "Europe/London",
+) -> InsightsReport:
+    """Phase 21a deep analytics read model (demand, resolution, SLA, transfers, revenue, CX…)."""
+    tid = tenant_id or (user.tenant_ids[0] if user.tenant_ids else None)
+    if tid is None:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "no organisation")
+    tickets = await store.list_tickets(tid, limit=1000)
+    events = {t.id: await store.ticket_events(t.id) for t in tickets}
+    assistants = await store.list_assistants(tid)
+    inp = InsightInputs(
+        tenant_id=tid,
+        calls=await store.filter_calls(CallFilter(tenant_id=tid, limit=20000)),
+        contacts=await store.list_contacts(tid, limit=5000),
+        tickets=tickets,
+        ticket_events=events,
+        transfers=await store.list_transfers(tid, limit=5000),
+        members=await store.list_members(tid),
+        bookings=await store.list_docs("booking", tid, limit=5000),
+        outbound=await store.list_docs("outbound_call", tid, limit=5000),
+        qa_scores=await store.list_docs("qa_score", tid, limit=5000),
+        faq_insights=await store.list_docs("insight", tid, limit=500),
+        tracking_numbers=await value.tracking_numbers(tid),
+        value=await value.settings(tid),
+        schedule=assistants[0].hours if assistants else None,
+    )
+    return build_insights(inp, days=days, timezone=timezone, now=datetime.now(UTC))
+
+
 @router.get("/analytics/overview", response_model=OverviewAnalytics)
 async def overview_analytics(
     store: StoreDep,
@@ -403,7 +440,7 @@ async def overview_analytics(
 ) -> OverviewAnalytics:
     calls = await store.filter_calls(CallFilter(tenant_id=tenant_id, limit=5000))
     contacts = await store.list_contacts(tenant_id, limit=5000)
-    return compute_overview(
+    out = compute_overview(
         calls,
         contacts,
         await store.transfer_stats(tenant_id),
@@ -412,6 +449,16 @@ async def overview_analytics(
         timezone=timezone,
         now=datetime.now(UTC),
     )
+    month_start = datetime.fromisoformat(out.usage.month + "-01").replace(tzinfo=ZoneInfo(timezone))
+    channel_usage(
+        out.usage,
+        messages=await store.list_docs("message", tenant_id, limit=5000),
+        inbox_messages=await store.list_docs("inbox_message", tenant_id, limit=5000),
+        notifications=await store.list_docs("notification", tenant_id, limit=5000),
+        bookings=await store.list_docs("booking", tenant_id, limit=5000),
+        month_start=month_start,
+    )
+    return out
 
 
 class AnalyticsQuery(BaseModel):
