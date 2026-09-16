@@ -27,6 +27,7 @@ import hmac
 import json
 import logging
 import re
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 from typing import Any, Protocol
@@ -371,6 +372,7 @@ class PaymentService:
         self.sms = sms
         self.dashboard_url = dashboard_url.rstrip("/")
         self.card_capture = card_capture
+        self.on_paid: Callable[[str, str, int], Awaitable[None]] | None = None
 
     # -- payment links ---
 
@@ -546,6 +548,11 @@ class PaymentService:
             intent = obj.get("payment_intent")
             if intent:
                 p.payment_ref = str(intent)
+            if self.on_paid is not None:
+                try:
+                    await self.on_paid(p.tenant_id, p.to, p.amount_pence)
+                except Exception:
+                    log.warning("paid hook failed for %s", p.id, exc_info=True)
         elif kind == "checkout.session.expired":
             if p.status in {PaymentStatus.PENDING, PaymentStatus.SENT}:
                 p.status = PaymentStatus.EXPIRED

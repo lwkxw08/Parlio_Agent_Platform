@@ -399,3 +399,13 @@ html.embed body { background: var(--panel); }
   .tabs a, .tabs button { flex: none; padding: 0.5rem 0.6rem; }
   .side-foot .nav-item span { opacity: 0; }
 }
+
+/* Phase 21c: advisor recommendations */
+.rec-list { display: grid; gap: 0.8rem; }
+.rec.card h3 { font-size: 1.02rem; }
+.rec-closed { opacity: 0.72; }
+.rec-evidence { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.7rem; }
+.rec-ev { display: flex; flex-direction: column; gap: 1px; padding: 0.4rem 0.7rem; border-radius: 10px; background: var(--line); min-width: 110px; }
+.rec-ev strong { font-size: 1.05rem; }
+.rec-actions { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; margin-top: 0.8rem; }
+.rec-apply { margin-top: 0.8rem; padding-top: 0.8rem; border-top: 1px solid var(--line); }

@@ -223,6 +223,14 @@ class CoreApiClient:
         r.raise_for_status()
         return dict(r.json())
 
+    async def caller_context(self, cfg: AssistantConfig, caller: str | None) -> dict[str, Any]:
+        r = await self._http.get(
+            "/v1/worker/caller-context",
+            params={"assistant_id": cfg.assistant_id, "caller": caller or ""},
+        )
+        r.raise_for_status()
+        return dict(r.json())
+
     async def request_approval(self, cfg: AssistantConfig, req: dict[str, Any]) -> dict[str, Any]:
         r = await self._http.post(
             "/v1/worker/approvals",
@@ -276,6 +284,7 @@ class ReceptionistTools:
         self.verification_locked = False
         self.payment_ids: list[str] = []
         self.screening: dict[str, Any] | None = None
+        self.caller_ctx: dict[str, Any] | None = None
         self.hangup: Callable[[str], Awaitable[None]] | None = None
         self.ended_as_spam = False
 
@@ -812,6 +821,13 @@ def build_tools(t: ReceptionistTools) -> list[Any]:
         tools.append(end_call)
 
     return tools
+
+
+def caller_context_instruction(ctx: dict[str, Any] | None) -> str:
+    """Prompt section built by the API from the contact record (name, status, VIP, history)."""
+    if not ctx or not ctx.get("known"):
+        return ""
+    return str(ctx.get("instruction") or "")
 
 
 def screening_instruction(verdict: dict[str, Any] | None) -> str:

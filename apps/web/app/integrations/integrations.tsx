@@ -40,6 +40,9 @@ const EVENTS: [string, string][] = [
   ["approval.requested", "Approval requested"],
   ["inbox.handoff", "Inbox: human needed"],
   ["inbox.sla_breached", "Inbox: message unanswered"],
+  ["owner.digest", "Weekly value digest"],
+  ["advisor.digest", "Weekly advisor recommendations"],
+  ["analytics.report", "Scheduled analytics report"],
 ];
 const CHANNELS: [NotifyChannel, string, string][] = [
   ["email", "Email", "name@company.co.uk"],

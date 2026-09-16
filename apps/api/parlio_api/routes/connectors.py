@@ -25,6 +25,7 @@ from parlio_api.connectors import (
 from parlio_api.deps import (
     ApiKeyDep,
     ConnectorsDep,
+    ContactsDep,
     SettingsDep,
     StoreDep,
     TicketsDep,
@@ -337,6 +338,7 @@ class InboundContact(BaseModel):
     email: str | None = None
     vip: bool | None = None
     notes: str | None = None
+    status: str | None = Field(None, pattern=r"^(prospect|customer|blocked)$")
 
 
 class InboundTicket(BaseModel):
@@ -353,12 +355,16 @@ async def inbound_me(key: ApiKeyDep) -> dict[str, Any]:
 
 
 @inbound.post("/contacts", status_code=status.HTTP_201_CREATED)
-async def inbound_contact(key: ApiKeyDep, store: StoreDep, body: InboundContact) -> dict[str, Any]:
+async def inbound_contact(
+    key: ApiKeyDep, store: StoreDep, contacts: ContactsDep, body: InboundContact
+) -> dict[str, Any]:
     cid, returning = await store.touch_contact(
         key.tenant_id, await _company(store, key.tenant_id), body.phone
     )
     upd = ContactUpdate(name=body.name, email=body.email, vip=body.vip, notes=body.notes)
     c = await store.update_contact(cid, upd)
+    if body.status is not None:
+        c = await contacts.on_crm_status(key.tenant_id, body.phone, body.status) or c
     return {"id": cid, "existing": returning, "contact": c.model_dump(mode="json") if c else None}
 
 

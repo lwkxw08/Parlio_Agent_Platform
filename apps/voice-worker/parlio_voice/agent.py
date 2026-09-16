@@ -57,6 +57,7 @@ from parlio_voice.tools import (
     ReceptionistTools,
     after_hours_instruction,
     build_tools,
+    caller_context_instruction,
     caller_id_instruction,
     guess_department,
     mentions_connecting,
@@ -96,8 +97,12 @@ class Receptionist(Agent):
             fn_tools = build_tools(tools)
             if outbound is None and web is None:
                 instructions += "\n\n" + caller_id_instruction(tools.caller)
+                known = caller_context_instruction(tools.caller_ctx)
+                if known:
+                    instructions += "\n\n" + known
                 screened = screening_instruction(tools.screening)
-                if screened:
+                is_screen = bool(tools.screening and tools.screening.get("action") == "screen")
+                if screened and (is_screen or not known):
                     instructions += "\n\n" + screened
         if outbound is not None:
             instructions += "\n\n" + outbound.instructions()
@@ -131,6 +136,17 @@ async def _admit(api: CoreApiClient, dialed: str, call_id: str) -> dict[str, obj
         return await api.admit(dialed, call_id)
     except Exception:
         log.warning("trunk admission check failed; answering anyway", exc_info=True)
+        return None
+
+
+async def _caller_context(
+    api: CoreApiClient, cfg: AssistantConfig, caller: str
+) -> dict[str, Any] | None:
+    """Contact intelligence (Phase 21e); fail-open so the call proceeds as a fresh caller."""
+    try:
+        return await api.caller_context(cfg, caller)
+    except Exception:
+        log.warning("caller context lookup failed; treating as new caller", exc_info=True)
         return None
 
 
@@ -415,6 +431,8 @@ async def entrypoint(ctx: JobContext) -> None:
         reporter=reporter,
     )
     tools.screening = verdict
+    if outbound is None and web is None:
+        tools.caller_ctx = await _caller_context(core_api, cfg, caller)
 
     @session.on("user_input_transcribed")
     def _on_user_text(ev: UserInputTranscribedEvent) -> None:

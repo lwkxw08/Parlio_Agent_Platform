@@ -58,8 +58,8 @@ _CALL_COLS = """
 """
 
 _CONTACT_COLS = """
-    id, organization_id, company_id, e164, name, email, vip, notes, status, call_count,
-    first_seen_at, last_seen_at
+    id, organization_id, company_id, e164, name, email, vip, notes, status, status_pinned,
+    status_source, lifetime_value_pence, call_count, first_seen_at, last_seen_at
 """
 
 _TICKET_COLS = """
@@ -192,6 +192,9 @@ def _row_to_contact(r: Row[Any]) -> Contact:
         vip=bool(m["vip"]),
         notes=m["notes"],
         status=m["status"],
+        status_pinned=bool(m["status_pinned"]),
+        status_source=m["status_source"],
+        lifetime_value_pence=int(m["lifetime_value_pence"] or 0),
         call_count=m["call_count"],
         first_seen_at=m["first_seen_at"],
         last_seen_at=m["last_seen_at"],

@@ -241,10 +241,10 @@ async def test_subscription_lifecycle_credits_refunds_limits(
 async def test_plan_and_coupon_catalogue(client: AsyncClient, app: FastAPI) -> None:
     plans = (await client.get("/v1/admin/plans", headers=OWNER)).json()
     growth = next(p for p in plans if p["id"] == "growth")
-    growth["monthly_pence"] = 19900
+    growth["monthly_pence"] = 20900
     r = await client.put("/v1/admin/plans/growth", json=growth, headers=OWNER)
-    assert r.status_code == 200 and r.json()["monthly_pence"] == 19900
-    assert PLAN_BY_ID["growth"].monthly_pence == 19900
+    assert r.status_code == 200 and r.json()["monthly_pence"] == 20900
+    assert PLAN_BY_ID["growth"].monthly_pence == 20900
     # tenant-facing catalogue reflects it
     pub = await client.get("/v1/billing/plans", params=Q, headers=OWNER)
     assert pub.status_code in (200, 403)
@@ -254,7 +254,7 @@ async def test_plan_and_coupon_catalogue(client: AsyncClient, app: FastAPI) -> N
     r = await client.delete("/v1/admin/plans/agency", headers=OWNER)
     assert r.status_code == 200 and "agency" not in PLAN_BY_ID
     r = await client.delete("/v1/admin/plans/growth", headers=OWNER)
-    assert r.status_code == 200 and r.json()["monthly_pence"] != 19900  # built-ins revert
+    assert r.status_code == 200 and r.json()["monthly_pence"] != 20900  # built-ins revert
     await app.state.billing.subscription(DEV_TENANT)  # demo is on starter
     r = await client.delete("/v1/admin/plans/starter", headers=OWNER)
     assert r.status_code == 400  # in use by the demo tenant
@@ -263,7 +263,7 @@ async def test_plan_and_coupon_catalogue(client: AsyncClient, app: FastAPI) -> N
     admin: AdminService = app.state.admin
     PLAN_BY_ID["growth"] = PLAN_BY_ID["growth"].model_copy(update={"monthly_pence": 1})
     await admin.load()
-    assert PLAN_BY_ID["growth"].monthly_pence == 19900
+    assert PLAN_BY_ID["growth"].monthly_pence == 20900
     coupon: dict[str, Any] = {
         "code": "LAUNCH50",
         "percent_off": 50,
@@ -291,7 +291,7 @@ async def test_plan_and_coupon_catalogue(client: AsyncClient, app: FastAPI) -> N
     )
     assert r.status_code == 200
     assert (await client.delete("/v1/admin/plans/growth", headers=OWNER)).status_code == 200
-    assert PLAN_BY_ID["growth"].monthly_pence == 14900
+    assert PLAN_BY_ID["growth"].monthly_pence == 19900
 
 
 async def test_flags_notes_status_and_view_as(client: AsyncClient, app: FastAPI) -> None:
