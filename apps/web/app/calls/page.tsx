@@ -13,8 +13,15 @@ const KINDS = [
   ["transferred", "Transferred"],
   ["ticketed", "Ticketed"],
   ["escalated", "Urgent"],
-  ["blocked", "Blocked"],
+  ["blocked", "Blocked / spam"],
 ] as const;
+
+function outcomeLabel(c: { kind: string; end_reason: string | null }): string {
+  if (c.kind !== "blocked") return humanize(c.kind);
+  if (c.end_reason === "spam") return "Spam";
+  if (c.end_reason === "screened") return "Screened out";
+  return "Blocked";
+}
 
 type Search = { kind?: string; day?: string; hour?: string; q?: string };
 
@@ -72,7 +79,7 @@ export default async function Calls({ searchParams }: { searchParams: Promise<Se
                 {c.caller_type === "returning" && <span className="pill" style={{ marginLeft: 4 }}>returning</span>}
               </td>
               <td>
-                <span className={`pill ${c.kind === "missed" || c.kind === "blocked" ? "bad" : c.kind === "answered" ? "ok" : ""}`}>{humanize(c.kind)}</span>
+                <span className={`pill ${c.kind === "missed" || c.kind === "blocked" ? "bad" : c.kind === "answered" ? "ok" : ""}`}>{outcomeLabel(c)}</span>
                 {c.escalated && <span className="pill urgent" style={{ marginLeft: 4 }}>urgent</span>}
               </td>
               <td className="small muted">{c.summary ?? "—"}</td>

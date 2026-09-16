@@ -107,6 +107,7 @@ from parlio_api.qa import (
     VoiceCloneService,
 )
 from parlio_api.recordings import RecordingStorage
+from parlio_api.reminders import ReminderLoop, ReminderService
 from parlio_api.routes import (
     account,
     connectors,
@@ -136,8 +137,15 @@ from parlio_api.routes import (
     quality as quality_routes,
 )
 from parlio_api.routes import (
+    reminders as reminders_routes,
+)
+from parlio_api.routes import (
+    screening as screening_routes,
+)
+from parlio_api.routes import (
     value as value_routes,
 )
+from parlio_api.screening import ScreeningService
 from parlio_api.security import SecurityService
 from parlio_api.settings import Settings, get_settings
 from parlio_api.sip import SimulatedProvisioner, SimulatedRegistrar, SipProvisioner, SipService
@@ -360,6 +368,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.notifications = notifications
     calendar = CalendarService(store, vault, build_calendar_backends(settings, vault))
     app.state.calendar = calendar
+    app.state.screening = ScreeningService(store)
     sip = SipService(
         store,
         vault,
@@ -515,6 +524,19 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.inbox = inbox
     hub.inbox = inbox
     tickets.inbox = inbox
+    reminders = ReminderService(
+        store, sms, business_name=hub.business_name_for, on_ticket=tickets.create_from_intake
+    )
+    app.state.reminders = reminders
+    hub.reminders = reminders
+
+    async def _reminder_reply(tenant_id: str, phone: str, text: str) -> str | None:
+        r = await reminders.handle_reply(tenant_id, phone, text)
+        return r.text if r else None
+
+    inbox.on_sms_reply = _reminder_reply
+    reminder_loop = ReminderLoop(reminders, settings.reminder_sweep_interval_s)
+    reminder_loop.start()
 
     qa = QAService(store, scorer, notifications, settings.dashboard_url)
     app.state.qa = qa
@@ -602,6 +624,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         await compliance.stop()
         await retry_loop.stop()
         await outbound_loop.stop()
+        await reminder_loop.stop()
         await connectors_http.aclose()
         await notifications.aclose()
         if isinstance(control, LiveKitRoomControl):
@@ -639,6 +662,9 @@ def create_app() -> FastAPI:
     app.include_router(integrations.router)
     app.include_router(integrations.public)
     app.include_router(integrations.worker)
+    app.include_router(screening_routes.router)
+    app.include_router(screening_routes.worker)
+    app.include_router(reminders_routes.router)
     app.include_router(connectors.router)
     app.include_router(connectors.public)
     app.include_router(connectors.inbound)

@@ -60,6 +60,7 @@ from parlio_voice.tools import (
     caller_id_instruction,
     guess_department,
     mentions_connecting,
+    screening_instruction,
 )
 from parlio_voice.transfer import LiveKitSipBridge, TransferEngine
 from parlio_voice.web import WEB_DIALED, WebJob, parse_web
@@ -95,6 +96,9 @@ class Receptionist(Agent):
             fn_tools = build_tools(tools)
             if outbound is None and web is None:
                 instructions += "\n\n" + caller_id_instruction(tools.caller)
+                screened = screening_instruction(tools.screening)
+                if screened:
+                    instructions += "\n\n" + screened
         if outbound is not None:
             instructions += "\n\n" + outbound.instructions()
         if web is not None:
@@ -127,6 +131,17 @@ async def _admit(api: CoreApiClient, dialed: str, call_id: str) -> dict[str, obj
         return await api.admit(dialed, call_id)
     except Exception:
         log.warning("trunk admission check failed; answering anyway", exc_info=True)
+        return None
+
+
+async def _screen(api: CoreApiClient, cfg: AssistantConfig, caller: str) -> dict[str, Any] | None:
+    """Call screening verdict (Phase 20d); fail-open so an API blip never drops a customer."""
+    if not cfg.screening.enabled:
+        return None
+    try:
+        return await api.screen(cfg, caller)
+    except Exception:
+        log.warning("screening check failed; answering anyway", exc_info=True)
         return None
 
 
@@ -262,6 +277,18 @@ async def entrypoint(ctx: JobContext) -> None:
         events.emit(cfg, call_id, CallEventType.CALL_ENDED, {"reason": "blocked", "duration_s": 0})
         ctx.shutdown(reason="blocked")
         return
+    verdict = await _screen(core_api, cfg, caller) if outbound is None and web is None else None
+    if verdict is not None and verdict.get("action") == "reject":
+        reason = str(verdict.get("reason") or "screened")
+        log.info("screened out caller %s on call %s: %s", caller, call_id, reason)
+        events.emit(
+            cfg,
+            call_id,
+            CallEventType.CALL_ENDED,
+            {"reason": "screened", "detail": reason, "duration_s": 0},
+        )
+        ctx.shutdown(reason="screened")
+        return
 
     latency = LatencyTracker(
         on_turn_complete=lambda t: events.emit(
@@ -387,6 +414,7 @@ async def entrypoint(ctx: JobContext) -> None:
         lambda text: session.say(text, allow_interruptions=False).wait_for_playout(),
         reporter=reporter,
     )
+    tools.screening = verdict
 
     @session.on("user_input_transcribed")
     def _on_user_text(ev: UserInputTranscribedEvent) -> None:
@@ -399,6 +427,7 @@ async def entrypoint(ctx: JobContext) -> None:
         finally:
             ctx.shutdown(reason=reason)
 
+    tools.hangup = _hangup
     supervisor = Supervisor(SessionBridge(session), _emit, _hangup)
 
     @ctx.room.on("data_received")

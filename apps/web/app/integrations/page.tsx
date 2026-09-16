@@ -9,6 +9,8 @@ import {
   fetchMessages,
   fetchNotificationLog,
   fetchProviders,
+  fetchReminderPolicy,
+  fetchReminders,
   fetchRules,
   fetchSyncJobs,
   fetchSyncLog,
@@ -26,10 +28,11 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ t
   if (!tenant) return <><h1>Integrations</h1><p className="muted">No organisation yet — <Link href="/onboarding">set one up</Link>.</p></>;
   const role = me.data.memberships.find((m) => m.tenant_id === tenant)?.role ?? "viewer";
   const canManage = role === "owner" || role === "admin";
-  const [messages, rules, log, connections, bookings, sync, assistants, providers, connectors, jobs, apiKeys] = await Promise.all([
+  const [messages, rules, log, connections, bookings, sync, assistants, providers, connectors, jobs, apiKeys, reminderPolicy, reminders] = await Promise.all([
     fetchMessages(tenant), fetchRules(tenant), fetchNotificationLog(tenant),
     fetchConnections(tenant), fetchBookings(tenant), fetchSyncLog(tenant), fetchAssistants(tenant),
     fetchProviders(), fetchConnectors(tenant), fetchSyncJobs(tenant), canManage ? fetchApiKeys(tenant) : Promise.resolve([]),
+    fetchReminderPolicy(tenant), fetchReminders(tenant),
   ]);
   const banner = sp.connector === "connected" ? "Connected — send a sample to check it works."
     : sp.connector === "error" ? `Connection failed (${sp.reason ?? "unknown"}). Try again.` : null;
@@ -58,6 +61,8 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ t
         jobs={jobs ?? []}
         apiKeys={apiKeys ?? []}
         banner={banner}
+        reminderPolicy={reminderPolicy}
+        reminders={reminders ?? []}
       />
     </>
   );

@@ -13,6 +13,8 @@ import {
   type NotificationRule,
   type NotifyChannel,
   type ProviderInfo,
+  type Reminder,
+  type ReminderPolicy,
   type SyncJob,
   type SyncLogEntry,
   type TenantApiKey,
@@ -66,6 +68,8 @@ type Props = {
   jobs: SyncJob[];
   apiKeys: TenantApiKey[];
   banner: string | null;
+  reminderPolicy: ReminderPolicy | null;
+  reminders: Reminder[];
 };
 
 const statusPill = (s: string) => <span className={`pill ${s === "sent" || s === "connected" || s === "confirmed" ? "ok" : s === "failed" || s === "error" ? "bad" : "warn"}`}>{humanize(s)}</span>;
@@ -98,7 +102,22 @@ function Notifications({ tenant, canManage, rules: initial, log }: Props) {
   const [events, setEvents] = useState<string[]>(["ticket.urgent", "lead.qualified"]);
   const [qualifiedOnly, setQualifiedOnly] = useState(true);
   const [msg, setMsg] = useState<string | null>(null);
+  const [mobile, setMobile] = useState("");
   const q = `?tenant_id=${tenant}`;
+  const summaryRule = rules.find((r) => r.channel === "sms" && r.events.includes("call.completed"));
+
+  const enableSummary = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const r = await request<NotificationRule>(`/v1/notifications/rules${q}`, {
+      method: "POST",
+      body: JSON.stringify({
+        name: "Post-call text summary", channel: "sms", target: mobile,
+        events: ["call.completed", "call.missed"], qualified_only: false,
+      }),
+    });
+    if (!r.ok) return setMsg(`Could not enable summaries: ${r.error}`);
+    setRules((rs) => [...rs, r.data]); setMobile(""); setMsg("You'll get a text after every call.");
+  };
 
   const create = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -123,6 +142,23 @@ function Notifications({ tenant, canManage, rules: initial, log }: Props) {
 
   return (
     <>
+      <div className="section">
+        <h2>Text me after every call</h2>
+        <p className="hint">One SMS per call to the owner's mobile: who rang, what they wanted, the outcome and how to reach them — no need to open the dashboard.</p>
+        {summaryRule ? (
+          <p className="small">
+            {summaryRule.enabled ? <span className="pill ok">On</span> : <span className="pill">Paused</span>} Summaries go to <strong>{summaryRule.target}</strong>.
+            {canManage && <> <button onClick={() => toggle(summaryRule)}>{summaryRule.enabled ? "Pause" : "Resume"}</button> <button onClick={() => test(summaryRule)}>Send a test</button></>}
+          </p>
+        ) : canManage ? (
+          <form onSubmit={enableSummary} className="grid" style={{ alignItems: "end" }}>
+            <label>Owner's mobile<input value={mobile} onChange={(e) => setMobile(e.target.value)} placeholder="+44 7700 900123" required /></label>
+            <div><button type="submit" className="primary">Turn on summaries</button></div>
+          </form>
+        ) : (
+          <p className="muted small">Not enabled. An owner or admin can switch this on.</p>
+        )}
+      </div>
       <div className="section">
         <h2>Who gets told, and when</h2>
         <p className="hint">Rules fan out call and ticket events to your team. Tick “qualified leads only” to skip spam, wrong numbers and existing customers on call events.</p>
@@ -218,7 +254,8 @@ function SmsLog({ messages, assistants }: { messages: Message[]; assistants: Ass
   );
 }
 
-function Calendar({ tenant, canManage, connections: initial, bookings, sync }: Props) {
+function Calendar(p: Props) {
+  const { tenant, canManage, connections: initial, bookings, sync } = p;
   const [connections, setConnections] = useState(initial);
   const [provider, setProvider] = useState<CalendarProvider>("google");
   const [url, setUrl] = useState("");
@@ -307,6 +344,7 @@ function Calendar({ tenant, canManage, connections: initial, bookings, sync }: P
           </tbody>
         </table>
       </div>
+      <Reminders {...p} />
       <div className="section">
         <h2>Sync log</h2>
         <table>
@@ -314,6 +352,66 @@ function Calendar({ tenant, canManage, connections: initial, bookings, sync }: P
           <tbody>
             {sync.slice(0, 50).map((s) => <tr key={s.id}><td className="small">{when(s.at)}</td><td className="small">{s.connection_id}</td><td>{s.action}</td><td>{s.ok ? <span className="pill ok">ok</span> : <span className="pill bad">failed</span>}{s.detail && <span className="muted small"> {s.detail}</span>}</td></tr>)}
             {!sync.length && <tr><td colSpan={4} className="muted">No sync activity yet.</td></tr>}
+          </tbody>
+        </table>
+      </div>
+    </>
+  );
+}
+
+const DEFAULT_POLICY: Omit<ReminderPolicy, "tenant_id"> = {
+  enabled: false, timezone: "Europe/London", hours_before: [24],
+  template: "{business}: reminder of your appointment on {when}. Reply 1 to confirm or 2 to reschedule. Reply STOP to opt out.",
+  confirm_reply: "Thanks {name}, you're confirmed for {when}. See you then - {business}",
+  reschedule_reply: "No problem {name}, we'll call you shortly to find a new time - {business}",
+};
+const OFFSETS: [number, string][] = [[48, "2 days before"], [24, "1 day before"], [3, "3 hours before"], [1, "1 hour before"]];
+
+function Reminders({ tenant, canManage, reminderPolicy, reminders }: Props) {
+  const [policy, setPolicy] = useState<Omit<ReminderPolicy, "tenant_id">>(reminderPolicy ?? DEFAULT_POLICY);
+  const [msg, setMsg] = useState<string | null>(null);
+  const q = `?tenant_id=${tenant}`;
+  const toggleOffset = (h: number) => setPolicy((p) => ({
+    ...p, hours_before: p.hours_before.includes(h) ? p.hours_before.filter((x) => x !== h) : [...p.hours_before, h].sort((a, b) => b - a),
+  }));
+  const save = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const r = await put<ReminderPolicy>(`/v1/reminders/policy${q}`, policy);
+    if (!r.ok) return setMsg(`Could not save: ${r.error}`);
+    setPolicy(r.data); setMsg(r.data.enabled ? "Reminders on." : "Reminders off.");
+  };
+  return (
+    <>
+      <form className="section" onSubmit={save}>
+        <h2>SMS appointment reminders</h2>
+        <p className="hint">When the assistant books an appointment, the customer gets a text before it. Replying <strong>1</strong> confirms the booking; <strong>2</strong> asks to reschedule, which raises a callback ticket for your team and stops further reminders.</p>
+        <label className="small check"><input type="checkbox" disabled={!canManage} checked={policy.enabled} onChange={(e) => setPolicy({ ...policy, enabled: e.target.checked })} /> Send SMS reminders for bookings</label>
+        <div className="grid">
+          <div>
+            <span className="small muted">Send</span>
+            {OFFSETS.map(([h, label]) => (
+              <label key={h} className="small check"><input type="checkbox" disabled={!canManage} checked={policy.hours_before.includes(h)} onChange={() => toggleOffset(h)} /> {label}</label>
+            ))}
+          </div>
+          <label>Reminder text
+            <textarea value={policy.template} disabled={!canManage} onChange={(e) => setPolicy({ ...policy, template: e.target.value })} />
+            <span className="small muted">Placeholders: {"{business} {name} {when}"}</span>
+          </label>
+          <label>Reply when they confirm<textarea value={policy.confirm_reply} disabled={!canManage} onChange={(e) => setPolicy({ ...policy, confirm_reply: e.target.value })} /></label>
+          <label>Reply when they want to reschedule<textarea value={policy.reschedule_reply} disabled={!canManage} onChange={(e) => setPolicy({ ...policy, reschedule_reply: e.target.value })} /></label>
+        </div>
+        {canManage && <button type="submit" className="primary">Save</button>}
+        {msg && <span className="muted small" style={{ marginLeft: 8 }}>{msg}</span>}
+      </form>
+      <div className="section">
+        <h2>Reminders sent</h2>
+        <table>
+          <thead><tr><th>Appointment</th><th>Customer</th><th>Send at</th><th>Status</th><th>Reply</th></tr></thead>
+          <tbody>
+            {reminders.slice(0, 50).map((r) => (
+              <tr key={r.id}><td>{when(r.start)}</td><td>{r.name} <span className="muted small">{r.phone}</span></td><td className="small">{when(r.send_at)}</td><td>{statusPill(r.status)}</td><td className="small muted">{r.reply ?? (r.error ?? "—")}</td></tr>
+            ))}
+            {!reminders.length && <tr><td colSpan={5} className="muted">No reminders yet — they appear once a booking is made with reminders on.</td></tr>}
           </tbody>
         </table>
       </div>

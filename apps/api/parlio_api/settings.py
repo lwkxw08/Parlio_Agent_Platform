@@ -106,6 +106,7 @@ class Settings(BaseSettings):
     outbound_trunk_id: str | None = None  # LiveKit SIP outbound trunk (platform Telnyx)
     outbound_caller_id: str | None = None  # default E.164 presented on outbound calls
     outbound_sweep_interval_s: float = 5.0
+    reminder_sweep_interval_s: float = 60.0
 
     # Phase 11 inbox. Meta app secret verifies WhatsApp webhook signatures (unset = accept in dev);
     # inbound_webhook_secret must match ``?secret=`` on carrier SMS webhooks when set.

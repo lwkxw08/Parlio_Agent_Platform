@@ -282,11 +282,12 @@ class NotificationService:
                         n.status = NotificationStatus.SKIPPED
                         n.error = "SMS not configured"
                     else:
+                        text = ev.context.get("sms") or f"{ev.title}: {ev.body}"
                         m = await self.sms.send(
                             ev.tenant_id,
                             ev.company_id or rule.company_id,
                             rule.target,
-                            f"{ev.title}: {ev.body}"[:480],
+                            str(text)[:480],
                             call_id=ev.context.get("call_id"),
                             trigger=SmsTrigger.CUSTOM,
                         )
@@ -356,6 +357,49 @@ def is_qualified_lead(call: CallRecord) -> bool:
     return (bool(details) and long_enough) or bool(call.ticket_ids)
 
 
+def _outcome_label(call: CallRecord) -> str:
+    match call.kind:
+        case "transferred":
+            dept = next((t.get("department") for t in call.transfers if t.get("department")), None)
+            return f"Transferred to {dept}" if dept else "Transferred to your team"
+        case "ticketed":
+            return "Message taken, callback needed"
+        case "missed":
+            return "Missed"
+        case "blocked":
+            return "Screened out"
+        case _:
+            return "Handled by the assistant"
+
+
+def owner_sms_summary(call: CallRecord, business_name: str) -> str:
+    """The post-call text an owner gets: who rang, what about, what happened, how to reach them.
+
+    Kept to one SMS segment pair (<= 300 chars) so it reads at a glance on a phone.
+    """
+    who = str(call.extracted.get("name") or "").strip()
+    number = call.party
+    ident = who + (f" ({number})" if who and number else "") if who else (number or "Withheld")
+    when = call.started_at.strftime("%H:%M")
+    what = (call.summary or "").strip()
+    if not what:
+        what = "No details captured" if call.answered_at else "Caller hung up before speaking"
+    if len(what) > 150:
+        what = what[:147].rstrip() + "..."
+    outcome = _outcome_label(call)
+    if call.escalated:
+        outcome = "URGENT - " + outcome
+    extras: list[str] = []
+    cb = call.extracted.get("phone") or call.extracted.get("callback_number")
+    if cb and str(cb) != number:
+        extras.append(f"Call back: {cb}")
+    if call.extracted.get("address") or call.extracted.get("postcode"):
+        extras.append(str(call.extracted.get("address") or call.extracted.get("postcode")))
+    tail = (" " + " | ".join(extras)) if extras else ""
+    prefix = "Missed call" if call.kind == "missed" else "Call"
+    return f"{business_name}: {prefix} {when} from {ident}. {what} Outcome: {outcome}.{tail}"
+
+
 def call_completed_event(call: CallRecord, business_name: str) -> NotificationEvent:
     missed = call.status == "failed" or call.answered_at is None
     who = call.extracted.get("name") or call.caller or "Unknown caller"
@@ -373,5 +417,10 @@ def call_completed_event(call: CallRecord, business_name: str) -> NotificationEv
         ),
         body=f"{summary} | {business_name}",
         qualified=qualified,
-        context={"call_id": call.call_id, "caller": call.caller, "caller_type": call.caller_type},
+        context={
+            "call_id": call.call_id,
+            "caller": call.caller,
+            "caller_type": call.caller_type,
+            "sms": owner_sms_summary(call, business_name),
+        },
     )
