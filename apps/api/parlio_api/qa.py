@@ -792,9 +792,9 @@ DEFAULT_SCENARIOS: list[dict[str, Any]] = [
         "goal": "Book a slot",
         "turns": [
             "Hello, I'd like to book an appointment please.",
-            "Thursday afternoon if possible.",
+            "It's Sam Taylor. Thursday afternoon if possible.",
         ],
-        "expect": {"mentions": ["book|appointment|availab|slot|thursday"]},
+        "expect": {"mentions": ["book|appointment|availab|slot|thursday|sam"]},
     },
     {
         "name": "Wants a human",

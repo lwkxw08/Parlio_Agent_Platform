@@ -60,16 +60,51 @@ def spoken_number(number: str) -> str | None:
     return ", ".join(" ".join(g) for g in groups)
 
 
-def normalise_number(spoken: str | None, caller: str | None) -> str | None:
+# Country calling codes Parlio sells into (markets); longest match first when inferring from
+# the caller ID. NANP (+1) numbers have no trunk prefix and are always 10 national digits.
+_COUNTRY_CODES = ("353", "44", "61", "64", "1")
+
+
+_TZ_COUNTRY = (
+    ("America/", "1"),
+    ("Europe/Dublin", "353"),
+    ("Australia/", "61"),
+    ("Pacific/Auckland", "64"),
+)
+
+
+def country_code_for_timezone(tz: str) -> str:
+    """Best-effort country code from the tenant's timezone, for callers with no caller ID."""
+    return next((cc for prefix, cc in _TZ_COUNTRY if tz.startswith(prefix)), "44")
+
+
+def country_code_of(e164: str | None) -> str | None:
+    digits = re.sub(r"\D", "", e164 or "")
+    if not e164 or not e164.startswith("+"):
+        return None
+    return next((cc for cc in _COUNTRY_CODES if digits.startswith(cc)), None)
+
+
+def normalise_number(spoken: str | None, caller: str | None, default_cc: str = "44") -> str | None:
     """Dialable E.164 from what the LLM passed (often the spoken read-back with spaces/commas).
-    Falls back to caller ID when nothing usable was given or the digits match it."""
+    National-format numbers take the caller's country (falling back to `default_cc`, the
+    tenant's market). Falls back to caller ID when nothing usable was given or the digits
+    match it."""
     digits = re.sub(r"\D", "", spoken or "")
     if len(digits) < 7:
         return caller
-    if digits.startswith("00"):
+    cc = country_code_of(caller) or default_cc
+    if (spoken or "").strip().startswith("+"):
+        pass
+    elif digits.startswith("00"):
         digits = digits[2:]
+    elif digits.startswith("011") and cc == "1":
+        digits = digits[3:]
+    elif cc == "1":
+        if len(digits) == 10:
+            digits = "1" + digits
     elif digits.startswith("0"):
-        digits = "44" + digits[1:]
+        digits = cc + digits[1:]
     if caller and re.sub(r"\D", "", caller) == digits:
         return caller
     return f"+{digits}"
@@ -364,7 +399,9 @@ class ReceptionistTools:
         intake = TicketIntake(
             call_id=self.call_id,
             caller_name=caller_name,
-            caller_number=normalise_number(callback_number, self.caller),
+            caller_number=normalise_number(
+                callback_number, self.caller, country_code_for_timezone(self.cfg.hours.timezone)
+            ),
             reason=reason,
             priority=priority,
             department=department,

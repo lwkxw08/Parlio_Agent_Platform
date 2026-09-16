@@ -12,6 +12,7 @@ resolution-markers = [
 members = [
     "parlio",
     "parlio-api",
+    "parlio-e2e",
     "parlio-latency-harness",
     "parlio-load-test",
     "parlio-voice",
@@ -2221,6 +2222,17 @@ requires-dist = [
     { name = "sqlalchemy", extras = ["asyncio"], specifier = ">=2.0.36" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.34" },
 ]
+
+[[package]]
+name = "parlio-e2e"
+version = "0.1.0"
+source = { editable = "tools/e2e" }
+dependencies = [
+    { name = "httpx" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "httpx", specifier = ">=0.28" }]
 
 [[package]]
 name = "parlio-latency-harness"
