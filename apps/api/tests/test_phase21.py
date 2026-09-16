@@ -269,7 +269,7 @@ def _ev(t: CallEventType, call_id: str, payload: dict[str, Any]) -> dict[str, An
     ).model_dump(mode="json")
 
 
-async def _call(client: AsyncClient, call_id: str, caller: str) -> None:
+async def _call(client: AsyncClient, app: FastAPI, call_id: str, caller: str) -> None:
     for e in (
         _ev(CallEventType.CALL_STARTED, call_id, {"caller": caller, "dialed": "+4400"}),
         _ev(CallEventType.CALL_ANSWERED, call_id, {"answer_latency_s": 0.4}),
@@ -277,12 +277,13 @@ async def _call(client: AsyncClient, call_id: str, caller: str) -> None:
     ):
         r = await client.post("/v1/worker/events", json=e, headers=HEADERS)
         assert r.status_code == 202, r.text
+    await app.state.postcall.drain()
 
 
 async def test_auto_promotion_vip_rules_and_manual_pin(client: AsyncClient, app: FastAPI) -> None:
     ci = app.state.contacts
-    await _call(client, "c1", "+447700900010")
-    await _call(client, "c2", "+447700900011")
+    await _call(client, app, "c1", "+447700900010")
+    await _call(client, app, "c2", "+447700900011")
     contacts = {c.e164: c for c in await app.state.store.list_contacts("demo")}
     a, b = contacts["+447700900010"], contacts["+447700900011"]
     assert a.status == "prospect" and not a.status_pinned
@@ -321,7 +322,7 @@ async def test_auto_promotion_vip_rules_and_manual_pin(client: AsyncClient, app:
         params=DEMO,
         json={"auto_promote": False, "vip_department": "Accounts"},
     )
-    await _call(client, "c3", "+447700900012")
+    await _call(client, app, "c3", "+447700900012")
     await ci.on_booking("demo", "+447700900012", name=None, value_pence=0)
     c = next(x for x in await app.state.store.list_contacts("demo") if x.e164 == "+447700900012")
     assert c.status == "prospect"
