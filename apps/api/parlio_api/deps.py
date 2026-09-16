@@ -8,11 +8,13 @@ from fastapi import Depends, Header, HTTPException, Request, status
 
 from parlio_api.admin import AdminService
 from parlio_api.adoption import AnnouncementService, WhiteGloveService
+from parlio_api.advisor import AdvisorService
 from parlio_api.billing import ENTITLEMENTS, BillingService
 from parlio_api.browser_voice import BrowserVoiceService
 from parlio_api.calendar import CalendarService
 from parlio_api.compliance import ComplianceService
 from parlio_api.connectors import ConnectorService, TenantApiKey
+from parlio_api.contacts import ContactIntelligence
 from parlio_api.drafting import Drafter
 from parlio_api.improve import ImproveService
 from parlio_api.inbox import InboxService
@@ -27,6 +29,7 @@ from parlio_api.payments import PaymentService
 from parlio_api.postcall import PostCallProcessor
 from parlio_api.qa import QAService, SimulationService, VoiceCloneService
 from parlio_api.reminders import ReminderService
+from parlio_api.reports import ReportService
 from parlio_api.screening import ScreeningService
 from parlio_api.security import SecurityService
 from parlio_api.settings import Settings, get_settings
@@ -99,6 +102,21 @@ def get_reminders(request: Request) -> ReminderService:
 
 def get_screening(request: Request) -> ScreeningService:
     svc: ScreeningService = request.app.state.screening
+    return svc
+
+
+def get_contacts(request: Request) -> ContactIntelligence:
+    svc: ContactIntelligence = request.app.state.contacts
+    return svc
+
+
+def get_advisor(request: Request) -> AdvisorService:
+    svc: AdvisorService = request.app.state.advisor
+    return svc
+
+
+def get_reports(request: Request) -> ReportService:
+    svc: ReportService = request.app.state.reports
     return svc
 
 
@@ -261,6 +279,9 @@ SmsDep = Annotated[MessageService, Depends(get_sms)]
 NotificationsDep = Annotated[NotificationService, Depends(get_notifications)]
 CalendarDep = Annotated[CalendarService, Depends(get_calendar)]
 ScreeningDep = Annotated[ScreeningService, Depends(get_screening)]
+ContactsDep = Annotated[ContactIntelligence, Depends(get_contacts)]
+AdvisorDep = Annotated[AdvisorService, Depends(get_advisor)]
+ReportsDep = Annotated[ReportService, Depends(get_reports)]
 RemindersDep = Annotated[ReminderService, Depends(get_reminders)]
 SipDep = Annotated[SipService, Depends(get_sip)]
 HubDep = Annotated[IntegrationHub, Depends(get_hub)]

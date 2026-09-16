@@ -65,6 +65,7 @@ ENTITLEMENTS: dict[str, str] = {
     "qa_insights": "QA scoring & insight engine",
     "simulation": "Simulation sandbox & prompt A/B",
     "value_reports": "Lead scoring & value attribution",
+    "advisor": "AI business advisor & weekly recommendations",
     "white_label": "White-label branding & agency accounts",
     "sso": "SSO / SCIM",
     "priority_support": "Priority support (P1 24x7)",
@@ -82,6 +83,7 @@ _ENT_GROWTH = [
     "live_takeover",
     "connectors",
     "value_reports",
+    "advisor",
     "priority_support",
 ]
 _ENT_SCALE = [*_ENT_GROWTH, "outbound", "payments", "byo_sip", "simulation", "white_label"]
@@ -117,11 +119,11 @@ PLANS: list[Plan] = [
     Plan(
         id="starter",
         name="Starter",
-        monthly_pence=4900,
-        included_minutes=300,
-        overage_pence_per_minute=15,
+        monthly_pence=7900,
+        included_minutes=350,
+        overage_pence_per_minute=12,
         included_numbers=1,
-        included_sms=100,
+        included_sms=75,
         sms_overage_pence=6,
         max_assistants=1,
         max_concurrent_calls=2,
@@ -137,11 +139,11 @@ PLANS: list[Plan] = [
     Plan(
         id="growth",
         name="Growth",
-        monthly_pence=14900,
-        included_minutes=1200,
-        overage_pence_per_minute=12,
+        monthly_pence=19900,
+        included_minutes=1500,
+        overage_pence_per_minute=10,
         included_numbers=3,
-        included_sms=500,
+        included_sms=400,
         sms_overage_pence=5,
         max_assistants=3,
         max_concurrent_calls=5,
@@ -153,12 +155,12 @@ PLANS: list[Plan] = [
     Plan(
         id="scale",
         name="Scale",
-        monthly_pence=39900,
+        monthly_pence=49900,
         included_minutes=4000,
-        overage_pence_per_minute=10,
+        overage_pence_per_minute=8,
         included_numbers=10,
-        included_sms=2000,
-        sms_overage_pence=4,
+        included_sms=1000,
+        sms_overage_pence=5,
         max_assistants=10,
         max_concurrent_calls=15,
         features=["10 assistants", "BYO SIP / PBX", "Slack & webhooks", "Priority support"],
@@ -172,10 +174,10 @@ PLANS: list[Plan] = [
         name="Enterprise",
         monthly_pence=0,
         included_minutes=0,
-        overage_pence_per_minute=8,
+        overage_pence_per_minute=14,
         included_numbers=50,
         included_sms=10000,
-        sms_overage_pence=3,
+        sms_overage_pence=5,
         max_assistants=100,
         max_concurrent_calls=100,
         features=["UK-sovereign deployment", "SSO", "Custom SLAs", "Dedicated capacity"],
@@ -298,14 +300,40 @@ class Refund(BaseModel):
 
 
 class CostRates(BaseModel):
-    """Per-minute vendor costs used for margin tracking (pence). Overridable via settings."""
+    """Vendor costs used for margin tracking (pence). Overridable via settings.
+
+    Per-minute terms are applied to answered talk time; the TTS term depends on the voice
+    engine the assistant is on (ElevenLabs is roughly 3x Cartesia). Post-call work (summary,
+    extraction, QA scoring) and recording storage are costed separately so the platform-owner
+    margin view matches real invoices rather than the streaming-only figure.
+    """
 
     stt_pence_per_min: float = 0.6  # Deepgram Nova streaming
-    tts_pence_per_min: float = 1.2  # Cartesia
+    tts_pence_per_min: float = 1.5  # Cartesia (default engine)
+    tts_pence_per_min_by_provider: dict[str, float] = Field(
+        default_factory=lambda: {"cartesia": 1.5, "elevenlabs": 4.5}
+    )
     llm_pence_per_min: float = 0.4  # gpt-4o-mini class at ~400 tok/turn
     telephony_pence_per_min: float = 0.8  # Telnyx UK inbound + SIP
+    recording_pence_per_min: float = 0.1  # egress + object storage, per recorded minute
+    postcall_pence_per_call: float = 0.3  # summary + extraction + QA score (gpt-4o-mini)
     sms_pence: float = 3.5
     chat_message_pence: float = 0.05  # LLM tokens per text reply
+    number_pence_per_month: float = 100.0  # Telnyx UK DDI rental
+
+    def tts_for(self, provider: str | None) -> float:
+        if provider is None:
+            return self.tts_pence_per_min
+        return self.tts_pence_per_min_by_provider.get(provider.lower(), self.tts_pence_per_min)
+
+    def per_minute(self, *, provider: str | None, browser: bool, recorded: bool) -> float:
+        return (
+            self.stt_pence_per_min
+            + self.tts_for(provider)
+            + self.llm_pence_per_min
+            + (0.0 if browser else self.telephony_pence_per_min)
+            + (self.recording_pence_per_min if recorded else 0.0)
+        )
 
 
 class CallCost(BaseModel):
@@ -1062,6 +1090,10 @@ class BillingService:
                 tenant_id=sub.tenant_id, since=sub.period_start, until=sub.period_end, limit=100000
             )
         )
+        tts_by_assistant = {
+            a.assistant_id: str(a.voice.provider)
+            for a in await self.store.list_assistants(sub.tenant_id)
+        }
         costs: list[CallCost] = []
         per_day: dict[str, float] = {}
         minutes = 0.0
@@ -1077,12 +1109,12 @@ class BillingService:
             if browser:
                 browser_minutes += m
                 browser_calls += 1
-            v = m * (
-                self.rates.stt_pence_per_min
-                + self.rates.tts_pence_per_min
-                + self.rates.llm_pence_per_min
-                + (0.0 if browser else self.rates.telephony_pence_per_min)
+            v = m * self.rates.per_minute(
+                provider=tts_by_assistant.get(c.assistant_id),
+                browser=browser,
+                recorded=bool(c.recordings),
             )
+            v += self.rates.postcall_pence_per_call
             vendor += v
             day = c.started_at.date().isoformat()
             per_day[day] = round(per_day.get(day, 0.0) + m, 2)
@@ -1105,6 +1137,7 @@ class BillingService:
         chat_used = sum(chat_by_channel.values())
         vendor += chat_used * self.rates.chat_message_pence
         numbers = await self.list_numbers(sub.tenant_id)
+        vendor += len(numbers) * self.rates.number_pence_per_month
 
         overage_min = max(0.0, minutes - plan.included_minutes) if not plan.enterprise else minutes
         overage_pence = round(overage_min * plan.overage_pence_per_minute)

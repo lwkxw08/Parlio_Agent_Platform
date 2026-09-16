@@ -24,6 +24,7 @@ from parlio_api.adoption import (
     first_week_report,
     render_first_week,
 )
+from parlio_api.advisor import AdvisorService, Reworder
 from parlio_api.billing import (
     BillingProvider,
     BillingService,
@@ -47,6 +48,7 @@ from parlio_api.calendar import (
 )
 from parlio_api.compliance import ComplianceService
 from parlio_api.connectors import ConnectorService, RetryLoop, build_backends
+from parlio_api.contacts import ContactIntelligence
 from parlio_api.db.engine import make_engine, migrate
 from parlio_api.db.postgres import PostgresStore
 from parlio_api.drafting import Drafter
@@ -108,6 +110,7 @@ from parlio_api.qa import (
 )
 from parlio_api.recordings import RecordingStorage
 from parlio_api.reminders import ReminderLoop, ReminderService
+from parlio_api.reports import ReportService
 from parlio_api.routes import (
     account,
     connectors,
@@ -118,6 +121,7 @@ from parlio_api.routes import (
 )
 from parlio_api.routes import admin as admin_routes
 from parlio_api.routes import adoption as adoption_routes
+from parlio_api.routes import advisor as advisor_routes
 from parlio_api.routes import (
     inbox as inbox_routes,
 )
@@ -150,7 +154,7 @@ from parlio_api.security import SecurityService
 from parlio_api.settings import Settings, get_settings
 from parlio_api.sip import SimulatedProvisioner, SimulatedRegistrar, SipProvisioner, SipService
 from parlio_api.sip_livekit import LiveKitProvisioner
-from parlio_api.store import CallStore, MemoryStore, RequiredField
+from parlio_api.store import CallStore, MemoryStore, RequiredField, Ticket
 from parlio_api.support import (
     SUPPORT_TENANT,
     LinearIssueTracker,
@@ -451,6 +455,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     )
     app.state.hub = hub
     calendar.on_booked = hub.on_booking
+    contacts = ContactIntelligence(store)
+    app.state.contacts = contacts
+    hub.contacts = contacts
+    app.state.payments.on_paid = contacts.on_payment_paid
 
     postcall = PostCallProcessor(
         store, build_analyser(settings), settings.postcall_concurrency, on_done=hub.on_postcall
@@ -460,6 +468,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     tickets = TicketService(store, notifier, on_created=hub.on_ticket)
     app.state.tickets = tickets
     outbound.on_ticket = tickets.create_from_intake
+
+    async def _ticket_resolved(t: Ticket) -> None:
+        await contacts.on_ticket_resolved(t.tenant_id, t.caller_number, name=t.caller_name)
+
+    tickets.on_resolved = _ticket_resolved
     sla = SlaMonitor(tickets, settings.sla_check_interval_s)
     sla.start()
 
@@ -547,6 +560,16 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.value = value
     digest = DigestService(store, value, notifications)
     app.state.digest = digest
+    advisor = AdvisorService(
+        store,
+        value,
+        billing,
+        notifications,
+        Reworder(settings.openai_api_key, model=settings.openai_model),
+    )
+    app.state.advisor = advisor
+    reports = ReportService(store, value, notifications)
+    app.state.reports = reports
     app.state.whiteglove = WhiteGloveService(store, billing, notifications)
     app.state.announcements = AnnouncementService(store)
     app.state.drafter = Drafter(settings.openai_api_key, model=settings.openai_model)
@@ -569,6 +592,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         else None
     )
     digest.start()
+    advisor.start()
+    reports.start()
     app.state.whitelabel = WhiteLabelService(
         store,
         billing,
@@ -621,6 +646,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         await ops_loop.stop()
         await checkins.stop()
         await digest.stop()
+        await advisor.stop()
+        await reports.stop()
         await compliance.stop()
         await retry_loop.stop()
         await outbound_loop.stop()
@@ -663,6 +690,7 @@ def create_app() -> FastAPI:
     app.include_router(integrations.public)
     app.include_router(integrations.worker)
     app.include_router(screening_routes.router)
+    app.include_router(advisor_routes.router)
     app.include_router(screening_routes.worker)
     app.include_router(reminders_routes.router)
     app.include_router(connectors.router)

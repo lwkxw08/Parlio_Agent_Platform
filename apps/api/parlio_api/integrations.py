@@ -18,6 +18,7 @@ from parlio_api.connectors import (
     payload_from_call,
     payload_from_ticket,
 )
+from parlio_api.contacts import ContactIntelligence
 from parlio_api.inbox import InboxService
 from parlio_api.live import LiveCallHub
 from parlio_api.messaging import MessageService
@@ -34,6 +35,7 @@ from parlio_api.qa import QAService
 from parlio_api.reminders import ReminderService
 from parlio_api.sip import SipService
 from parlio_api.store import CallRecord, CallStore, Ticket
+from parlio_api.value import SETTINGS_KIND, ValueSettings
 from parlio_voice.models import AssistantConfig, CallEvent, CallEventType
 
 log = logging.getLogger("parlio.api.integrations")
@@ -64,6 +66,12 @@ class IntegrationHub:
         self.inbox: InboxService | None = None
         self.qa: QAService | None = None
         self.reminders: ReminderService | None = None
+        self.contacts: ContactIntelligence | None = None
+
+    async def _booking_value(self, tenant_id: str) -> int:
+        doc = await self.store.get_doc(SETTINGS_KIND, tenant_id)
+        s = ValueSettings.model_validate(doc.data) if doc else ValueSettings(tenant_id=tenant_id)
+        return s.booking_value_pence if s.booking_value_pence is not None else s.avg_job_value_pence
 
     async def business_name_for(self, tenant_id: str, assistant_id: str | None = None) -> str:
         cfg = await self.store.get_assistant(assistant_id) if assistant_id else None
@@ -104,6 +112,11 @@ class IntegrationHub:
             log.warning("post-call SMS failed for %s", ev.call_id, exc_info=True)
 
     async def on_postcall(self, call: CallRecord) -> None:
+        if self.contacts is not None:
+            try:
+                await self.contacts.after_call(call.contact_id)
+            except Exception:
+                log.warning("contact rules failed for %s", call.call_id, exc_info=True)
         if self.inbox is not None:
             try:
                 await self.inbox.on_call_ended(call)
@@ -167,6 +180,16 @@ class IntegrationHub:
                 log.warning("ticket callback scheduling failed for %s", ticket.id, exc_info=True)
 
     async def on_booking(self, booking: Booking) -> None:
+        if self.contacts is not None:
+            try:
+                await self.contacts.on_booking(
+                    booking.tenant_id,
+                    booking.phone,
+                    name=booking.name,
+                    value_pence=await self._booking_value(booking.tenant_id),
+                )
+            except Exception:
+                log.warning("contact promotion failed for %s", booking.id, exc_info=True)
         if self.reminders is not None:
             try:
                 await self.reminders.on_booking(booking)

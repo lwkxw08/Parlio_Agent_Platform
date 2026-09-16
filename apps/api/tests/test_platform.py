@@ -191,8 +191,8 @@ async def test_coupon_and_plan_change(client: AsyncClient) -> None:
         and r.json()["coupon"] == "LAUNCH50"
     )
     u = (await client.get("/v1/billing/usage", params=DEMO)).json()
-    assert u["base_pence"] == 14900 and u["discount_pence"] == 7450
-    assert u["estimated_total_pence"] == 7450
+    assert u["base_pence"] == 19900 and u["discount_pence"] == 9950
+    assert u["estimated_total_pence"] == 9950
 
     r = await client.post("/v1/billing/subscription", params=DEMO, json={"plan_id": "enterprise"})
     assert r.status_code == 422

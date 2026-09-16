@@ -10,7 +10,8 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 
 from parlio_api.auth import UserDep
-from parlio_api.deps import ScreeningDep, StoreDep, require_worker_key
+from parlio_api.contacts import CallerContext, caller_context_instruction
+from parlio_api.deps import ContactsDep, ScreeningDep, StoreDep, require_worker_key
 from parlio_api.screening import PLATFORM_TENANT, ScreeningVerdict, SpamNumber
 
 router = APIRouter(prefix="/v1/screening", tags=["screening"])
@@ -25,6 +26,22 @@ async def worker_screen(
     if cfg is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "assistant not found")
     return await screening.assess(cfg, caller)
+
+
+class CallerContextOut(CallerContext):
+    instruction: str = ""
+
+
+@worker.get("/caller-context", response_model=CallerContextOut)
+async def worker_caller_context(
+    contacts: ContactsDep, store: StoreDep, assistant_id: str, caller: str | None = None
+) -> CallerContextOut:
+    """Who is calling (Phase 21e): name, status, VIP, history and the tenant's handling rules."""
+    cfg = await store.get_assistant(assistant_id)
+    if cfg is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "assistant not found")
+    ctx = await contacts.caller_context(cfg.tenant_id, caller)
+    return CallerContextOut(**ctx.model_dump(), instruction=caller_context_instruction(ctx) or "")
 
 
 class SpamReport(BaseModel):

@@ -20,7 +20,9 @@ from pydantic import BaseModel, Field
 
 from parlio_api.notifications import is_qualified_lead
 from parlio_api.store import (
+    CallFilter,
     CallRecord,
+    CallStore,
     Contact,
     Member,
     TenantDoc,
@@ -29,7 +31,7 @@ from parlio_api.store import (
     TicketStatus,
     TransferRecord,
 )
-from parlio_api.value import TrackingNumber, ValueSettings, detect_intent
+from parlio_api.value import TrackingNumber, ValueService, ValueSettings, detect_intent
 from parlio_voice.models import Schedule
 
 WEEKDAYS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
@@ -1095,6 +1097,29 @@ def _trends(
 
 
 # -- entry point -------------------------------------------------------------------------------
+
+
+async def load_inputs(store: CallStore, value: ValueService, tenant_id: str) -> InsightInputs:
+    """Pull everything the read model needs for one tenant (shared by the route and the advisor)."""
+    tickets = await store.list_tickets(tenant_id, limit=1000)
+    events = {t.id: await store.ticket_events(t.id) for t in tickets}
+    assistants = await store.list_assistants(tenant_id)
+    return InsightInputs(
+        tenant_id=tenant_id,
+        calls=await store.filter_calls(CallFilter(tenant_id=tenant_id, limit=20000)),
+        contacts=await store.list_contacts(tenant_id, limit=5000),
+        tickets=tickets,
+        ticket_events=events,
+        transfers=await store.list_transfers(tenant_id, limit=5000),
+        members=await store.list_members(tenant_id),
+        bookings=await store.list_docs("booking", tenant_id, limit=5000),
+        outbound=await store.list_docs("outbound_call", tenant_id, limit=5000),
+        qa_scores=await store.list_docs("qa_score", tenant_id, limit=5000),
+        faq_insights=await store.list_docs("insight", tenant_id, limit=500),
+        tracking_numbers=await value.tracking_numbers(tenant_id),
+        value=await value.settings(tenant_id),
+        schedule=assistants[0].hours if assistants else None,
+    )
 
 
 def build_insights(

@@ -4,9 +4,19 @@ import Link from "next/link";
 import { useEffect, useState, useTransition } from "react";
 import { Breakdown } from "@/app/breakdown";
 import { AreaLine, Columns, Donut, Funnel, Heatmap, Metric, RankedBars, colorAt } from "@/app/charts";
-import { type InsightsReport, type Slice, type TrendPoint, fetchInsights, pct, secs } from "@/lib/api";
+import { type InsightsReport, type Slice, type TrendPoint, downloadInsightsCsv, fetchInsights, pct, secs } from "@/lib/api";
+import Advisor from "./advisor";
+import Reports from "./reports";
 
-export type InsightTab = "demand" | "trends" | "resolution" | "team" | "customers" | "revenue";
+export type InsightTab = "demand" | "trends" | "resolution" | "team" | "customers" | "revenue" | "advisor" | "reports";
+const EXPORT_SECTIONS: Partial<Record<InsightTab, string[]>> = {
+  demand: ["demand", "forecast"],
+  trends: ["trends"],
+  resolution: ["resolution", "sla", "transfers"],
+  team: ["workforce", "cost"],
+  customers: ["cx", "intents", "gaps"],
+  revenue: ["revenue", "attribution"],
+};
 const TABS: { key: InsightTab; label: string; blurb: string }[] = [
   { key: "demand", label: "Demand", blurb: "When callers ring, what the assistant absorbs, and what next week looks like." },
   { key: "trends", label: "Trends", blurb: "Long-range patterns by hour, weekday, month and year." },
@@ -14,6 +24,8 @@ const TABS: { key: InsightTab; label: string; blurb: string }[] = [
   { key: "team", label: "Team", blurb: "Who's picking up tickets, callbacks and transfers — and cost vs the assistant." },
   { key: "customers", label: "Customers", blurb: "Experience, friction signals and what callers are asking for." },
   { key: "revenue", label: "Revenue", blurb: "Leads, bookings, value won and lost, and which channels bring them." },
+  { key: "advisor", label: "Advisor", blurb: "AI business advisor — evidence-backed recommendations from your own data, with one-click fixes." },
+  { key: "reports", label: "Reports & export", blurb: "Scheduled email reports and CSV exports of every section." },
 ];
 const WINDOWS = [30, 90, 180, 365, 730];
 const HOURS = Array.from({ length: 24 }, (_, h) => (h % 3 === 0 ? String(h).padStart(2, "0") : ""));
@@ -67,6 +79,7 @@ export default function Insights({ initial, timezone }: { initial: InsightsRepor
   }, [days]);
 
   const meta = TABS.find((t) => t.key === tab)!;
+  const exportable = EXPORT_SECTIONS[tab] ?? [];
   return (
     <section className="insights">
       <div className="an-head" style={{ marginTop: "0.5rem" }}>
@@ -80,6 +93,11 @@ export default function Insights({ initial, timezone }: { initial: InsightsRepor
             <a key={w} href="#" className={days === w ? "active" : ""} onClick={(e) => { e.preventDefault(); setDays(w); }}>{w < 365 ? `${w} days` : w === 365 ? "1 year" : "2 years"}</a>
           ))}
           {pending && <span className="small muted">updating…</span>}
+          {exportable.length > 0 && (
+            <button type="button" className="ghost small" style={{ marginLeft: 8 }} title={`Download ${exportable.join(", ")} as CSV`} onClick={() => exportable.forEach((sec) => void downloadInsightsCsv(sec, { days, timezone }))}>
+              Export CSV
+            </button>
+          )}
         </span>
       </div>
       <div className="insights-tabs" role="tablist">
@@ -87,8 +105,10 @@ export default function Insights({ initial, timezone }: { initial: InsightsRepor
           <button key={t.key} role="tab" aria-selected={tab === t.key} className={tab === t.key ? "active" : ""} onClick={() => setTab(t.key)}>{t.label}</button>
         ))}
       </div>
-      {error && !data && <div className="card muted small">{error}</div>}
-      {data && (
+      {tab === "advisor" && <Advisor />}
+      {tab === "reports" && <Reports days={days} timezone={timezone} />}
+      {error && !data && tab !== "advisor" && tab !== "reports" && <div className="card muted small">{error}</div>}
+      {data && tab !== "advisor" && tab !== "reports" && (
         <div style={{ opacity: pending ? 0.6 : 1, transition: "opacity .2s" }}>
           {tab === "demand" && <DemandTab d={data} />}
           {tab === "trends" && <TrendsTab d={data} />}

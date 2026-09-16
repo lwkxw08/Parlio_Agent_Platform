@@ -17,7 +17,14 @@ from uuid import uuid4
 
 import httpx
 
-from parlio_api.store import CallStore, Ticket, TicketEvent, TicketUpdate, intake_from_event
+from parlio_api.store import (
+    CallStore,
+    Ticket,
+    TicketEvent,
+    TicketStatus,
+    TicketUpdate,
+    intake_from_event,
+)
 from parlio_voice.models import CallEvent, TicketIntake, TicketPriority, TransferConfig
 
 if TYPE_CHECKING:
@@ -153,6 +160,7 @@ class TicketService:
         self.notifier = notifier
         self.on_created = on_created
         self.inbox: InboxService | None = None  # set by main once the inbox exists
+        self.on_resolved: Callable[[Ticket], Awaitable[None]] | None = None
 
     async def update(self, ticket_id: str, upd: TicketUpdate) -> Ticket | None:
         """Apply an update and mirror claim/resolve/reopen onto the linked inbox thread."""
@@ -169,6 +177,15 @@ class TicketService:
                 await self.inbox.on_ticket_changed(t, actor=upd.actor)
             except Exception:
                 log.warning("inbox sync failed for ticket %s", t.id, exc_info=True)
+        if (
+            t.status == TicketStatus.RESOLVED
+            and before.status != TicketStatus.RESOLVED
+            and self.on_resolved is not None
+        ):
+            try:
+                await self.on_resolved(t)
+            except Exception:
+                log.warning("resolved hook failed for ticket %s", t.id, exc_info=True)
         return t
 
     async def create_from_intake(

@@ -138,6 +138,9 @@ class Contact(BaseModel):
     vip: bool = False
     notes: str | None = None
     status: str = "prospect"  # prospect | customer | blocked
+    status_pinned: bool = False  # set by hand: automatic promotion / VIP rules leave it alone
+    status_source: str | None = None  # who or what last changed status/vip (email or rule name)
+    lifetime_value_pence: int = 0  # bookings + payments attributed to this contact
     call_count: int = 0
     first_seen_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     last_seen_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
@@ -149,6 +152,9 @@ class ContactUpdate(BaseModel):
     vip: bool | None = None
     notes: str | None = None
     status: str | None = None
+    status_pinned: bool | None = None
+    status_source: str | None = None
+    lifetime_value_pence: int | None = None
 
 
 class CallRedaction(BaseModel):

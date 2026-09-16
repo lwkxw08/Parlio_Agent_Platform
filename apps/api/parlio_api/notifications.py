@@ -49,6 +49,8 @@ class NotifyEvent(StrEnum):
     INBOX_SLA_BREACHED = "inbox.sla_breached"
     QA_LOW_SCORE = "qa.low_score"
     OWNER_DIGEST = "owner.digest"
+    ADVISOR_DIGEST = "advisor.digest"
+    ANALYTICS_REPORT = "analytics.report"
     SECURITY = "security.alert"
 
 

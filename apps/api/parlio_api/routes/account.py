@@ -8,13 +8,15 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import uuid4
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, Request, status
 from pydantic import BaseModel, Field
 
 from parlio_api.auth import UserDep
 from parlio_api.billing import PLAN_BY_ID
-from parlio_api.deps import BillingDep, SettingsDep, StoreDep
+from parlio_api.contacts import ContactRules
+from parlio_api.deps import AuditDep, BillingDep, ContactsDep, SettingsDep, StoreDep
 from parlio_api.journey import QUESTIONNAIRE_KIND, Questionnaire, Vertical, apply_playbook
+from parlio_api.observability import AuditEntry
 from parlio_api.onboarding import (
     PlaceResult,
     WebsiteAnalysis,
@@ -136,21 +138,92 @@ async def list_contacts(
     return await store.list_contacts(tenant_id, q)
 
 
-@router.get("/contacts/{contact_id}", response_model=Contact)
-async def get_contact(contact_id: str, store: StoreDep) -> Contact:
+@router.get("/contacts/rules", response_model=ContactRules)
+async def get_contact_rules(
+    user: UserDep, contacts: ContactsDep, tenant_id: str | None = None
+) -> ContactRules:
+    tid = tenant_id or (user.tenant_ids[0] if user.tenant_ids else None)
+    if tid is None:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "no organisation")
+    user.require_tenant(tid)
+    return await contacts.rules(tid)
+
+
+@router.put("/contacts/rules", response_model=ContactRules)
+async def put_contact_rules(
+    body: ContactRules,
+    request: Request,
+    user: UserDep,
+    contacts: ContactsDep,
+    audit: AuditDep,
+    tenant_id: str | None = None,
+) -> ContactRules:
+    tid = tenant_id or (user.tenant_ids[0] if user.tenant_ids else None)
+    if tid is None:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "no organisation")
+    user.require_tenant(tid)
+    saved = await contacts.save_rules(tid, body)
+    await audit.record(
+        AuditEntry(
+            tenant_id=tid,
+            actor=user.email,
+            action="contacts.rules_updated",
+            method=request.method,
+            path=request.url.path,
+            ip=request.client.host if request.client else None,
+            meta=saved.model_dump(mode="json"),
+        )
+    )
+    return saved
+
+
+async def _owned_contact(contact_id: str, user: UserDep, store: StoreDep) -> Contact:
     c = await store.get_contact(contact_id)
     if c is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "contact not found")
+    user.require_tenant(c.tenant_id)
     return c
 
 
+@router.get("/contacts/{contact_id}", response_model=Contact)
+async def get_contact(contact_id: str, user: UserDep, store: StoreDep) -> Contact:
+    return await _owned_contact(contact_id, user, store)
+
+
 @router.patch("/contacts/{contact_id}", response_model=Contact)
-async def update_contact(contact_id: str, body: ContactUpdate, store: StoreDep) -> Contact:
-    if body.status is not None and body.status not in ("prospect", "customer", "blocked"):
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "invalid status")
-    c = await store.update_contact(contact_id, body)
+async def update_contact(
+    contact_id: str,
+    body: ContactUpdate,
+    request: Request,
+    user: UserDep,
+    store: StoreDep,
+    contacts: ContactsDep,
+    audit: AuditDep,
+) -> Contact:
+    before = await _owned_contact(contact_id, user, store)
+    try:
+        c = await contacts.set_manual(before, body, actor=user.email)
+    except ValueError as e:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(e)) from e
     if c is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "contact not found")
+    if body.status is not None or body.vip is not None or body.status_pinned is not None:
+        await audit.record(
+            AuditEntry(
+                tenant_id=c.tenant_id,
+                actor=user.email,
+                action="contact.status_changed",
+                target=c.id,
+                method=request.method,
+                path=request.url.path,
+                ip=request.client.host if request.client else None,
+                meta={
+                    "from": {"status": before.status, "vip": before.vip},
+                    "to": {"status": c.status, "vip": c.vip},
+                    "pinned": c.status_pinned,
+                },
+            )
+        )
     return c
 
 

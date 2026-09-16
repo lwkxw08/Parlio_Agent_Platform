@@ -8,10 +8,16 @@ export default function ContactForm({ initial }: { initial: Contact }) {
   const [saved, setSaved] = useState<string | null>(null);
   const save = async (e: React.FormEvent) => {
     e.preventDefault();
-    const r = await patch<Contact>(`/v1/contacts/${c.id}`, { name: c.name, email: c.email, vip: c.vip, notes: c.notes, status: c.status });
+    const changed = c.status !== initial.status || c.vip !== initial.vip;
+    const r = await patch<Contact>(`/v1/contacts/${c.id}`, { name: c.name, email: c.email, notes: c.notes, ...(changed ? { status: c.status, vip: c.vip } : {}) });
     setSaved(r ? "Saved" : "Save failed");
     if (r) setC(r);
     setTimeout(() => setSaved(null), 2000);
+  };
+  const unpin = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    const r = await patch<Contact>(`/v1/contacts/${c.id}`, { status_pinned: false });
+    if (r) setC(r);
   };
   return (
     <form className="form" onSubmit={save}>
@@ -31,6 +37,12 @@ export default function ContactForm({ initial }: { initial: Contact }) {
       <label>Notes (the assistant can reference these on future calls)
         <textarea value={c.notes ?? ""} onChange={(e) => setC({ ...c, notes: e.target.value || null })} />
       </label>
+      <p className="muted small" style={{ margin: 0 }}>
+        {c.status_pinned
+          ? <>Status and VIP were set by hand{c.status_source ? ` (${c.status_source})` : ""} — automatic rules won&apos;t change them. <a href="#" onClick={unpin}>Let the rules decide again</a></>
+          : <>Status follows your automatic rules{c.status_source ? ` (last change: ${c.status_source.replace("auto:", "")})` : ""}; changing it here pins your choice.</>}
+        {c.lifetime_value_pence > 0 && <> · Lifetime value £{Math.round(c.lifetime_value_pence / 100).toLocaleString("en-GB")}</>}
+      </p>
       <div><button className="primary">Save</button> {saved && <span className="muted small" style={{ marginLeft: 8 }}>{saved}</span>}</div>
     </form>
   );

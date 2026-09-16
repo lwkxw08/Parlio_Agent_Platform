@@ -358,10 +358,75 @@ export type Contact = {
   vip: boolean;
   notes: string | null;
   status: "prospect" | "customer" | "blocked";
+  status_pinned: boolean;
+  status_source: string | null;
+  lifetime_value_pence: number;
   call_count: number;
   first_seen_at: string;
   last_seen_at: string;
 };
+
+export type ContactRules = {
+  auto_promote: boolean;
+  promote_on_booking: boolean;
+  promote_on_payment: boolean;
+  promote_on_resolved_ticket: boolean;
+  vip_min_calls: number | null;
+  vip_min_value_pence: number | null;
+  vip_named_accounts: string[];
+  vip_instructions: string;
+  customer_instructions: string;
+  vip_department: string | null;
+};
+
+// -- Phase 21c: AI business advisor ------------------------------------------------------------------
+export type AdviceStatus = "new" | "applied" | "dismissed" | "snoozed";
+export type AdviceEvidence = { label: string; value: string; metric: string | null };
+export type AdviceAction = { kind: string; label: string; question: string | null; text: string | null };
+export type AdviceOutcome = { metric: string; before: number; after: number; delta_pct: number | null; improved: boolean | null; evaluated_at: string };
+export type Recommendation = {
+  id: string;
+  tenant_id: string;
+  run_id: string;
+  rule: string;
+  area: string;
+  title: string;
+  summary: string;
+  evidence: AdviceEvidence[];
+  expected_impact: string;
+  confidence: number;
+  priority: 1 | 2 | 3;
+  actions: AdviceAction[];
+  wording_source: string;
+  metric: string | null;
+  metric_before: number | null;
+  status: AdviceStatus;
+  snoozed_until: string | null;
+  applied_at: string | null;
+  applied_by: string | null;
+  outcome: AdviceOutcome | null;
+  period_days: number;
+  created_at: string;
+  updated_at: string;
+};
+export type AdvisorSettings = {
+  tenant_id: string;
+  enabled: boolean;
+  weekly_digest: boolean;
+  digest_weekday: number;
+  digest_hour: number;
+  use_llm_wording: boolean;
+  llm_monthly_cap_pence: number;
+  lookback_days: number;
+  updated_at: string;
+};
+export type AdvisorRun = { id: string; tenant_id: string; trigger: string; generated: number; refreshed: number; llm_pence: number; llm_calls: number; llm_rejected: number; created_at: string };
+export type AdvisorOverview = { settings: AdvisorSettings; recommendations: Recommendation[]; last_run: AdvisorRun | null; llm_spent_this_month_pence: number };
+
+// -- Phase 21b: scheduled reports --------------------------------------------------------------------
+export type ReportSchedule = { tenant_id: string; enabled: boolean; cadence: "weekly" | "monthly"; weekday: number; day_of_month: number; hour: number; sections: string[]; updated_at: string };
+export type ReportSent = { id: string; tenant_id: string; title: string; body: string; days: number; sent_at: string };
+export type ReportOverview = { schedule: ReportSchedule; history: ReportSent[]; sections: string[] };
 
 export type Member = {
   tenant_id: string;
@@ -733,6 +798,16 @@ export const queryAnalytics = (body: {
 export const fetchContacts = (params: { tenant_id?: string; q?: string } = {}) =>
   get<Contact[]>(`/v1/contacts${qs(params)}`);
 export const fetchContact = (id: string) => get<Contact>(`/v1/contacts/${id}`);
+export const fetchContactRules = (tenant_id?: string) => get<ContactRules>(`/v1/contacts/rules${qs({ tenant_id })}`);
+export const saveContactRules = (tenant_id: string | undefined, body: ContactRules) => put<ContactRules>(`/v1/contacts/rules${qs({ tenant_id })}`, body);
+export const fetchAdvisor = (tenant_id?: string) => request<AdvisorOverview>(`/v1/advisor${qs({ tenant_id })}`);
+export const runAdvisor = (tenant_id?: string) => request<AdvisorRun>(`/v1/advisor/run${qs({ tenant_id })}`, { method: "POST" });
+export const saveAdvisorSettings = (tenant_id: string | undefined, body: AdvisorSettings) => put<AdvisorSettings>(`/v1/advisor/settings${qs({ tenant_id })}`, body);
+export const adviceAction = (id: string, action: "apply" | "dismiss" | "snooze", body: Record<string, unknown> = {}, tenant_id?: string) =>
+  request<Recommendation>(`/v1/advisor/${id}/${action}${qs({ tenant_id })}`, { method: "POST", body: JSON.stringify(body) });
+export const fetchReports = (tenant_id?: string) => request<ReportOverview>(`/v1/analytics/reports${qs({ tenant_id })}`);
+export const saveReportSchedule = (tenant_id: string | undefined, body: ReportSchedule) => put<ReportSchedule>(`/v1/analytics/reports/schedule${qs({ tenant_id })}`, body);
+export const sendReportNow = (tenant_id: string | undefined, days: number) => request<ReportSent>(`/v1/analytics/reports/send${qs({ tenant_id, days })}`, { method: "POST" });
 export const fetchMembers = (tenant_id: string) => get<Member[]>(`/v1/organisations/${tenant_id}/members`);
 export const fetchShared = (token: string) => get<SharedCall>(`/v1/public/share/${token}`);
 export const fetchMessages = (tenant_id: string) => get<Message[]>(`/v1/messages${qs({ tenant_id })}`);
@@ -765,6 +840,16 @@ export async function downloadCsv(what: "calls" | "contacts" | "tickets" | "audi
   if (!res.ok) return res.statusText;
   const url = URL.createObjectURL(await res.blob());
   const a = Object.assign(document.createElement("a"), { href: url, download: `parlio-${what}.csv` });
+  a.click();
+  URL.revokeObjectURL(url);
+  return null;
+}
+/** Browser-only: download one Insights section as CSV. */
+export async function downloadInsightsCsv(section: string, params: { tenant_id?: string; days?: number; timezone?: string }): Promise<string | null> {
+  const res = await fetch(`${API_URL}/v1/analytics/insights.csv${qs({ section, ...params })}`, { headers: await authHeaders() });
+  if (!res.ok) return res.statusText;
+  const url = URL.createObjectURL(await res.blob());
+  const a = Object.assign(document.createElement("a"), { href: url, download: `parlio-insights-${section}.csv` });
   a.click();
   URL.revokeObjectURL(url);
   return null;
