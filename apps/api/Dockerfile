@@ -13,6 +13,7 @@ RUN uv sync --frozen --no-dev --package parlio-api --no-install-workspace
 
 COPY apps/voice-worker apps/voice-worker
 COPY apps/api apps/api
+COPY docs/guide docs/guide
 RUN uv sync --frozen --no-dev --package parlio-api
 
 ENV PATH="/app/.venv/bin:$PATH"

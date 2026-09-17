@@ -52,6 +52,7 @@ from parlio_api.contacts import ContactIntelligence
 from parlio_api.db.engine import make_engine, migrate
 from parlio_api.db.postgres import PostgresStore
 from parlio_api.drafting import Drafter
+from parlio_api.help import Guide, HelpAssistant
 from parlio_api.improve import ImproveService
 from parlio_api.inbox import (
     Channel,
@@ -122,6 +123,7 @@ from parlio_api.routes import (
 from parlio_api.routes import admin as admin_routes
 from parlio_api.routes import adoption as adoption_routes
 from parlio_api.routes import advisor as advisor_routes
+from parlio_api.routes import help as help_routes
 from parlio_api.routes import (
     inbox as inbox_routes,
 )
@@ -573,6 +575,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.whiteglove = WhiteGloveService(store, billing, notifications)
     app.state.announcements = AnnouncementService(store)
     app.state.drafter = Drafter(settings.openai_api_key, model=settings.openai_model)
+    app.state.help = HelpAssistant(Guide(), settings.openai_api_key, model=settings.openai_model)
     app.state.improve = ImproveService(store, ops.simulation, app.state.drafter)
     app.state.voice_previewer = VoicePreviewer(
         settings.cartesia_api_key, settings.elevenlabs_api_key
@@ -679,6 +682,7 @@ def create_app() -> FastAPI:
     app.include_router(journey_routes.router)
     app.include_router(journey_routes.public)
     app.include_router(adoption_routes.router)
+    app.include_router(help_routes.router)
     app.include_router(adoption_routes.admin)
     app.include_router(adoption_routes.public)
     app.include_router(quality_routes.router)

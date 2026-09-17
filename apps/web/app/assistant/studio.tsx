@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useHashTab } from "@/app/help";
 import {
   type AfterHoursPersona,
   type Assistant,
@@ -27,6 +28,13 @@ import { humanize } from "@/app/breakdown";
 
 const TABS = ["persona", "speaking", "business", "hours", "rules", "faqs", "fields", "sms", "languages", "recording", "blocked", "afterhours", "versions"] as const;
 type Tab = (typeof TABS)[number];
+/** Guide anchors (docs/guide/assistant-studio.md headings) → the tab that shows them. */
+const ANCHOR_TABS: Record<string, Tab> = {
+  "identity-personality": "persona", voice: "persona", "speaking-style": "speaking", "business-hours": "hours",
+  "key-business-rules": "rules", faqs: "faqs", "information-to-collect": "fields", "sms-scenarios": "sms",
+  languages: "languages", "recording-consent": "recording", "call-screening": "blocked", "blocked-numbers": "blocked",
+  "closed-hours-persona": "afterhours", "no-answer-behaviour": "afterhours", "version-history": "versions", "publish-checks": "versions",
+};
 const LABELS: Record<Tab, string> = {
   persona: "Persona & voice", speaking: "Speaking style", business: "Business", hours: "Hours", rules: "Rules", faqs: "FAQs", fields: "Required fields",
   sms: "SMS", languages: "Languages", recording: "Recording", blocked: "Screening & blocking", afterhours: "After hours", versions: "Versions",
@@ -42,6 +50,7 @@ export default function Studio({ initial, versions: initialVersions, requiredFie
   const [fields, setFields] = useState<RequiredField[]>(requiredFields);
   const [versions, setVersions] = useState(initialVersions);
   const [tab, setTab] = useState<Tab>("persona");
+  useHashTab(ANCHOR_TABS, setTab);
   const [dirty, setDirty] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [suggested, setSuggested] = useState<Faq[] | null>(null);
@@ -418,7 +427,7 @@ export default function Studio({ initial, versions: initialVersions, requiredFie
 
       {tab === "blocked" && (
         <div className="section form">
-          <h2>Call screening</h2>
+          <h2 id="call-screening">Call screening</h2>
           <p className="hint">Screened callers are asked who they are and why they are calling before the assistant helps; sales pitches, robocalls and silent lines are ended politely. Known contacts and the numbers you allow below are never screened.</p>
           <label>Screen
             <select value={cfg.screening.mode} onChange={(e) => upd({ screening: { ...cfg.screening, mode: e.target.value as ScreeningMode } })}>

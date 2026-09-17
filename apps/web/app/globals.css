@@ -409,3 +409,51 @@ html.embed body { background: var(--panel); }
 .rec-ev strong { font-size: 1.05rem; }
 .rec-actions { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; margin-top: 0.8rem; }
 .rec-apply { margin-top: 0.8rem; padding-top: 0.8rem; border-top: 1px solid var(--line); }
+
+/* in-app help: floating "?" + right-hand drawer (guide + Ask Parlio) */
+.help-fab { position: fixed; right: 1.25rem; bottom: 1.25rem; z-index: 60; width: 48px; height: 48px; border-radius: 50%; border: 0; cursor: pointer;
+  background: var(--accent-grad); color: #fff; display: grid; place-items: center; box-shadow: 0 10px 24px rgba(106, 61, 245, .35); transition: transform .15s ease; }
+.help-fab:hover { transform: translateY(-2px); }
+.help-scrim { position: fixed; inset: 0; z-index: 55; background: rgba(15, 23, 42, .25); }
+.help-drawer { position: fixed; top: 0; right: 0; bottom: 0; z-index: 58; width: min(440px, 100vw); display: flex; flex-direction: column;
+  background: var(--panel); border-left: 1px solid var(--line); box-shadow: -12px 0 40px rgba(15, 23, 42, .18); transform: translateX(102%); transition: transform .22s ease; visibility: hidden; }
+.help-drawer.open { transform: none; visibility: visible; }
+.help-head { display: flex; align-items: center; justify-content: space-between; padding: 0.9rem 1rem 0.6rem; }
+.help-tabs { margin: 0 1rem; }
+.help-body { flex: 1; overflow-y: auto; padding: 0.9rem 1rem 1.2rem; font-size: 0.9rem; line-height: 1.5; }
+.help-page h3 { margin: 0 0 0.3rem; font-size: 1.05rem; }
+.help-md p { margin: 0 0 0.6rem; }
+.help-md ul, .help-md ol { margin: 0 0 0.6rem; padding-left: 1.2rem; }
+.help-md li { margin: 0.15rem 0; }
+.help-md h4 { margin: 0.6rem 0 0.3rem; font-size: 0.9rem; }
+.help-md code { background: var(--hover); border-radius: 4px; padding: 0 0.3rem; font-size: 0.85em; }
+.help-md sup { font-size: 0.7em; margin-left: 2px; }
+.help-table { width: 100%; border-collapse: collapse; font-size: 0.82rem; margin: 0 0 0.6rem; display: table; white-space: normal; }
+.help-table th, .help-table td { padding: 0.3rem 0.4rem; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+.help-section { border: 1px solid var(--line); border-radius: 10px; padding: 0.45rem 0.75rem; margin: 0.4rem 0; background: var(--field); }
+.help-section summary { cursor: pointer; font-weight: 600; font-size: 0.9rem; padding: 0.15rem 0; }
+.help-section[open] summary { margin-bottom: 0.4rem; }
+.help-jump { display: inline-block; margin-top: 0.2rem; color: var(--accent); text-decoration: none; font-weight: 500; }
+.help-jump:hover { text-decoration: underline; }
+.help-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.4rem; }
+.help-list button { width: 100%; text-align: left; display: grid; gap: 2px; background: var(--field); border: 1px solid var(--line); border-radius: 10px; padding: 0.6rem 0.75rem; cursor: pointer; font: inherit; color: var(--fg); }
+.help-list button:hover { border-color: var(--accent); }
+.help-empty { display: grid; gap: 0.7rem; padding: 0.5rem 0; }
+.help-suggest { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+.help-suggest button { background: var(--hover); color: var(--fg); border: 1px solid var(--line); border-radius: 999px; padding: 0.3rem 0.7rem; font: inherit; font-size: 0.82rem; cursor: pointer; }
+.help-suggest button:hover { border-color: var(--accent); color: var(--accent); }
+.help-log { display: flex; flex-direction: column; gap: 0.6rem; }
+.help-turn { display: flex; }
+.help-turn.user { justify-content: flex-end; }
+.help-bubble { max-width: 92%; padding: 0.6rem 0.8rem; border-radius: 14px; background: var(--field); border: 1px solid var(--line); }
+.help-turn.user .help-bubble { background: var(--accent-grad); color: #fff; border: 0; }
+.help-bubble .help-md p:last-child, .help-bubble .help-md ul:last-child, .help-bubble .help-md ol:last-child { margin-bottom: 0; }
+.help-cites { display: flex; flex-wrap: wrap; gap: 0.35rem; margin-top: 0.6rem; }
+.help-cites button { display: inline-flex; align-items: center; gap: 0.3rem; background: var(--panel); color: var(--accent); border: 1px solid var(--line); border-radius: 999px; padding: 0.25rem 0.65rem; font: inherit; font-size: 0.78rem; font-weight: 500; cursor: pointer; }
+.help-cites button:hover { background: var(--accent-grad); color: #fff; border-color: transparent; }
+.help-ask { display: flex; gap: 0.5rem; padding: 0.75rem 1rem; border-top: 1px solid var(--line); background: var(--panel); }
+.help-ask input { flex: 1; min-width: 0; }
+button.link { background: none; border: 0; padding: 0; color: var(--accent); cursor: pointer; font: inherit; text-decoration: underline; }
+.help-flash { animation: help-flash 2.4s ease-out; border-radius: 12px; }
+@keyframes help-flash { 0%, 55% { box-shadow: 0 0 0 3px var(--accent), 0 0 0 10px rgba(59, 123, 255, .18); } 100% { box-shadow: none; } }
+@media (max-width: 720px) { .help-fab { right: 0.8rem; bottom: 0.8rem; width: 44px; height: 44px; } }

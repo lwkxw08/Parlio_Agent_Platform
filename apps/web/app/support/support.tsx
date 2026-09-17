@@ -14,6 +14,7 @@ import {
   when,
 } from "@/lib/api";
 import { humanize } from "@/app/breakdown";
+import { openHelp } from "@/app/help";
 
 export const PRIORITY: Record<SupportPriority, string> = { p1: "P1 — service down", p2: "P2 — major fault", p3: "P3 — question / minor", p4: "P4 — feature request" };
 export const prCls = (p: SupportPriority) => (p === "p1" ? "bad" : p === "p2" ? "warn" : "");
@@ -89,6 +90,9 @@ export default function Support({ tenant, tickets: initial, kb: kbInitial }: { t
           </form>
           <div className="section form">
             <h2>Help articles</h2>
+            <p className="small muted" style={{ marginTop: 0 }}>
+              Need a how-to? <button type="button" className="link" onClick={() => openHelp()}>Ask Parlio</button> answers questions from the full user guide and takes you to the exact setting.
+            </p>
             <input placeholder="Search e.g. forwarding, SIP, billing" value={q} onChange={(e) => search(e.target.value)} style={{ width: "100%", marginBottom: "0.6rem" }} />
             {kb.map((a) => (
               <details key={a.id} style={{ marginBottom: "0.4rem" }}>

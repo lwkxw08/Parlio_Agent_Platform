@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
+import { useHashTab } from "@/app/help";
 import {
   type Assistant,
   type Booking,
@@ -53,6 +54,12 @@ const CHANNELS: [NotifyChannel, string, string][] = [
 const TABS = [
   ["connectors", "Connected apps"], ["notifications", "Notifications"], ["sms", "SMS log"], ["calendar", "Calendar & bookings"],
 ] as const;
+/** Guide anchors (docs/guide/integrations.md headings) → the tab that shows them. */
+const ANCHOR_TABS: Record<string, string> = {
+  "text-me-after-every-call": "notifications", "who-gets-told-and-when": "notifications", "sms-scenarios": "sms", "sent-messages": "sms",
+  "connected-calendars": "calendar", connect: "calendar", bookings: "calendar", "sms-appointment-reminders": "calendar", "sync-log": "calendar",
+  "connected-apps": "connectors", "inbound-api-keys": "connectors", "csv-export": "connectors",
+};
 
 type Props = {
   tenant: string;
@@ -79,6 +86,7 @@ const statusPill = (s: string) => <span className={`pill ${s === "sent" || s ===
 
 export default function Integrations(p: Props) {
   const [tab, setTab] = useState(p.tab);
+  useHashTab(ANCHOR_TABS, setTab);
   return (
     <>
       <div className="tabs">
@@ -386,7 +394,7 @@ function Reminders({ tenant, canManage, reminderPolicy, reminders }: Props) {
   return (
     <>
       <form className="section" onSubmit={save}>
-        <h2>SMS appointment reminders</h2>
+        <h2 id="sms-appointment-reminders">SMS appointment reminders</h2>
         <p className="hint">When the assistant books an appointment, the customer gets a text before it. Replying <strong>1</strong> confirms the booking; <strong>2</strong> asks to reschedule, which raises a callback ticket for your team and stops further reminders.</p>
         <label className="small check"><input type="checkbox" disabled={!canManage} checked={policy.enabled} onChange={(e) => setPolicy({ ...policy, enabled: e.target.checked })} /> Send SMS reminders for bookings</label>
         <div className="grid">

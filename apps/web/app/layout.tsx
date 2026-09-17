@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { fetchMe, fetchPublicStatus } from "@/lib/api";
 import Sidebar, { type Account } from "./sidebar";
+import HelpDrawer from "./help";
 import { StatusBanner, ViewAsBanner } from "./banners";
 import "./globals.css";
 
@@ -42,6 +43,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
           {account.kind === "user" && account.viewAs && <ViewAsBanner tenant={account.viewAs} />}
           {children}
         </main>
+        {account.kind === "user" && <HelpDrawer />}
       </body>
     </html>
   );
