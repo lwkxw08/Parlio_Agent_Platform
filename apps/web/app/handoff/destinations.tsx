@@ -2,7 +2,7 @@
 
 import { humanize } from "@/app/breakdown";
 import { useState } from "react";
-import { type Assistant, type Destination, type TransferConfig, put } from "@/lib/api";
+import { type Assistant, type Destination, type SiteRef, type TransferConfig, put } from "@/lib/api";
 
 const DAYS = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"];
 
@@ -17,10 +17,13 @@ function blank(dept: string): Destination {
     schedule: { timezone: "Europe/London", hours: Object.fromEntries(DAYS.slice(0, 5).map((d) => [d, { open: "09:00", close: "17:30" }])), always: false },
     fallback_id: null,
     on_call: false,
+    site_id: null,
   };
 }
 
 export default function Destinations({ assistant }: { assistant: Assistant }) {
+  const sites = assistant.sites ?? [];
+  const siteName = (id: string | null | undefined) => sites.find((s) => s.id === id)?.name;
   const [cfg, setCfg] = useState<TransferConfig>(assistant.transfer);
   const [editing, setEditing] = useState<Destination | null>(null);
   const [newDept, setNewDept] = useState("");
@@ -79,13 +82,14 @@ export default function Destinations({ assistant }: { assistant: Assistant }) {
             }}
           />
           <table>
-            <thead><tr><th>Name</th><th>Type</th><th>Number / address</th><th>Priority</th><th>Hours</th><th>On-call</th><th>Fallback</th><th></th></tr></thead>
+            <thead><tr><th>Name</th><th>Type</th><th>Number / address</th>{sites.length > 0 && <th>Location</th>}<th>Priority</th><th>Hours</th><th>On-call</th><th>Fallback</th><th></th></tr></thead>
             <tbody>
               {cfg.destinations.filter((d) => d.department === dept).sort((a, b) => a.priority - b.priority).map((d) => (
                 <tr key={d.id}>
                   <td>{d.name}</td>
                   <td>{humanize(d.kind)}</td>
                   <td><code>{d.address}</code></td>
+                  {sites.length > 0 && <td>{siteName(d.site_id) ?? <span className="muted">All locations</span>}</td>}
                   <td>{d.priority}</td>
                   <td>{d.schedule.always ? "24/7" : Object.keys(d.schedule.hours).map((k) => k.slice(0, 3)).join(" ")}</td>
                   <td>{d.on_call ? <span className="pill ok">on-call</span> : "—"}</td>
@@ -111,6 +115,7 @@ export default function Destinations({ assistant }: { assistant: Assistant }) {
           key={editing.id}
           value={editing}
           others={cfg.destinations.filter((d) => d.id !== editing.id)}
+          sites={sites}
           saving={saving}
           onCancel={() => setEditing(null)}
           onSave={upsert}
@@ -120,8 +125,8 @@ export default function Destinations({ assistant }: { assistant: Assistant }) {
   );
 }
 
-function DestinationForm({ value, others, saving, onCancel, onSave }: {
-  value: Destination; others: Destination[]; saving: boolean; onCancel: () => void; onSave: (d: Destination) => void;
+function DestinationForm({ value, others, sites, saving, onCancel, onSave }: {
+  value: Destination; others: Destination[]; sites: SiteRef[]; saving: boolean; onCancel: () => void; onSave: (d: Destination) => void;
 }) {
   const [d, setD] = useState<Destination>(value);
   const upd = (p: Partial<Destination>) => setD({ ...d, ...p });
@@ -153,6 +158,15 @@ function DestinationForm({ value, others, saving, onCancel, onSave }: {
           </select>
         </label>
       </div>
+      {sites.length > 0 && (
+        <label>Location
+          <select value={d.site_id ?? ""} onChange={(e) => upd({ site_id: e.target.value || null })}>
+            <option value="">All locations (shared)</option>
+            {sites.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+          </select>
+          <span className="hint">Callers to this location&apos;s numbers are put through to its own people first; shared destinations are used by every location.</span>
+        </label>
+      )}
       <label style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
         <input type="checkbox" checked={d.on_call} onChange={(e) => upd({ on_call: e.target.checked })} /> On-call for urgent escalations
       </label>

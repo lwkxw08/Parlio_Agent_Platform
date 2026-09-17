@@ -256,7 +256,20 @@ export type InsightsReport = {
 // -- assistant config (mirrors parlio_voice.models.AssistantConfig) ---------------------------
 
 export type DayHours = { open: string; close: string };
-export type Schedule = { timezone: string; hours: Record<string, DayHours>; always: boolean };
+export type Holiday = { day: string; name: string; closed: boolean; hours: DayHours | null };
+export type Schedule = { timezone: string; hours: Record<string, DayHours>; always: boolean; holidays?: Holiday[] };
+export type TransferWhenClosed = "normal" | "on_call_only" | "never";
+export type AfterHoursPersona = {
+  enabled: boolean;
+  greeting: string;
+  holiday_greeting: string;
+  tone: string;
+  instructions: string;
+  intake_only: boolean;
+  transfer: TransferWhenClosed;
+  quote_next_opening: boolean;
+};
+export type SiteRef = { id: string; name: string; brand_name: string; numbers: string[]; address: string; timezone: string | null };
 export type Faq = { id?: string; category: string; question: string; answer: string; enabled: boolean; source: string };
 export type BusinessRule = { id?: string; name: string; instruction: string; enabled: boolean };
 export type SmsScenario = { id?: string; trigger: string; name: string; template: string; enabled: boolean };
@@ -283,6 +296,7 @@ export type Destination = {
   schedule: Schedule;
   fallback_id: string | null;
   on_call: boolean;
+  site_id?: string | null;
 };
 export type IntakeField = { name: string; prompt: string; required: boolean };
 export type TransferConfig = {
@@ -334,6 +348,8 @@ export type Assistant = {
   recording: RecordingConfig;
   screening: ScreeningConfig;
   transfer: TransferConfig;
+  after_hours: AfterHoursPersona;
+  sites?: SiteRef[];
 };
 
 export type RequiredField = { name: string; description: string; required: boolean };
@@ -775,6 +791,71 @@ export const callParty = (c: Pick<CallRecord, "party" | "extracted">) => {
 export const fetchCalls = (params: Record<string, string | number | undefined | null> = {}) =>
   get<CallRecord[]>(`/v1/calls${qs(params)}`);
 export const fetchCall = (id: string) => get<CallRecord>(`/v1/calls/${id}`);
+
+// -- Phase 20g sites / 20i search ---------------------------------------------------------------
+
+export type Site = SiteRef & { assistant_id: string; assistant_name: string; departments: string[]; destinations: number };
+
+export type SiteSummary = {
+  site_id: string | null;
+  name: string;
+  brand_name: string;
+  numbers: string[];
+  calls: number;
+  answered: number;
+  missed: number;
+  transferred: number;
+  ticketed: number;
+  blocked: number;
+  after_hours: number;
+  avg_duration_s: number | null;
+  answer_rate: number | null;
+  share_pct: number;
+};
+
+export type SiteRollup = {
+  days: number;
+  since: string;
+  total_calls: number;
+  sites: SiteSummary[];
+  unassigned_numbers: string[];
+  best_answer_rate: string | null;
+  most_missed: string | null;
+};
+
+export type SearchMoment = {
+  seq: number;
+  role: string;
+  snippet: string;
+  at: string | null;
+  offset_s: number | null;
+  recording_index: number | null;
+};
+
+export type SearchHit = {
+  call_id: string;
+  started_at: string;
+  party: string | null;
+  direction: "inbound" | "outbound";
+  kind: CallKind;
+  duration_s: number | null;
+  summary: string | null;
+  summary_matched: boolean;
+  site_id: string | null;
+  site_name: string | null;
+  recordings: number;
+  moments: SearchMoment[];
+  total_matches: number;
+};
+
+export type SearchResponse = { query: string; total: number; hits: SearchHit[]; engine: string };
+
+export const fetchSites = () => get<Site[]>("/v1/sites");
+export const saveSites = (assistant_id: string, sites: SiteRef[]) =>
+  put<Assistant>(`/v1/assistants/${assistant_id}/sites`, sites);
+export const fetchSiteRollup = (days = 30) => get<SiteRollup>(`/v1/analytics/sites${qs({ days })}`);
+export const searchCalls = (params: { q: string; site?: string; since?: string; until?: string; limit?: number }) =>
+  request<SearchResponse>(`/v1/calls/search${qs(params)}`);
 export const fetchAssistants = (tenant_id?: string) => get<Assistant[]>(`/v1/assistants${qs({ tenant_id })}`);
 export const createAssistant = (body: { name: string; business_name: string; copy_from?: string | null }) =>
   request<Assistant>("/v1/assistants", { method: "POST", body: JSON.stringify(body) });

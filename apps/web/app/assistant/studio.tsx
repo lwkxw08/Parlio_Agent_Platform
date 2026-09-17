@@ -2,8 +2,10 @@
 
 import { useState } from "react";
 import {
+  type AfterHoursPersona,
   type Assistant,
   type BusinessRule,
+  type Holiday,
   type Faq,
   type RegressionCheck,
   type RequiredField,
@@ -215,6 +217,32 @@ export default function Studio({ initial, versions: initialVersions, requiredFie
             </div>
           )}
           <p className="hint">Outside these hours the assistant follows the after-hours behaviour and tells callers when you reopen.</p>
+          {(() => {
+            const hols: Holiday[] = cfg.hours.holidays ?? [];
+            const setHols = (holidays: Holiday[]) => upd({ hours: { ...cfg.hours, holidays } });
+            const edit = (i: number, p: Partial<Holiday>) => setHols(hols.map((h, j) => (j === i ? { ...h, ...p } : h)));
+            return (
+              <>
+                <h3 style={{ margin: "0.75rem 0 0.25rem" }}>Holidays &amp; closures</h3>
+                <p className="hint">Dated overrides of the weekly hours — closed all day, or open for shorter hours. The assistant mentions upcoming closures when relevant and uses the holiday greeting on the day.</p>
+                {hols.length > 0 && (
+                  <div className="hours-grid" style={{ gridTemplateColumns: "auto 1fr auto auto auto auto" }}>
+                    {hols.map((h, i) => (
+                      <div key={i} style={{ display: "contents" }}>
+                        <input type="date" value={h.day} onChange={(e) => edit(i, { day: e.target.value })} />
+                        <input value={h.name} placeholder="e.g. Christmas Day" onChange={(e) => edit(i, { name: e.target.value })} />
+                        <input type="time" disabled={h.closed} value={h.hours?.open.slice(0, 5) ?? ""} onChange={(e) => edit(i, { hours: { open: e.target.value, close: h.hours?.close ?? "13:00" } })} />
+                        <input type="time" disabled={h.closed} value={h.hours?.close.slice(0, 5) ?? ""} onChange={(e) => edit(i, { hours: { open: h.hours?.open ?? "09:00", close: e.target.value } })} />
+                        <button type="button" className="ghost" onClick={() => edit(i, h.closed ? { closed: false, hours: h.hours ?? { open: "09:00", close: "13:00" } } : { closed: true })}>{h.closed ? "Closed all day" : "Reduced hours"}</button>
+                        <button type="button" className="danger" onClick={() => setHols(hols.filter((_, j) => j !== i))}>✕</button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <button type="button" className="ghost" onClick={() => setHols([...hols, { day: new Date().toISOString().slice(0, 10), name: "Holiday", closed: true, hours: null }])}>+ Add holiday</button>
+              </>
+            );
+          })()}
         </div>
       )}
 
@@ -411,9 +439,39 @@ export default function Studio({ initial, versions: initialVersions, requiredFie
         </div>
       )}
 
-      {tab === "afterhours" && (
+      {tab === "afterhours" && (() => {
+        const ah: AfterHoursPersona = cfg.after_hours ?? { enabled: false, greeting: "", holiday_greeting: "", tone: "", instructions: "", intake_only: false, transfer: "on_call_only", quote_next_opening: true };
+        const setAh = (p: Partial<AfterHoursPersona>) => upd({ after_hours: { ...ah, ...p } });
+        return (
         <div className="section form">
-          <h2>After-hours & no-answer behaviour</h2>
+          <h2>Closed-hours persona</h2>
+          <p className="hint">When your Hours say you are closed (or it is a holiday) the assistant can switch to a different greeting, tone and set of rules. Leave off to behave exactly the same around the clock.</p>
+          <label className="small check"><input type="checkbox" checked={ah.enabled} onChange={(e) => setAh({ enabled: e.target.checked })} /> Use a separate persona outside opening hours</label>
+          {ah.enabled && (
+            <>
+              <label><span className="row" style={{ alignItems: "center" }}>After-hours greeting <AskAi assistantId={cfg.assistant_id} field="greeting" current={ah.greeting} website={cfg.business.website} placeholder="e.g. a warm out-of-hours greeting that says we're closed but can still take details" onInsert={(t) => setAh({ greeting: t.replace(/\s+/g, " ").trim() })} /></span><input value={ah.greeting} onChange={(e) => setAh({ greeting: e.target.value })} /></label>
+              <label>Holiday greeting (optional — falls back to the after-hours greeting)<input value={ah.holiday_greeting} placeholder="Hi, thanks for calling {business_name}. We're closed for the bank holiday, but I can take your details…" onChange={(e) => setAh({ holiday_greeting: e.target.value })} /></label>
+              <div className="two">
+                <label>Tone in this window
+                  <select value={ah.tone} onChange={(e) => setAh({ tone: e.target.value })}>
+                    <option value="">Same as daytime</option>
+                    {["calm and reassuring", "brief and efficient", "warm and apologetic", "formal and courteous"].map((t) => <option key={t}>{t}</option>)}
+                  </select>
+                </label>
+                <label>Transfers when closed
+                  <select value={ah.transfer} onChange={(e) => setAh({ transfer: e.target.value as AfterHoursPersona["transfer"] })}>
+                    <option value="on_call_only">Emergencies only — to on-call destinations</option>
+                    <option value="never">Never transfer, always take a message</option>
+                    <option value="normal">Same as daytime (destination hours still apply)</option>
+                  </select>
+                </label>
+              </div>
+              <label className="small check"><input type="checkbox" checked={ah.intake_only} onChange={(e) => setAh({ intake_only: e.target.checked })} /> Intake only — take name, number and reason for a callback rather than trying to resolve the enquiry (simple FAQs still answered)</label>
+              <label className="small check"><input type="checkbox" checked={ah.quote_next_opening} onChange={(e) => setAh({ quote_next_opening: e.target.checked })} /> Tell callers when you reopen (worked out from Hours and holidays)</label>
+              <label><span className="row" style={{ alignItems: "center" }}>Extra after-hours rules <AskAi assistantId={cfg.assistant_id} field="persona_extra" current={ah.instructions} website={cfg.business.website} placeholder="e.g. Out of hours we only attend burst pipes and no heating; quote the £120 call-out" onInsert={(t) => setAh({ instructions: t })} /></span><textarea value={ah.instructions} placeholder="e.g. Out-of-hours call-outs are £120 and only for emergencies. Never promise a same-day visit." onChange={(e) => setAh({ instructions: e.target.value })} /></label>
+            </>
+          )}
+          <h2 style={{ marginTop: "1.2rem" }}>No-answer behaviour</h2>
           <label>When nobody is available
             <select value={cfg.transfer.after_hours} onChange={(e) => upd({ transfer: { ...cfg.transfer, after_hours: e.target.value as Assistant["transfer"]["after_hours"] } })}>
               <option value="ticket">Take a message as a ticket (callback queue)</option>
@@ -435,7 +493,8 @@ export default function Studio({ initial, versions: initialVersions, requiredFie
           </label>
           <p className="hint">Destinations and departments are managed on the <a href="/handoff">Transfers</a> page.</p>
         </div>
-      )}
+        );
+      })()}
 
       {tab === "versions" && (
         <div className="section">

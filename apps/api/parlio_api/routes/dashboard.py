@@ -7,7 +7,7 @@ name organisations they belong to, and the Postgres store applies RLS on top.
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Annotated
 from uuid import uuid4
 from zoneinfo import ZoneInfo
@@ -40,11 +40,15 @@ from parlio_api.drafting import Draft, DraftRequest
 from parlio_api.insights import InsightsReport, build_insights, load_inputs
 from parlio_api.onboarding import suggest_faqs
 from parlio_api.recordings import RecordingStorage, content_type_for
+from parlio_api.search import SearchResponse, build_response
+from parlio_api.sites import Site, SiteRollup, numbers_for_site, rollup, sites_for_tenant
 from parlio_api.store import (
     AssistantVersion,
     CallFeedback,
     CallFilter,
     CallRecord,
+    CallStore,
+    MemoryStore,
     RequiredField,
     Ticket,
     TicketEvent,
@@ -67,6 +71,7 @@ from parlio_voice.models import (
     AssistantConfig,
     Destination,
     Faq,
+    SiteRef,
     TicketIntake,
     TransferConfig,
     TransferMode,
@@ -309,14 +314,123 @@ async def list_calls(
     until: datetime | None = None,
     hour: Annotated[int | None, Query(ge=0, le=23)] = None,
     q: str | None = None,
+    site: str | None = None,
 ) -> list[CallRecord]:
-    if kind is None and since is None and until is None and hour is None and q is None:
+    site_numbers = await _site_numbers(store, tenant_id, site)
+    if (
+        kind is None
+        and since is None
+        and until is None
+        and hour is None
+        and q is None
+        and site_numbers is None
+    ):
         return await store.list_calls(tenant_id, limit)
     return await store.filter_calls(
         CallFilter(
-            tenant_id=tenant_id, kind=kind, since=since, until=until, hour=hour, q=q, limit=limit
+            tenant_id=tenant_id,
+            kind=kind,
+            since=since,
+            until=until,
+            hour=hour,
+            q=q,
+            site_numbers=site_numbers,
+            limit=limit,
         )
     )
+
+
+async def _site_numbers(
+    store: CallStore, tenant_id: str | None, site: str | None
+) -> list[str] | None:
+    """`site=<id>` -> that site's numbers; an unknown site matches nothing, not everything."""
+    if not site or not tenant_id:
+        return None
+    return numbers_for_site(await sites_for_tenant(store, tenant_id), site) or []
+
+
+@router.get("/calls/search", response_model=SearchResponse)
+async def search_calls(
+    store: StoreDep,
+    user: UserDep,
+    q: Annotated[str, Query(min_length=2, max_length=200)],
+    tenant_id: str | None = None,
+    since: datetime | None = None,
+    until: datetime | None = None,
+    site: str | None = None,
+    limit: Annotated[int, Query(ge=1, le=200)] = 50,
+) -> SearchResponse:
+    """Every call mentioning `q` in its transcript or summary, with the moments to jump to."""
+    tid = tenant_id or (user.tenant_ids[0] if user.tenant_ids else None)
+    if tid is None:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "no organisation")
+    user.require_tenant(tid)
+    sites = await sites_for_tenant(store, tid)
+    calls = await store.search_calls(tid, q, since=since, until=until, limit=limit * 2)
+    if site:
+        numbers = numbers_for_site(sites, site) or []
+        calls = [c for c in calls if (c.dialed or "").lstrip("+") in numbers]
+    engine = "memory" if isinstance(store, MemoryStore) else "postgres_fts"
+    resp = build_response(calls[:limit], q, sites, engine=engine)
+    return resp
+
+
+# -- sites (Phase 20g) --------------------------------------------------------------------------
+
+
+@router.get("/sites", response_model=list[Site])
+async def list_sites(store: StoreDep, user: UserDep, tenant_id: str | None = None) -> list[Site]:
+    tid = tenant_id or (user.tenant_ids[0] if user.tenant_ids else None)
+    if tid is None:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "no organisation")
+    user.require_tenant(tid)
+    return await sites_for_tenant(store, tid)
+
+
+@router.put("/assistants/{assistant_id}/sites", response_model=AssistantConfig)
+async def put_sites(
+    assistant_id: str, body: list[SiteRef], store: StoreDep, user: UserDep
+) -> AssistantConfig:
+    """Replace the assistant's sites (new config version). Numbers must be unique across sites."""
+    cfg = await store.get_assistant(assistant_id)
+    if cfg is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "assistant not found")
+    user.require_tenant(cfg.tenant_id)
+    seen: dict[str, str] = {}
+    for s in body:
+        if not s.id.strip() or not s.name.strip():
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "site id and name required")
+        for n in s.numbers:
+            key = n.lstrip("+")
+            if key in seen and seen[key] != s.id:
+                raise HTTPException(
+                    status.HTTP_422_UNPROCESSABLE_ENTITY, f"{n} is assigned to two sites"
+                )
+            seen[key] = s.id
+    if len({s.id for s in body}) != len(body):
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "duplicate site id")
+    new = cfg.model_copy(update={"sites": body})
+    await store.upsert_assistant(new, [])
+    return new
+
+
+@router.get("/analytics/sites", response_model=SiteRollup)
+async def sites_rollup(
+    store: StoreDep,
+    user: UserDep,
+    tenant_id: str | None = None,
+    days: Annotated[int, Query(ge=1, le=365)] = 30,
+) -> SiteRollup:
+    """Franchise / multi-branch roll-up: every site side by side."""
+    tid = tenant_id or (user.tenant_ids[0] if user.tenant_ids else None)
+    if tid is None:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "no organisation")
+    user.require_tenant(tid)
+    cfgs = await store.list_assistants(tid)
+    sites = await sites_for_tenant(store, tid)
+    since = datetime.now(UTC) - timedelta(days=days)
+    calls = await store.filter_calls(CallFilter(tenant_id=tid, since=since, limit=20000))
+    return rollup(calls, sites, cfgs, days=days)
 
 
 @router.get("/calls/{call_id}", response_model=CallRecord)
@@ -419,8 +533,15 @@ async def overview_analytics(
     tenant_id: str | None = None,
     days: Annotated[int, Query(ge=1, le=365)] = 30,
     timezone: str = "Europe/London",
+    site: str | None = None,
 ) -> OverviewAnalytics:
-    calls = await store.filter_calls(CallFilter(tenant_id=tenant_id, limit=5000))
+    calls = await store.filter_calls(
+        CallFilter(
+            tenant_id=tenant_id,
+            site_numbers=await _site_numbers(store, tenant_id, site),
+            limit=5000,
+        )
+    )
     contacts = await store.list_contacts(tenant_id, limit=5000)
     out = compute_overview(
         calls,

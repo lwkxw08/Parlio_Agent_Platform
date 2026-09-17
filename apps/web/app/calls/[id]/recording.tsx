@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { fetchRecordingUrl } from "@/lib/api";
 
 function legLabel(key: string): string {
@@ -12,9 +12,21 @@ function legLabel(key: string): string {
 }
 
 /** One recording leg: loads the audio through the API (auth) and offers play + download. */
-export function RecordingLeg({ callId, index, objectKey }: { callId: string; index: number; objectKey: string }) {
+export function RecordingLeg({ callId, index, objectKey, seekTo = null }: {
+  callId: string; index: number; objectKey: string; seekTo?: number | null;
+}) {
   const [url, setUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const audio = useRef<HTMLAudioElement>(null);
+  const seeked = useRef(false);
+
+  const jump = () => {
+    const el = audio.current;
+    if (!el || seekTo == null || seeked.current) return;
+    seeked.current = true;
+    el.currentTime = Math.max(0, seekTo - 2);
+    void el.play().catch(() => undefined);
+  };
 
   useEffect(() => {
     let active = true;
@@ -36,11 +48,11 @@ export function RecordingLeg({ callId, index, objectKey }: { callId: string; ind
   return (
     <div className="recording-leg">
       <div className="row between">
-        <strong>{legLabel(objectKey)}</strong>
+        <strong>{legLabel(objectKey)}{seekTo != null && <span className="pill accent" style={{ marginLeft: 8 }}>from {Math.floor(seekTo / 60)}:{String(Math.floor(seekTo % 60)).padStart(2, "0")}</span>}</strong>
         {url && <a href={url} download={`${callId}-${legLabel(objectKey).toLowerCase()}${ext}`} className="small">Download</a>}
       </div>
       {url ? (
-        <audio controls preload="metadata" src={url} style={{ width: "100%" }} />
+        <audio ref={audio} controls preload="metadata" src={url} style={{ width: "100%" }} onLoadedMetadata={jump} />
       ) : error ? (
         <p className="muted small">{error}</p>
       ) : (
