@@ -6,6 +6,8 @@ import { useHashTab } from "@/app/help";
 import {
   type Assistant,
   type Booking,
+  type BookingHours,
+  type BookingRules,
   type CalendarConnection,
   type CalendarProvider,
   type Connector,
@@ -16,6 +18,7 @@ import {
   type ProviderInfo,
   type Reminder,
   type ReminderPolicy,
+  type ServiceType,
   type SyncJob,
   type SyncLogEntry,
   type TenantApiKey,
@@ -23,6 +26,7 @@ import {
   post,
   put,
   request,
+  saveBookingRules,
   when,
 } from "@/lib/api";
 import Connectors from "./connectors";
@@ -57,7 +61,7 @@ const TABS = [
 /** Guide anchors (docs/guide/integrations.md headings) → the tab that shows them. */
 const ANCHOR_TABS: Record<string, string> = {
   "text-me-after-every-call": "notifications", "who-gets-told-and-when": "notifications", "sms-scenarios": "sms", "sent-messages": "sms",
-  "connected-calendars": "calendar", connect: "calendar", bookings: "calendar", "sms-appointment-reminders": "calendar", "sync-log": "calendar",
+  "connected-calendars": "calendar", "booking-rules": "calendar", "service-types": "calendar", connect: "calendar", bookings: "calendar", "sms-appointment-reminders": "calendar", "sync-log": "calendar",
   "connected-apps": "connectors", "inbound-api-keys": "connectors", "csv-export": "connectors",
 };
 
@@ -316,6 +320,15 @@ function Calendar(p: Props) {
           </tbody>
         </table>
       </div>
+      {connections.filter((c) => c.bookable).map((c) => (
+        <RulesEditor
+          key={c.id}
+          tenant={tenant}
+          canManage={canManage}
+          conn={c}
+          onSaved={(u) => setConnections((cs) => cs.map((x) => (x.id === u.id ? u : x)))}
+        />
+      ))}
       {canManage && (
         <form className="section" onSubmit={connect}>
           <h2>Connect</h2>
@@ -348,10 +361,10 @@ function Calendar(p: Props) {
       <div className="section">
         <h2>Bookings</h2>
         <table>
-          <thead><tr><th>Start</th><th>Name</th><th>Phone</th><th>Notes</th><th>Status</th><th>Call</th></tr></thead>
+          <thead><tr><th>Start</th><th>Service</th><th>Name</th><th>Phone</th><th>Notes</th><th>Status</th><th>Call</th></tr></thead>
           <tbody>
-            {bookings.map((b) => <tr key={b.id}><td>{when(b.start)}</td><td>{b.name}</td><td>{b.phone ?? "—"}</td><td className="small muted">{b.notes ?? ""}</td><td>{statusPill(b.status)}</td><td className="small">{b.call_id ? <Link href={`/calls/${b.call_id}`}>view</Link> : "—"}</td></tr>)}
-            {!bookings.length && <tr><td colSpan={6} className="muted">No bookings yet.</td></tr>}
+            {bookings.map((b) => <tr key={b.id}><td>{when(b.start)}</td><td className="small">{b.service_name ?? "—"}</td><td>{b.name}</td><td>{b.phone ?? "—"}</td><td className="small muted">{b.notes ?? ""}</td><td>{statusPill(b.status)}</td><td className="small">{b.call_id ? <Link href={`/calls/${b.call_id}`}>view</Link> : "—"}</td></tr>)}
+            {!bookings.length && <tr><td colSpan={7} className="muted">No bookings yet.</td></tr>}
           </tbody>
         </table>
       </div>
@@ -367,6 +380,141 @@ function Calendar(p: Props) {
         </table>
       </div>
     </>
+  );
+}
+
+const ALIGN: [number, string][] = [[60, "On the hour"], [30, "On the hour or half past"], [15, "Every 15 minutes"], [0, "Back to back (no fixed grid)"]];
+const NOTICE: [number, string][] = [[0, "Any time"], [60, "1 hour"], [120, "2 hours"], [240, "4 hours"], [1440, "Next day onwards"], [2880, "2 days"]];
+const DAYS: [string, string][] = [["mon", "Mon"], ["tue", "Tue"], ["wed", "Wed"], ["thu", "Thu"], ["fri", "Fri"], ["sat", "Sat"], ["sun", "Sun"]];
+const hhmm = (t: string) => t.slice(0, 5);
+
+function RulesEditor({ tenant, canManage, conn, onSaved }: {
+  tenant: string; canManage: boolean; conn: CalendarConnection; onSaved: (c: CalendarConnection) => void;
+}) {
+  const [slot, setSlot] = useState(conn.slot_minutes);
+  const [buffer, setBuffer] = useState(conn.buffer_minutes);
+  const [rules, setRules] = useState<BookingRules>(conn.rules);
+  const [hours, setHours] = useState<BookingHours>(conn.hours);
+  const [draft, setDraft] = useState<ServiceType | null>(null);
+  const [msg, setMsg] = useState<string | null>(null);
+
+  const setRule = <K extends keyof BookingRules>(k: K, v: BookingRules[K]) => setRules((r) => ({ ...r, [k]: v }));
+  const setDay = (d: string, open: string | null, close: string | null) => setHours((h) => {
+    const next = { ...h.hours };
+    if (open === null || close === null) delete next[d];
+    else next[d] = { open, close };
+    return { ...h, hours: next };
+  });
+  const upsertService = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!draft) return;
+    const name = draft.name.trim();
+    if (!name) return setMsg("Give the service a name.");
+    if (rules.services.some((s) => s.id !== draft.id && s.name.trim().toLowerCase() === name.toLowerCase())) return setMsg(`You already have a service called ${name}.`);
+    const svc = { ...draft, name, description: draft.description?.trim() || null };
+    setRule("services", rules.services.some((s) => s.id === svc.id) ? rules.services.map((s) => (s.id === svc.id ? svc : s)) : [...rules.services, svc]);
+    setDraft(null); setMsg(null);
+  };
+  const save = async () => {
+    const r = await saveBookingRules(tenant, conn.id, { slot_minutes: slot, buffer_minutes: buffer, hours: rules.use_business_hours ? undefined : hours, rules });
+    if (!r.ok) return setMsg(`Could not save: ${r.error}`);
+    onSaved(r.data); setRules(r.data.rules); setHours(r.data.hours); setMsg("Booking rules saved.");
+  };
+
+  const grid = ALIGN.find(([m]) => m === rules.align_minutes)?.[1].toLowerCase() ?? `every ${rules.align_minutes} min`;
+  const notice = NOTICE.find(([m]) => m === rules.min_notice_minutes)?.[1].toLowerCase() ?? `${rules.min_notice_minutes} min`;
+  return (
+    <div className="section">
+      <h2 id="booking-rules">Booking rules <span className="muted small">{conn.name}</span></h2>
+      <p className="hint">The assistant only offers and books appointments that follow these rules. Emergency services can be allowed to break them.</p>
+      <div className="grid">
+        <label>Standard appointment length (min)
+          <input type="number" min={5} max={480} step={5} disabled={!canManage} value={slot} onChange={(e) => setSlot(Number(e.target.value))} />
+          <span className="small muted">Used when no service type is chosen.</span>
+        </label>
+        <label>Gap between appointments (min)
+          <input type="number" min={0} max={120} step={5} disabled={!canManage} value={buffer} onChange={(e) => setBuffer(Number(e.target.value))} />
+          <span className="small muted">Travel or set-up time kept free before and after every booking.</span>
+        </label>
+        <label>Start times
+          <select disabled={!canManage} value={rules.align_minutes} onChange={(e) => setRule("align_minutes", Number(e.target.value))}>
+            {ALIGN.map(([m, l]) => <option key={m} value={m}>{l}</option>)}
+          </select>
+        </label>
+        <label>Earliest booking
+          <select disabled={!canManage} value={rules.min_notice_minutes} onChange={(e) => setRule("min_notice_minutes", Number(e.target.value))}>
+            {NOTICE.map(([m, l]) => <option key={m} value={m}>{l}</option>)}
+          </select>
+          <span className="small muted">How much notice a non-emergency booking needs.</span>
+        </label>
+        <label>Book up to (days ahead)
+          <input type="number" min={1} max={365} disabled={!canManage} value={rules.max_days_ahead} onChange={(e) => setRule("max_days_ahead", Number(e.target.value))} />
+        </label>
+      </div>
+      <label className="small check"><input type="checkbox" disabled={!canManage} checked={rules.use_business_hours} onChange={(e) => setRule("use_business_hours", e.target.checked)} /> Book within the assistant&apos;s business hours (appointments must finish by closing time)</label>
+      {!rules.use_business_hours && (
+        <div style={{ margin: "0.4rem 0 0.6rem" }}>
+          <span className="small muted">Booking hours ({hours.timezone}) — untick a day to close it</span>
+          {DAYS.map(([d, label]) => {
+            const dh = hours.hours[d];
+            return (
+              <div key={d} className="small" style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 4 }}>
+                <label className="check" style={{ width: 70 }}><input type="checkbox" disabled={!canManage} checked={!!dh} onChange={(e) => setDay(d, e.target.checked ? "09:00" : null, e.target.checked ? "17:00" : null)} /> {label}</label>
+                {dh && (<>
+                  <input type="time" disabled={!canManage} value={hhmm(dh.open)} onChange={(e) => setDay(d, e.target.value, hhmm(dh.close))} />
+                  <span className="muted">to</span>
+                  <input type="time" disabled={!canManage} value={hhmm(dh.close)} onChange={(e) => setDay(d, hhmm(dh.open), e.target.value)} />
+                </>)}
+              </div>
+            );
+          })}
+        </div>
+      )}
+      <label className="small check"><input type="checkbox" disabled={!canManage} checked={rules.emergency_any_time} onChange={(e) => setRule("emergency_any_time", e.target.checked)} /> Emergency services can be booked any time — outside hours, off the grid and without notice (existing bookings and the gap still apply)</label>
+
+      <h3 id="service-types" style={{ marginTop: "1rem" }}>Service types</h3>
+      <p className="hint">Create the services callers can book. With more than one, the assistant asks which the caller needs and books that length. With none, every booking uses the standard length.</p>
+      <table>
+        <thead><tr><th>Service</th><th>Length</th><th>Emergency</th><th>Description</th><th></th></tr></thead>
+        <tbody>
+          {rules.services.map((s) => (
+            <tr key={s.id}>
+              <td>{s.name}</td><td className="small">{s.minutes} min</td>
+              <td>{s.emergency ? <span className="pill warn">Emergency</span> : <span className="muted small">—</span>}</td>
+              <td className="small muted">{s.description ?? ""}</td>
+              <td>{canManage && (<>
+                <button type="button" onClick={() => setDraft({ ...s })}>Edit</button>{" "}
+                <button type="button" onClick={() => setRule("services", rules.services.filter((x) => x.id !== s.id))}>Remove</button>
+              </>)}</td>
+            </tr>
+          ))}
+          {!rules.services.length && <tr><td colSpan={5} className="muted">No service types yet — every booking is {slot} min.</td></tr>}
+        </tbody>
+      </table>
+      {canManage && !draft && <button type="button" onClick={() => setDraft({ id: `svc-${Math.random().toString(36).slice(2, 8)}`, name: "", minutes: slot, description: null, emergency: false })}>Add service type</button>}
+      {canManage && draft && (
+        <form onSubmit={upsertService} style={{ marginTop: "0.6rem" }}>
+          <div className="grid">
+            <label>Name<input value={draft.name} maxLength={80} required placeholder="e.g. Boiler service" onChange={(e) => setDraft({ ...draft, name: e.target.value })} /></label>
+            <label>Length (min)<input type="number" min={5} max={480} step={5} value={draft.minutes} onChange={(e) => setDraft({ ...draft, minutes: Number(e.target.value) })} /></label>
+            <label>Description (optional)<input value={draft.description ?? ""} maxLength={300} placeholder="Helps the assistant match what the caller asks for" onChange={(e) => setDraft({ ...draft, description: e.target.value })} /></label>
+          </div>
+          <label className="small check"><input type="checkbox" checked={draft.emergency} onChange={(e) => setDraft({ ...draft, emergency: e.target.checked })} /> Emergency service (follows the emergency rule above)</label>
+          <div style={{ marginTop: 6 }}>
+            <button type="submit" className="primary">{rules.services.some((s) => s.id === draft.id) ? "Update service" : "Add service"}</button>{" "}
+            <button type="button" onClick={() => setDraft(null)}>Cancel</button>
+          </div>
+        </form>
+      )}
+
+      <p className="small muted" style={{ marginTop: "0.8rem" }}>
+        In effect: {slot} min appointments{rules.services.length ? " (or the service length)" : ""}, {grid}, {buffer ? `${buffer} min gap either side, ` : ""}
+        within {rules.use_business_hours ? "business hours" : "the booking hours above"} and finishing by close, {rules.min_notice_minutes ? `at least ${notice} ahead, ` : ""}up to {rules.max_days_ahead} days out.
+        {rules.emergency_any_time && rules.services.some((s) => s.emergency) ? " Emergency services ignore hours, grid and notice." : ""}
+      </p>
+      {canManage && <button type="button" className="primary" onClick={save}>Save booking rules</button>}
+      {msg && <span className="muted small" style={{ marginLeft: 8 }}>{msg}</span>}
+    </div>
   );
 }
 

@@ -559,6 +559,33 @@ export type Notification = {
 };
 
 export type CalendarProvider = "google" | "microsoft" | "booking_link" | "simulated";
+export type ServiceType = {
+  id: string;
+  name: string;
+  minutes: number;
+  description: string | null;
+  emergency: boolean;
+};
+export type BookingRules = {
+  align_minutes: number;
+  use_business_hours: boolean;
+  min_notice_minutes: number;
+  max_days_ahead: number;
+  emergency_any_time: boolean;
+  services: ServiceType[];
+};
+export type BookingHours = {
+  timezone: string;
+  hours: Record<string, { open: string; close: string }>;
+  always: boolean;
+  holidays: unknown[];
+};
+export type BookingRulesInput = {
+  slot_minutes: number;
+  buffer_minutes: number;
+  hours?: BookingHours;
+  rules: BookingRules;
+};
 export type CalendarConnection = {
   id: string;
   provider: CalendarProvider;
@@ -570,6 +597,8 @@ export type CalendarConnection = {
   booking_vendor: string | null;
   slot_minutes: number;
   buffer_minutes: number;
+  hours: BookingHours;
+  rules: BookingRules;
   has_token: boolean;
   bookable: boolean;
   created_at: string;
@@ -583,6 +612,8 @@ export type Booking = {
   name: string;
   phone: string | null;
   notes: string | null;
+  service_id: string | null;
+  service_name: string | null;
   status: string;
   created_at: string;
 };
@@ -895,6 +926,8 @@ export const fetchMessages = (tenant_id: string) => get<Message[]>(`/v1/messages
 export const fetchRules = (tenant_id: string) => get<NotificationRule[]>(`/v1/notifications/rules${qs({ tenant_id })}`);
 export const fetchNotificationLog = (tenant_id: string) => get<Notification[]>(`/v1/notifications/log${qs({ tenant_id })}`);
 export const fetchConnections = (tenant_id: string) => get<CalendarConnection[]>(`/v1/calendar/connections${qs({ tenant_id })}`);
+export const saveBookingRules = (tenant_id: string, conn_id: string, body: BookingRulesInput) =>
+  put<CalendarConnection>(`/v1/calendar/connections/${conn_id}/rules${qs({ tenant_id })}`, body);
 export const fetchBookings = (tenant_id: string) => get<Booking[]>(`/v1/calendar/bookings${qs({ tenant_id })}`);
 export const fetchReminderPolicy = (tenant_id: string) => get<ReminderPolicy>(`/v1/reminders/policy${qs({ tenant_id })}`);
 export const fetchReminders = (tenant_id: string) => get<Reminder[]>(`/v1/reminders${qs({ tenant_id })}`);

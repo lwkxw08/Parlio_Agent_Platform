@@ -175,11 +175,13 @@ class CoreApiClient:
         data = r.json()
         return dict(data) if data else None
 
-    async def availability(self, cfg: AssistantConfig, days: int = 7) -> dict[str, Any]:
-        r = await self._http.get(
-            "/v1/worker/calendar/availability",
-            params={"tenant_id": cfg.tenant_id, "days": days},
-        )
+    async def availability(
+        self, cfg: AssistantConfig, days: int = 7, service_id: str | None = None
+    ) -> dict[str, Any]:
+        params: dict[str, Any] = {"tenant_id": cfg.tenant_id, "days": days}
+        if service_id:
+            params["service_id"] = service_id
+        r = await self._http.get("/v1/worker/calendar/availability", params=params)
         r.raise_for_status()
         return dict(r.json())
 
@@ -573,23 +575,44 @@ class ReceptionistTools:
         }
 
     # -- calendar -----------------------------------------------------------------------------
-    async def calendar_availability(self, days: int = 7) -> dict[str, Any]:
+    async def calendar_availability(
+        self, days: int = 7, service: str | None = None
+    ) -> dict[str, Any]:
         if self.api is None:
             return {"slots": [], "error": "calendar unavailable"}
         try:
-            res = await self.api.availability(self.cfg, days)
+            res = await self.api.availability(self.cfg, days, service or None)
         except Exception as e:
             log.warning("availability failed: %s", e)
             return {"slots": [], "error": "calendar unavailable"}
-        slots = [s["start"] for s in res.get("slots", [])][:8]
-        return {
-            "slots": slots,
+        services = [
+            {"id": s["id"], "name": s["name"], "minutes": s["minutes"]}
+            for s in res.get("services", [])
+        ]
+        out: dict[str, Any] = {
+            "slots": [s["start"] for s in res.get("slots", [])][:8],
             "booking_url": res.get("booking_url"),
             "error": res.get("error"),
+            "slot_minutes": res.get("slot_minutes"),
         }
+        if services:
+            out["services"] = services
+            out["service_id"] = res.get("service_id")
+            if not res.get("service_id") and not res.get("error"):
+                out["hint"] = (
+                    "This business offers several services. Ask the caller which one they need, "
+                    "then call check_calendar again with that service so the slots are the right "
+                    "length."
+                )
+        return out
 
     async def book_appointment(
-        self, start: str, name: str, phone: str | None = None, notes: str | None = None
+        self,
+        start: str,
+        name: str,
+        phone: str | None = None,
+        notes: str | None = None,
+        service: str | None = None,
     ) -> dict[str, Any]:
         if self.api is None:
             return {"status": "unsent"}
@@ -599,6 +622,7 @@ class ReceptionistTools:
             "phone": phone or self.caller,
             "notes": notes,
             "call_id": self.call_id,
+            "service_id": service or None,
         }
         try:
             booking = await self.api.book(self.cfg, req)
@@ -609,7 +633,13 @@ class ReceptionistTools:
             log.warning("booking failed: %s", e)
             return {"status": "failed", "error": "calendar unavailable"}
         self.booking_id = booking.get("id")
-        return {"status": "booked", "booking_id": self.booking_id, "start": booking.get("start")}
+        return {
+            "status": "booked",
+            "booking_id": self.booking_id,
+            "start": booking.get("start"),
+            "end": booking.get("end"),
+            "service": booking.get("service_name"),
+        }
 
 
 APPROVAL_WAIT_S = 90.0
@@ -743,25 +773,32 @@ def build_tools(t: ReceptionistTools) -> list[Any]:
         @function_tool(
             name="check_calendar",
             description=(
-                "Get the next free appointment slots (ISO timestamps, local business hours). "
+                "Get the next free appointment slots (ISO timestamps) that follow the business's "
+                "booking rules. If the result lists services, ask the caller which service they "
+                "need and call again with service=<its id or name> so slots have the right length. "
                 "Offer the caller two or three options. If a booking_url is returned instead, "
                 "offer to text the link with send_sms(trigger='booking_link')."
             ),
         )
-        async def check_calendar(days: int = 7) -> dict[str, Any]:
-            return await t.calendar_availability(days)
+        async def check_calendar(days: int = 7, service: str | None = None) -> dict[str, Any]:
+            return await t.calendar_availability(days, service)
 
         @function_tool(
             name="book_appointment",
             description=(
-                "Book one of the slots from check_calendar. Confirm the time, name and phone "
-                "number back to the caller first. start must be one of the returned slots."
+                "Book one of the slots from check_calendar. Confirm the service, time, name and "
+                "phone number back to the caller first. start must be one of the returned slots; "
+                "pass the same service you used for check_calendar."
             ),
         )
         async def book_appointment(
-            start: str, name: str, phone: str | None = None, notes: str | None = None
+            start: str,
+            name: str,
+            phone: str | None = None,
+            notes: str | None = None,
+            service: str | None = None,
         ) -> dict[str, Any]:
-            return await t.book_appointment(start, name, phone, notes)
+            return await t.book_appointment(start, name, phone, notes, service)
 
         tools.extend([check_calendar, book_appointment])
 
@@ -864,7 +901,9 @@ def booking_first_instruction(cfg: AssistantConfig) -> str:
     )
     return (
         "When a caller asks for an appointment, book it: use check_calendar to offer two or "
-        "three slots and book_appointment to confirm. If their problem sounds urgent, do not "
+        "three slots and book_appointment to confirm. If check_calendar lists services, ask "
+        "which one the caller needs first and use it for both calls. If their problem sounds "
+        "urgent, do not "
         f"transfer them unasked - ask whether they would like {who} now or the earliest "
         "appointment, and do whichever they choose. Only transfer straight away when the caller "
         "asks for a person or describes an immediate danger."

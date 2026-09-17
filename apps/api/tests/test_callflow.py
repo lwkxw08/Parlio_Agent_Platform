@@ -49,6 +49,17 @@ from parlio_voice.models import (
 
 from .test_api import HEADERS, ev
 
+
+def _next_monday(min_days: int = 7) -> datetime:
+    d = (datetime.now(UTC) + timedelta(days=min_days)).replace(
+        hour=0, minute=0, second=0, microsecond=0
+    )
+    return d + timedelta(days=(7 - d.weekday()) % 7)
+
+
+DAY = _next_monday()
+DAY_S = DAY.strftime("%Y-%m-%d")
+
 OWNER = "+447700900555"
 CALLER = "+447700900123"
 
@@ -330,9 +341,7 @@ async def test_reminder_policy_api_and_inbox_reply_routing(
         json={"provider": "simulated", "name": "Diary"},
     )
     assert r.status_code == 201
-    start = (datetime.now(UTC) + timedelta(days=3)).replace(
-        hour=10, minute=0, second=0, microsecond=0
-    )
+    start = DAY.replace(hour=10)
     r = await client.post(
         "/v1/worker/calendar/bookings",
         params={"tenant_id": "demo"},
@@ -526,13 +535,13 @@ class _Fake:
                     "value": [
                         {
                             "showAs": "busy",
-                            "start": {"dateTime": "2026-09-14T09:00:00.0000000"},
-                            "end": {"dateTime": "2026-09-14T10:00:00.0000000"},
+                            "start": {"dateTime": f"{DAY_S}T09:00:00.0000000"},
+                            "end": {"dateTime": f"{DAY_S}T10:00:00.0000000"},
                         },
                         {
                             "showAs": "free",
-                            "start": {"dateTime": "2026-09-14T11:00:00.0000000"},
-                            "end": {"dateTime": "2026-09-14T12:00:00.0000000"},
+                            "start": {"dateTime": f"{DAY_S}T11:00:00.0000000"},
+                            "end": {"dateTime": f"{DAY_S}T12:00:00.0000000"},
                         },
                     ]
                 },
@@ -550,8 +559,8 @@ class _Fake:
                         "primary": {
                             "busy": [
                                 {
-                                    "start": "2026-09-14T09:00:00+00:00",
-                                    "end": "2026-09-14T10:00:00+00:00",
+                                    "start": f"{DAY_S}T09:00:00+00:00",
+                                    "end": f"{DAY_S}T10:00:00+00:00",
                                 }
                             ]
                         }
@@ -603,7 +612,7 @@ async def test_oauth_freebusy_and_booking_mocked(provider: CalendarProvider) -> 
         await svc.oauth_callback("nope", "x")
 
     # free/busy: 09:00-10:00 busy -> availability excludes it, "free" events ignored
-    day = datetime(2026, 9, 14, tzinfo=UTC)
+    day = DAY
     be = svc.backends[provider]
     busy = await be.busy(conn, day, day + timedelta(days=1))
     assert busy == [Slot(start=day.replace(hour=9), end=day.replace(hour=10))]
