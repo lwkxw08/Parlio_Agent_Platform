@@ -14,7 +14,14 @@ from pydantic import BaseModel, Field
 from parlio_api.auth import UserDep
 from parlio_api.billing import PLAN_BY_ID
 from parlio_api.contacts import ContactRules
-from parlio_api.deps import AuditDep, BillingDep, ContactsDep, SettingsDep, StoreDep
+from parlio_api.deps import (
+    AuditDep,
+    BillingDep,
+    ContactsDep,
+    SettingsDep,
+    StoreDep,
+    ensure_cap,
+)
 from parlio_api.journey import QUESTIONNAIRE_KIND, Questionnaire, Vertical, apply_playbook
 from parlio_api.observability import AuditEntry
 from parlio_api.onboarding import (
@@ -80,11 +87,15 @@ async def list_members(tenant_id: str, user: UserDep, store: StoreDep) -> list[M
 @router.post(
     "/organisations/{tenant_id}/members", response_model=Member, status_code=status.HTTP_201_CREATED
 )
-async def invite_member(tenant_id: str, body: Invite, user: UserDep, store: StoreDep) -> Member:
+async def invite_member(
+    tenant_id: str, body: Invite, user: UserDep, store: StoreDep, billing: BillingDep
+) -> Member:
     """Create a pending membership; it activates on the invitee's first sign-in."""
     user.require_admin(tenant_id)
     if body.role not in ROLES or body.role == "owner":
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "invalid role")
+    members = await store.list_members(tenant_id)
+    await ensure_cap(billing, tenant_id, "max_members", len(members))
     return await store.upsert_member(
         Member(
             tenant_id=tenant_id,

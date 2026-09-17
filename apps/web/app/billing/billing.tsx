@@ -168,6 +168,15 @@ function PlanTab({ tenant, canManage, plans, sub, entitlements, onChange, setMsg
               <span key={k} className={`pill ${entitlements.enabled[k] ? "ok" : ""}`} title={d}>{entitlements.enabled[k] ? "" : ""}{d}</span>
             ))}
           </div>
+          {entitlements.caps && (
+            <div className="chips" style={{ marginTop: 8 }}>
+              {Object.entries(entitlements.caps).map(([k, c]) => (
+                <span key={k} className={`pill ${c.limit && c.used >= c.limit ? "warn" : ""}`}>
+                  {c.used} / {c.limit === 0 ? "unlimited" : c.limit} {c.label}
+                </span>
+              ))}
+            </div>
+          )}
         </div>
       )}
       <div className="grid">

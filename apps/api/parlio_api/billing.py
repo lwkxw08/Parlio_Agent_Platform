@@ -66,6 +66,11 @@ ENTITLEMENTS: dict[str, str] = {
     "simulation": "Simulation sandbox & prompt A/B",
     "value_reports": "Lead scoring & value attribution",
     "advisor": "AI business advisor & weekly recommendations",
+    "team_scheduling": "Team scheduling (engineers, pooled availability, Schedule page)",
+    "scheduling_tool": "Scheduling-tool booking backend (ServiceM8 / webhook)",
+    "multi_location": "Multiple locations / sites",
+    "after_hours_personas": "After-hours & holiday personas",
+    "transcript_search": "Transcript & recording search",
     "white_label": "White-label branding & agency accounts",
     "sso": "SSO / SCIM",
     "priority_support": "Priority support (P1 24x7)",
@@ -85,8 +90,20 @@ _ENT_GROWTH = [
     "value_reports",
     "advisor",
     "priority_support",
+    "team_scheduling",
+    "multi_location",
+    "after_hours_personas",
+    "transcript_search",
 ]
-_ENT_SCALE = [*_ENT_GROWTH, "outbound", "payments", "byo_sip", "simulation", "white_label"]
+_ENT_SCALE = [
+    *_ENT_GROWTH,
+    "outbound",
+    "payments",
+    "byo_sip",
+    "simulation",
+    "white_label",
+    "scheduling_tool",
+]
 _ENT_ENTERPRISE = list(ENTITLEMENTS)
 
 
@@ -101,6 +118,10 @@ class Plan(BaseModel):
     sms_overage_pence: int
     max_assistants: int
     max_concurrent_calls: int
+    # Phase 20-22 caps (0 = unlimited): bookable engineers/calendars, locations, dashboard users.
+    max_resources: int = Field(default=1, ge=0)
+    max_sites: int = Field(default=1, ge=0)
+    max_members: int = Field(default=2, ge=0)
     features: list[str] = Field(default_factory=list)
     entitlements: list[str] = Field(default_factory=list)
     enterprise: bool = False
@@ -147,7 +168,17 @@ PLANS: list[Plan] = [
         sms_overage_pence=5,
         max_assistants=3,
         max_concurrent_calls=5,
-        features=["3 assistants", "Calendar booking", "Warm transfers", "Analytics Ask AI"],
+        max_resources=5,
+        max_sites=3,
+        max_members=5,
+        features=[
+            "3 assistants",
+            "Calendar booking",
+            "Team scheduling (5 engineers)",
+            "3 locations",
+            "Warm transfers",
+            "Analytics Ask AI",
+        ],
         entitlements=_ENT_GROWTH,
         included_chat_messages=1500,
         channels=["phone", "sms", "webchat", "browser_voice", "whatsapp"],
@@ -163,7 +194,17 @@ PLANS: list[Plan] = [
         sms_overage_pence=5,
         max_assistants=10,
         max_concurrent_calls=15,
-        features=["10 assistants", "BYO SIP / PBX", "Slack & webhooks", "Priority support"],
+        max_resources=25,
+        max_sites=10,
+        max_members=15,
+        features=[
+            "10 assistants",
+            "25 engineers, 10 locations",
+            "Scheduling-tool integration",
+            "BYO SIP / PBX",
+            "Slack & webhooks",
+            "Priority support",
+        ],
         entitlements=_ENT_SCALE,
         included_chat_messages=5000,
         chat_overage_pence=1,
@@ -180,6 +221,9 @@ PLANS: list[Plan] = [
         sms_overage_pence=5,
         max_assistants=100,
         max_concurrent_calls=100,
+        max_resources=0,
+        max_sites=0,
+        max_members=0,
         features=["UK-sovereign deployment", "SSO", "Custom SLAs", "Dedicated capacity"],
         entitlements=_ENT_ENTERPRISE,
         enterprise=True,
@@ -269,7 +313,17 @@ class TenantLimits(BaseModel):
     max_concurrent_calls: int | None = None
     minutes_cap: int | None = None
     rate_limit_per_minute: int | None = None
+    max_resources: int | None = None
+    max_sites: int | None = None
+    max_members: int | None = None
     note: str | None = None
+
+
+CAP_LABELS: dict[str, str] = {
+    "max_resources": "engineers / bookable calendars",
+    "max_sites": "locations",
+    "max_members": "dashboard users",
+}
 
 
 class Invoice(BaseModel):
@@ -1205,6 +1259,37 @@ class BillingService:
                 continue
             out[ch] = out.get(ch, 0) + 1
         return out
+
+    async def cap(self, tenant_id: str, key: str) -> int:
+        """Effective cap for a ``CAP_LABELS`` key: tenant override, else plan; 0 = no cap.
+
+        Trials are uncapped (like entitlements) unless staff set an override."""
+        sub = await self.subscription(tenant_id)
+        limits = await self.limits(tenant_id)
+        trial = sub.status == SubscriptionStatus.TRIALING
+        plan_caps = {
+            "max_resources": sub.plan.max_resources,
+            "max_sites": sub.plan.max_sites,
+            "max_members": sub.plan.max_members,
+        }
+        overrides = {
+            "max_resources": limits.max_resources,
+            "max_sites": limits.max_sites,
+            "max_members": limits.max_members,
+        }
+        over = overrides[key]
+        if over is not None:
+            return over
+        return 0 if trial else plan_caps[key]
+
+    async def check_cap(self, tenant_id: str, key: str, current: int) -> None:
+        """Raise ``ValueError`` when adding one more would exceed the effective cap."""
+        cap = await self.cap(tenant_id, key)
+        if cap and current >= cap:
+            sub = await self.subscription(tenant_id)
+            raise ValueError(
+                f"{sub.plan.name} allows {cap} {CAP_LABELS[key]}; upgrade your plan to add more"
+            )
 
     async def concurrent_limit(self, tenant_id: str) -> int:
         sub = await self.subscription(tenant_id)

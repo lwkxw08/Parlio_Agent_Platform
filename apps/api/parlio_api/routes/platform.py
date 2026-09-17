@@ -15,6 +15,7 @@ from pydantic import BaseModel, Field
 
 from parlio_api.auth import UserDep
 from parlio_api.billing import (
+    CAP_LABELS,
     ENTITLEMENTS,
     PLANS,
     CheckoutSession,
@@ -33,12 +34,14 @@ from parlio_api.compliance import (
 from parlio_api.deps import (
     AuditDep,
     BillingDep,
+    CalendarDep,
     ComplianceDep,
     SettingsDep,
     StoreDep,
     TelemetryDep,
 )
 from parlio_api.observability import AuditEntry, LatencyReport
+from parlio_api.sites import sites_for_tenant
 from parlio_api.store import CallStore
 from parlio_api.telephony.base import UK_REGIONS, NumberRegion, PhoneNumber
 
@@ -86,15 +89,35 @@ async def get_subscription(user: UserDep, billing: BillingDep, tenant_id: str) -
     return await billing.subscription(tenant_id)
 
 
+class Cap(BaseModel):
+    label: str
+    limit: int  # 0 = unlimited
+    used: int
+
+
 class Entitlements(BaseModel):
     catalogue: dict[str, str]
     enabled: dict[str, bool]
+    caps: dict[str, Cap] = {}
 
 
 @router.get("/billing/entitlements", response_model=Entitlements)
-async def get_entitlements(user: UserDep, billing: BillingDep, tenant_id: str) -> Entitlements:
+async def get_entitlements(
+    user: UserDep, billing: BillingDep, store: StoreDep, calendar: CalendarDep, tenant_id: str
+) -> Entitlements:
     user.require_tenant(tenant_id)
-    return Entitlements(catalogue=ENTITLEMENTS, enabled=await billing.entitlements(tenant_id))
+    used = {
+        "max_resources": len(await calendar.resources.all(tenant_id, include_inactive=False)),
+        "max_sites": len(await sites_for_tenant(store, tenant_id)),
+        "max_members": len(await store.list_members(tenant_id)),
+    }
+    caps = {
+        k: Cap(label=label, limit=await billing.cap(tenant_id, k), used=used[k])
+        for k, label in CAP_LABELS.items()
+    }
+    return Entitlements(
+        catalogue=ENTITLEMENTS, enabled=await billing.entitlements(tenant_id), caps=caps
+    )
 
 
 class PlanChange(BaseModel):

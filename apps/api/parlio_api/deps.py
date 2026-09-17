@@ -285,6 +285,23 @@ def require_feature(key: str) -> Callable[[str, BillingService], Awaitable[None]
     return _dep
 
 
+async def ensure_feature(billing: BillingService, tenant_id: str, key: str) -> None:
+    """Imperative form of ``require_feature`` for routes that decide the key from the body."""
+    if not await billing.entitled(tenant_id, key):
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN,
+            f"'{ENTITLEMENTS.get(key, key)}' is not included in your plan",
+        )
+
+
+async def ensure_cap(billing: BillingService, tenant_id: str, key: str, current: int) -> None:
+    """403 when adding one more of ``key`` would exceed the tenant's effective plan cap."""
+    try:
+        await billing.check_cap(tenant_id, key, current)
+    except ValueError as e:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, str(e)) from e
+
+
 TelemetryDep = Annotated[Telemetry, Depends(get_telemetry)]
 AuditDep = Annotated[AuditLog, Depends(get_audit)]
 ComplianceDep = Annotated[ComplianceService, Depends(get_compliance)]

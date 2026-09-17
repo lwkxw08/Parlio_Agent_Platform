@@ -7,9 +7,12 @@ const BUILTIN = ["starter", "growth", "scale", "enterprise"];
 
 type PlanForm = Plan & { included_chat_messages?: number; chat_overage_pence?: number };
 
+const capCell = (n: number) => (n === 0 ? "Unlimited" : String(n));
+
 const blankPlan = (): PlanForm => ({
   id: "", name: "", monthly_pence: 9900, included_minutes: 300, overage_pence_per_minute: 15, included_numbers: 1, included_sms: 200,
   sms_overage_pence: 6, max_assistants: 1, max_concurrent_calls: 3, features: [], entitlements: [], enterprise: false, included_chat_messages: 500, chat_overage_pence: 2,
+  max_resources: 1, max_sites: 1, max_members: 2,
 });
 const blankCoupon = (): Coupon & { expires_at?: string | null } => ({ code: "", percent_off: 10, amount_off_pence: null, months: 3, plans: [], expires_at: null });
 
@@ -65,7 +68,7 @@ export default function Plans({ plans: initialPlans, coupons: initialCoupons, ca
           {canEdit && <button type="button" className="primary" onClick={() => setEditing(blankPlan())}>New plan</button>}
         </div>
         <table>
-          <thead><tr><th>Plan</th><th>Monthly</th><th>Minutes</th><th>Overage /min</th><th>Numbers</th><th>SMS</th><th>Assistants</th><th>Concurrent</th><th>Trial</th><th>Functionality</th>{canEdit && <th />}</tr></thead>
+          <thead><tr><th>Plan</th><th>Monthly</th><th>Minutes</th><th>Overage /min</th><th>Numbers</th><th>SMS</th><th>Assistants</th><th>Concurrent</th><th>Engineers</th><th>Locations</th><th>Users</th><th>Trial</th><th>Functionality</th>{canEdit && <th />}</tr></thead>
           <tbody>
             {plans.map((p) => (
               <tr key={p.id}>
@@ -77,6 +80,9 @@ export default function Plans({ plans: initialPlans, coupons: initialCoupons, ca
                 <td>{p.included_sms} <span className="muted small">+{p.sms_overage_pence}p</span></td>
                 <td>{p.max_assistants}</td>
                 <td>{p.max_concurrent_calls}</td>
+                <td>{capCell(p.max_resources ?? 1)}</td>
+                <td>{capCell(p.max_sites ?? 1)}</td>
+                <td>{capCell(p.max_members ?? 2)}</td>
                 <td>{p.trial_days ?? defaultTrialDays} days{p.trial_days == null && <span className="muted small"> (default)</span>}</td>
                 <td className="small">{p.entitlements.length}/{Object.keys(catalogue).length} <span className="muted">· {p.features.join(", ")}</span></td>
                 {canEdit && (
@@ -103,6 +109,9 @@ export default function Plans({ plans: initialPlans, coupons: initialCoupons, ca
               {numField("sms_overage_pence", "SMS overage (pence)")}
               {numField("max_assistants", "Max assistants", 1)}
               {numField("max_concurrent_calls", "Max concurrent calls", 1)}
+              {numField("max_resources", "Max engineers / bookable calendars (0 = unlimited)")}
+              {numField("max_sites", "Max locations (0 = unlimited)")}
+              {numField("max_members", "Max dashboard users (0 = unlimited)")}
               <label>Free trial (days)<input type="number" min={0} max={365} placeholder={`Default ${defaultTrialDays}`} value={editing.trial_days ?? ""} onChange={(e) => setEditing({ ...editing, trial_days: e.target.value === "" ? null : Number(e.target.value) })} /></label>
               {numField("included_chat_messages", "Included chat messages")}
               {numField("chat_overage_pence", "Chat overage (pence)")}
