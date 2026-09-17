@@ -56,6 +56,7 @@ export const GROUPS: Group[] = [
       { href: "/inbox", label: "Inbox", icon: I.inbox },
       { href: "/tickets", label: "Tickets", icon: I.tickets },
       { href: "/handoff", label: "Transfers", icon: I.transfers },
+      { href: "/sites", label: "Locations", icon: I.telephony },
       { href: "/outbound", label: "Outbound", icon: I.outbound },
       { href: "/contacts", label: "Contacts", icon: I.contacts },
     ],

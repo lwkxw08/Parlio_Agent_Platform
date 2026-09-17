@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import re
 import secrets
 from datetime import UTC, datetime
 from enum import StrEnum
@@ -92,6 +93,7 @@ class CallFilter(BaseModel):
     until: datetime | None = None
     hour: int | None = None  # 0-23, local to the assistant timezone is a later refinement
     q: str | None = None  # caller / summary substring
+    site_numbers: list[str] | None = None  # inbound numbers (digits) of one site (Phase 20g)
     limit: int = 100
 
     def matches(self, c: CallRecord) -> bool:
@@ -113,6 +115,10 @@ class CallFilter(BaseModel):
             if c.direction != "outbound":
                 return False
         elif self.kind and c.kind != self.kind:
+            return False
+        if self.site_numbers is not None and (
+            c.direction == "outbound" or (c.dialed or "").lstrip("+") not in self.site_numbers
+        ):
             return False
         if self.q:
             hay = " ".join(filter(None, [c.caller, c.summary, c.dialed])).lower()
@@ -329,6 +335,18 @@ class CallStore(Protocol):
         self, tenant_id: str | None = None, limit: int = 50
     ) -> list[CallRecord]: ...
     async def filter_calls(self, f: CallFilter) -> list[CallRecord]: ...
+    async def search_calls(
+        self,
+        tenant_id: str,
+        query: str,
+        *,
+        since: datetime | None = None,
+        until: datetime | None = None,
+        limit: int = 50,
+    ) -> list[CallRecord]:
+        """Calls whose summary or transcript mention every word of `query` (Phase 20i)."""
+        ...
+
     async def get_call(self, call_id: str) -> CallRecord | None: ...
     async def get_call_by_share_token(self, token: str) -> CallRecord | None: ...
     async def mark_call_read(self, call_id: str, read: bool = True) -> CallRecord | None: ...
@@ -564,6 +582,16 @@ def compute_ticket_stats(tickets: list[Ticket], events: list[TicketEvent]) -> Ti
     return s
 
 
+def search_terms(query: str) -> list[str]:
+    """Lower-cased word stems for the in-memory matcher: 'Boilers' matches 'boiler' loosely."""
+    out = []
+    for w in re.findall(r"[\w'-]+", query.lower()):
+        if len(w) > 4 and w.endswith("s"):
+            w = w[:-1]
+        out.append(w)
+    return out
+
+
 def fold_event(call: CallRecord, ev: CallEvent) -> CallRecord:
     """Apply one lifecycle event to a call record (pure; shared by both stores)."""
     p = ev.payload
@@ -721,6 +749,30 @@ class MemoryStore:
         calls = [c for c in self._calls.values() if f.matches(c)]
         calls.sort(key=lambda c: c.started_at, reverse=True)
         return calls[: f.limit]
+
+    async def search_calls(
+        self,
+        tenant_id: str,
+        query: str,
+        *,
+        since: datetime | None = None,
+        until: datetime | None = None,
+        limit: int = 50,
+    ) -> list[CallRecord]:
+        terms = search_terms(query)
+        if not terms:
+            return []
+        out = []
+        for c in self._calls.values():
+            if c.tenant_id != tenant_id:
+                continue
+            if (since and c.started_at < since) or (until and c.started_at >= until):
+                continue
+            hay = " ".join([c.summary or "", *(t.get("text") or "" for t in c.transcript)]).lower()
+            if all(t in hay for t in terms):
+                out.append(c)
+        out.sort(key=lambda c: c.started_at, reverse=True)
+        return out[:limit]
 
     async def get_call(self, call_id: str) -> CallRecord | None:
         return self._calls.get(call_id)

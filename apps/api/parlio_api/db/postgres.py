@@ -470,6 +470,42 @@ class PostgresStore:
             await _hydrate_transcripts(conn, calls)
         return calls
 
+    async def search_calls(
+        self,
+        tenant_id: str,
+        query: str,
+        *,
+        since: datetime | None = None,
+        until: datetime | None = None,
+        limit: int = 50,
+    ) -> list[CallRecord]:
+        # Postgres FTS (GIN indexes from migration 0008); ClickHouse takes over at Part G scale.
+        if not query.strip():
+            return []
+        async with tenant_tx(self._engine, tenant_id) as conn:
+            rows = (
+                await conn.execute(
+                    text(
+                        f"SELECT {_CALL_COLS} FROM calls c"
+                        " WHERE c.organization_id = :tid"
+                        " AND (CAST(:since AS timestamptz) IS NULL OR c.started_at >= :since)"
+                        " AND (CAST(:until AS timestamptz) IS NULL OR c.started_at < :until)"
+                        " AND (to_tsvector('english', coalesce(c.summary, ''))"
+                        "      @@ websearch_to_tsquery('english', :q)"
+                        "   OR EXISTS (SELECT 1 FROM transcripts t"
+                        "              WHERE t.call_id = c.id AND t.organization_id = :tid"
+                        "              AND to_tsvector('english', t.text)"
+                        "                  @@ websearch_to_tsquery('english', :q)))"
+                        " ORDER BY c.started_at DESC LIMIT :lim"
+                    ),
+                    {"tid": tenant_id, "q": query, "since": since, "until": until, "lim": limit},
+                )
+            ).all()
+            calls = [_row_to_call(r, []) for r in rows]
+            await _hydrate_handoff(conn, calls)
+            await _hydrate_transcripts(conn, calls)
+        return calls
+
     async def _get_call(
         self, conn: AsyncConnection, where: str, params: dict[str, Any]
     ) -> CallRecord | None:

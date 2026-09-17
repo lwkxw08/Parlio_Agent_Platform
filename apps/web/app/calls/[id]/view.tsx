@@ -18,9 +18,13 @@ const FEEDBACK = [
   ["other", "Other"],
 ] as const;
 
-export default function CallView({ initial }: { initial: CallRecord }) {
+export type Seek = { index: number; offset_s: number };
+
+const isTab = (t: string | undefined): t is Tab => (TABS as readonly string[]).includes(t ?? "");
+
+export default function CallView({ initial, initialTab, seek = null }: { initial: CallRecord; initialTab?: string; seek?: Seek | null }) {
   const [call, setCall] = useState(initial);
-  const [tab, setTab] = useState<Tab>("overview");
+  const [tab, setTab] = useState<Tab>(isTab(initialTab) ? initialTab : "overview");
   const [fbType, setFbType] = useState<string>("incorrect");
   const [fbNote, setFbNote] = useState("");
   const [toast, setToast] = useState<string | null>(null);
@@ -161,7 +165,7 @@ export default function CallView({ initial }: { initial: CallRecord }) {
           {call.recordings.length ? (
             <div className="recording-legs">
               {call.recordings.map((k, i) => (
-                <RecordingLeg key={k} callId={call.call_id} index={i} objectKey={k} />
+                <RecordingLeg key={k} callId={call.call_id} index={i} objectKey={k} seekTo={seek && seek.index === i ? seek.offset_s : null} />
               ))}
             </div>
           ) : (

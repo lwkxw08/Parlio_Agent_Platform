@@ -46,7 +46,7 @@ from parlio_voice.audio_quality import AudioQualityMonitor
 from parlio_voice.config_client import ConfigClient
 from parlio_voice.events import EventPublisher
 from parlio_voice.latency import LatencyTracker
-from parlio_voice.models import AssistantConfig, CallEventType, TurnLatency
+from parlio_voice.models import AssistantConfig, CallEventType, SiteRef, TurnLatency
 from parlio_voice.outbound import OutboundJob, OutcomeReporter, dial_callee, parse_outbound
 from parlio_voice.recording import CallRecorder
 from parlio_voice.settings import get_settings
@@ -87,8 +87,9 @@ class Receptionist(Agent):
         tools: ReceptionistTools | None = None,
         outbound: OutboundJob | None = None,
         web: WebJob | None = None,
+        site: SiteRef | None = None,
     ) -> None:
-        instructions = cfg.rendered_instructions()
+        instructions = cfg.rendered_instructions(site=site)
         fn_tools = []
         if tools is not None:
             if cfg.transfer.enabled and outbound is None:
@@ -288,6 +289,9 @@ async def entrypoint(ctx: JobContext) -> None:
             CallEventType.CALL_STARTED,
             {"caller": caller, "dialed": dialed, "room": ctx.room.name, "direction": "inbound"},
         )
+    site = cfg.site_for(dialed) if outbound is None and web is None else None
+    if site is not None:
+        ctx.log_context_fields["site"] = site.id
     if outbound is None and web is None and cfg.is_blocked(caller):
         log.info("blocked caller %s on call %s", caller, call_id)
         events.emit(cfg, call_id, CallEventType.CALL_ENDED, {"reason": "blocked", "duration_s": 0})
@@ -424,7 +428,7 @@ async def entrypoint(ctx: JobContext) -> None:
         cfg,
         call_id,
         dialed if outbound is not None else (None if web is not None else caller),
-        TransferEngine(cfg.transfer, bridge),
+        TransferEngine(cfg.transfer, bridge, site_id=site.id if site else None),
         core_api,
         _emit,
         lambda text: session.say(text, allow_interruptions=False).wait_for_playout(),
@@ -534,7 +538,7 @@ async def entrypoint(ctx: JobContext) -> None:
     ctx.add_shutdown_callback(_on_shutdown)
 
     await session.start(
-        agent=Receptionist(cfg, tools, outbound, web),
+        agent=Receptionist(cfg, tools, outbound, web, site=site),
         room=ctx.room,
         room_input_options=RoomInputOptions(participant_identity=participant.identity),
         room_output_options=RoomOutputOptions(transcription_enabled=True),
@@ -564,7 +568,7 @@ async def entrypoint(ctx: JobContext) -> None:
     consent = cfg.consent_text()
     if consent:
         await session.say(consent, allow_interruptions=False, add_to_chat_ctx=False)
-    session.say(outbound.opening if outbound is not None else cfg.rendered_greeting())
+    session.say(outbound.opening if outbound is not None else cfg.rendered_greeting(site=site))
 
 
 def main() -> None:

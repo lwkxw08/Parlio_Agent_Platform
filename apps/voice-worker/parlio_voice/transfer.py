@@ -174,14 +174,16 @@ class TransferEngine:
         *,
         now: datetime | None = None,
         max_attempts: int = 3,
+        site_id: str | None = None,
     ) -> None:
         self.cfg = cfg
         self.bridge = bridge
         self.now = now
         self.max_attempts = max_attempts
+        self.site_id = site_id
 
     def plan(self, department: str | None, urgent: bool) -> list[Destination]:
-        order = self.cfg.candidates(department, self.now, urgent)
+        order = self.cfg.candidates(department, self.now, urgent, site_id=self.site_id)
         seen = {d.id for d in order}
         for d in list(order):
             fb = self.cfg.by_id(d.fallback_id) if d.fallback_id else None

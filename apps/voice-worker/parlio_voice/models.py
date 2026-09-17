@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-from datetime import UTC, datetime, time
+from datetime import UTC, date, datetime, time, timedelta
 from enum import StrEnum
 from typing import Any
 from uuid import uuid4
@@ -82,6 +82,15 @@ class DayHours(BaseModel):
 WEEKDAYS = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
 
 
+class Holiday(BaseModel):
+    """A dated override of the weekly hours: closed all day, or open for a shorter window."""
+
+    day: date
+    name: str = "Holiday"
+    closed: bool = True
+    hours: DayHours | None = None
+
+
 class Schedule(BaseModel):
     """Weekly availability, keyed by weekday. Missing day = unavailable. Empty = always."""
 
@@ -90,13 +99,32 @@ class Schedule(BaseModel):
         default_factory=lambda: {d: DayHours() for d in WEEKDAYS[:5]}
     )
     always: bool = False
+    holidays: list[Holiday] = Field(default_factory=list)
+
+    def local(self, now: datetime | None = None) -> datetime:
+        return (now or datetime.now(UTC)).astimezone(ZoneInfo(self.timezone))
+
+    def holiday_on(self, now: datetime | None = None) -> Holiday | None:
+        d = self.local(now).date()
+        return next((h for h in self.holidays if h.day == d), None)
 
     def is_open(self, now: datetime | None = None) -> bool:
+        local = self.local(now)
+        hol = self.holiday_on(now)
+        if hol is not None:
+            if hol.closed or hol.hours is None:
+                return False
+            return hol.hours.contains(local.time().replace(tzinfo=None))
         if self.always:
             return True
-        local = (now or datetime.now(UTC)).astimezone(ZoneInfo(self.timezone))
         day = self.hours.get(WEEKDAYS[local.weekday()])
         return day is not None and day.contains(local.time().replace(tzinfo=None))
+
+    def window(self, now: datetime | None = None) -> str:
+        """Which persona window applies right now: `open`, `closed` or `holiday`."""
+        if self.is_open(now):
+            return "open"
+        return "holiday" if self.holiday_on(now) is not None else "closed"
 
 
 class DestinationKind(StrEnum):
@@ -117,6 +145,7 @@ class Destination(BaseModel):
     schedule: Schedule = Field(default_factory=Schedule)
     fallback_id: str | None = None
     on_call: bool = False  # eligible for urgent/emergency escalation
+    site_id: str | None = None  # None = shared across every site
 
     def is_available(self, now: datetime | None = None) -> bool:
         return self.schedule.is_open(now)
@@ -185,16 +214,32 @@ class TransferConfig(BaseModel):
         )
 
     def candidates(
-        self, department: str | None = None, now: datetime | None = None, urgent: bool = False
+        self,
+        department: str | None = None,
+        now: datetime | None = None,
+        urgent: bool = False,
+        site_id: str | None = None,
     ) -> list[Destination]:
-        """Available destinations in ring order; urgent calls may go to on-call staff 24/7."""
+        """Available destinations in ring order; urgent calls may go to on-call staff 24/7.
+
+        With a `site_id`, that site's own people ring first and other sites' people are left
+        out; shared (unsited) destinations are always eligible.
+        """
         pool = [
             d
             for d in self.destinations
-            if department is None or d.department.lower() == department.lower()
+            if (department is None or d.department.lower() == department.lower())
+            and (site_id is None or d.site_id in (None, site_id))
         ]
         avail = [d for d in pool if d.is_available(now) or (urgent and d.on_call)]
-        return sorted(avail, key=lambda d: (not (urgent and d.on_call), d.priority))
+        return sorted(
+            avail,
+            key=lambda d: (
+                not (urgent and d.on_call),
+                site_id is not None and d.site_id != site_id,
+                d.priority,
+            ),
+        )
 
     def by_id(self, dest_id: str) -> Destination | None:
         return next((d for d in self.destinations if d.id == dest_id), None)
@@ -308,6 +353,79 @@ class SpeakingStyle(BaseModel):
         return "Speaking style on the phone:\n" + "\n".join(f"- {line}" for line in lines)
 
 
+class TransferWhenClosed(StrEnum):
+    NORMAL = "normal"  # whoever is on their own schedule
+    ON_CALL_ONLY = "on_call_only"  # only urgent calls to on-call staff
+    NEVER = "never"  # take a message, never ring anyone
+
+
+class AfterHoursPersona(BaseModel):
+    """How the assistant behaves outside opening hours (Studio -> After hours).
+
+    Everything here layers on top of the daytime set-up: an empty field means "same as
+    during the day". Holidays use `holiday_greeting` when set, otherwise `greeting`.
+    """
+
+    enabled: bool = False
+    greeting: str = (
+        "Hi, thanks for calling {business_name}. We're closed at the moment, but I can still "
+        "help - how can I help you today?"
+    )
+    holiday_greeting: str = ""
+    tone: str = ""
+    instructions: str = ""
+    intake_only: bool = False  # take details for a callback rather than answer at length
+    transfer: TransferWhenClosed = TransferWhenClosed.ON_CALL_ONLY
+    quote_next_opening: bool = True
+
+    def prompt(self, window: str, next_open: str | None) -> str:
+        lines = [
+            "It is currently outside opening hours"
+            + (" (a holiday)" if window == "holiday" else "")
+            + ". Tell callers we are closed if they ask, without apologising repeatedly."
+        ]
+        if self.quote_next_opening and next_open:
+            lines.append(f"We reopen {next_open}; mention this when it is useful.")
+        if self.tone:
+            lines.append(f"Tone for this window: {self.tone}.")
+        if self.intake_only:
+            lines.append(
+                "Do not try to resolve the enquiry in detail: take the caller's name, number "
+                "and reason with create_ticket and promise a callback when we reopen. Answer "
+                "only simple factual questions from the FAQs."
+            )
+        match self.transfer:
+            case TransferWhenClosed.NEVER:
+                lines.append("Never offer or attempt a transfer during this window.")
+            case TransferWhenClosed.ON_CALL_ONLY:
+                lines.append(
+                    "Only transfer genuine emergencies to the on-call person; everyone else "
+                    "gets a callback ticket."
+                )
+            case TransferWhenClosed.NORMAL:
+                pass
+        if self.instructions.strip():
+            lines.append(self.instructions.strip())
+        return "After-hours behaviour:\n" + "\n".join(f"- {line}" for line in lines)
+
+
+class SiteRef(BaseModel):
+    """A location/brand the assistant answers for (Phase 20g); numbers pick the site."""
+
+    id: str
+    name: str
+    brand_name: str = ""
+    numbers: list[str] = Field(default_factory=list)
+    address: str = ""
+    timezone: str | None = None
+
+    def owns(self, number: str | None) -> bool:
+        if not number:
+            return False
+        digits = number.lstrip("+")
+        return any(digits == n.lstrip("+") for n in self.numbers)
+
+
 class BusinessInfo(BaseModel):
     description: str = ""
     website: str | None = None
@@ -409,13 +527,73 @@ class AssistantConfig(BaseModel):
     verification: VerificationConfig = Field(default_factory=VerificationConfig)
     payments: PaymentsConfig = Field(default_factory=PaymentsConfig)
     screening: ScreeningConfig = Field(default_factory=ScreeningConfig)
+    after_hours: AfterHoursPersona = Field(default_factory=AfterHoursPersona)
+    sites: list[SiteRef] = Field(default_factory=list)
 
-    def rendered_greeting(self) -> str:
-        return self.greeting.format(name=self.name, business_name=self.business_name)
+    def site_for(self, dialed: str | None) -> SiteRef | None:
+        return next((s for s in self.sites if s.owns(dialed)), None)
 
-    def rendered_instructions(self) -> str:
-        base = self.instructions.format(name=self.name, business_name=self.business_name)
-        return "\n\n".join([base, *self.knowledge_sections(), self.speaking.prompt()])
+    def brand_for(self, site: SiteRef | None) -> str:
+        return (site.brand_name if site and site.brand_name else None) or self.business_name
+
+    def window(self, now: datetime | None = None) -> str:
+        return self.hours.window(now)
+
+    def after_hours_active(self, now: datetime | None = None) -> bool:
+        return self.after_hours.enabled and not self.is_open(now)
+
+    def next_opening(self, now: datetime | None = None) -> str | None:
+        """Plain-English next opening time, e.g. 'tomorrow at 09:00' / 'on Monday at 09:00'."""
+        if self.hours.always and not self.hours.holidays:
+            return None
+        local = self.hours.local(now)
+        for offset in range(0, 15):
+            day = local.date() + timedelta(days=offset)
+            hol = next((h for h in self.hours.holidays if h.day == day), None)
+            dh: DayHours | None
+            if hol is not None:
+                dh = None if hol.closed else (hol.hours or DayHours())
+            elif self.hours.always:
+                dh = DayHours(open=time(0, 0), close=time(23, 59))
+            else:
+                dh = self.hours.hours.get(WEEKDAYS[day.weekday()])
+            if dh is None or dh.open >= dh.close:
+                continue
+            if offset == 0 and local.time().replace(tzinfo=None) >= dh.open:
+                continue
+            when = "today" if offset == 0 else "tomorrow" if offset == 1 else f"on {day:%A}"
+            return f"{when} at {dh.open:%H:%M}"
+        return None
+
+    def rendered_greeting(self, now: datetime | None = None, site: SiteRef | None = None) -> str:
+        brand = self.brand_for(site)
+        template = self.greeting
+        if self.after_hours_active(now):
+            ah = self.after_hours
+            template = (
+                ah.holiday_greeting
+                if self.window(now) == "holiday" and ah.holiday_greeting.strip()
+                else ah.greeting
+            ) or self.greeting
+        return template.format(name=self.name, business_name=brand)
+
+    def rendered_instructions(
+        self, now: datetime | None = None, site: SiteRef | None = None
+    ) -> str:
+        brand = self.brand_for(site)
+        base = self.instructions.format(name=self.name, business_name=brand)
+        parts = [base, *self.knowledge_sections()]
+        if site is not None:
+            facts = [f"This call came in on the number for {site.name}"]
+            if site.brand_name:
+                facts.append(f"trading as {site.brand_name}")
+            if site.address:
+                facts.append(f"at {site.address}")
+            parts.append(", ".join(facts) + ". Use that location's details when they differ.")
+        if self.after_hours_active(now):
+            parts.append(self.after_hours.prompt(self.window(now), self.next_opening(now)))
+        parts.append(self.speaking.prompt())
+        return "\n\n".join(parts)
 
     def knowledge_sections(self) -> list[str]:
         """Studio-managed prompt sections: persona, business, hours, rules, FAQs, languages."""
@@ -444,6 +622,18 @@ class AssistantConfig(BaseModel):
                 if h.open < h.close
             )
             out.append(f"Opening hours ({self.hours.timezone}): {days or 'not set'}.")
+        hols = [
+            f"{h.day:%-d %B}: {h.name}"
+            + (
+                ""
+                if h.closed or h.hours is None
+                else f" ({h.hours.open:%H:%M}-{h.hours.close:%H:%M})"
+            )
+            for h in sorted(self.hours.holidays, key=lambda h: h.day)
+            if h.day >= datetime.now(UTC).date()
+        ][:8]
+        if hols:
+            out.append("Upcoming holidays/closures: " + "; ".join(hols) + ".")
         rules = [r.instruction for r in self.rules if r.enabled]
         if rules:
             out.append("Business rules you must follow:\n" + "\n".join(f"- {r}" for r in rules))

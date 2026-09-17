@@ -25,6 +25,7 @@ from parlio_voice.models import (
     TicketPriority,
     TransferMode,
     TransferOutcome,
+    TransferWhenClosed,
 )
 from parlio_voice.outbound import OutcomeReporter, outcome_tool
 from parlio_voice.transfer import TransferEngine, TransferResult
@@ -322,7 +323,28 @@ class ReceptionistTools:
     # -- availability -------------------------------------------------------------------------
     def availability(self, department: str | None = None) -> dict[str, Any]:
         t = self.cfg.transfer
-        cands = t.candidates(department, self.engine.now, urgent=bool(self.urgent_hit))
+        urgent = bool(self.urgent_hit)
+        if self.cfg.after_hours_active(self.engine.now):
+            match self.cfg.after_hours.transfer:
+                case TransferWhenClosed.NEVER:
+                    return {
+                        "department": department or "any",
+                        "departments": t.departments(),
+                        "someone_available": False,
+                        "available": [],
+                    }
+                case TransferWhenClosed.ON_CALL_ONLY if not urgent:
+                    return {
+                        "department": department or "any",
+                        "departments": t.departments(),
+                        "someone_available": False,
+                        "available": [],
+                    }
+                case _:
+                    pass
+        cands = t.candidates(
+            department, self.engine.now, urgent=urgent, site_id=self.engine.site_id
+        )
         return {
             "department": department or "any",
             "departments": t.departments(),
@@ -334,6 +356,8 @@ class ReceptionistTools:
     async def transfer(self, department: str | None, reason: str) -> TransferResult:
         urgent = bool(self.urgent_hit)
         plan = self.engine.plan(department, urgent)
+        if not self.availability(department)["someone_available"]:
+            plan = []
         if not plan:
             res = TransferResult(outcome=TransferOutcome.UNAVAILABLE)
             self.emit(
@@ -861,6 +885,9 @@ def screening_instruction(verdict: dict[str, Any] | None) -> str:
 def after_hours_instruction(cfg: AssistantConfig, someone_available: bool) -> str:
     """Extra system guidance appended when nobody is available."""
     if someone_available:
+        return ""
+    if cfg.after_hours_active() and cfg.after_hours.transfer != TransferWhenClosed.NORMAL:
+        # the After-hours persona already says what to do instead of a transfer
         return ""
     match cfg.transfer.after_hours:
         case AfterHoursBehaviour.TICKET:

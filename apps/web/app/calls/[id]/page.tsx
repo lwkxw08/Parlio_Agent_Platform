@@ -4,9 +4,14 @@ import CallView from "./view";
 
 export const dynamic = "force-dynamic";
 
-export default async function CallDetail({ params }: { params: Promise<{ id: string }> }) {
-  const { id } = await params;
+type Search = { tab?: string; rec?: string; t?: string; seq?: string };
+
+export default async function CallDetail({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<Search> }) {
+  const [{ id }, sp] = await Promise.all([params, searchParams]);
   const call = await fetchCall(id);
   if (!call) notFound();
-  return <CallView initial={call} />;
+  const t = Number(sp.t);
+  const rec = Number(sp.rec);
+  const seek = Number.isFinite(t) && sp.t !== undefined ? { index: Number.isFinite(rec) && sp.rec !== undefined ? rec : 0, offset_s: t } : null;
+  return <CallView initial={call} initialTab={sp.tab} seek={seek} />;
 }
