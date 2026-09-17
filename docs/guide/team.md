@@ -26,6 +26,8 @@ Two-factor requirements and SSO for the whole team are set under *Settings → S
 
 *Team → Engineers & scheduling tab.* List everyone who can be booked — engineers, technicians, rooms, vans. With **no engineers listed**, the assistant books into the primary calendar exactly as before. Once you add engineers, availability offered to callers is **pooled**: a time is offered when *anyone* who can do that service is free, the caller never has to pick a person, and each booking is assigned to one engineer and written to **their** calendar.
 
+The calendar connected under *Integrations → Calendar* is not an extra engineer: once anyone is listed here, only engineers are booked. To keep receiving jobs on that calendar yourself, add yourself as an engineer and leave the **Calendar ID** blank (or `primary`). Booking rules and service types still come from *Integrations → Calendar* and apply to everyone.
+
 For each engineer (**Add engineer** / **Edit**):
 
 - **Name** and **Role** (Engineer, Plumber, Electrician…).

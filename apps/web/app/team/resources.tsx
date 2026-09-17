@@ -119,7 +119,8 @@ export default function Resources({ tenant, initial, settings: initialSettings, 
         <p className="hint">
           Add everyone who can be booked. Availability offered to callers is pooled across the team — a slot is offered when anyone who can do that
           service is free — and each booking is assigned to one engineer and written to their calendar. With no engineers listed, bookings go to the
-          primary calendar as before.
+          primary calendar as before. Once anyone is listed, only engineers are booked — add yourself with Calendar ID left as &quot;primary&quot; to keep
+          taking jobs on the Integrations calendar.
         </p>
         {msg && <p className="hint warn">{msg}</p>}
         {rows.length > 0 && (
