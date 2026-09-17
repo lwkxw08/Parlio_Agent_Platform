@@ -16,6 +16,7 @@ from parlio_api.compliance import ComplianceService
 from parlio_api.connectors import ConnectorService, TenantApiKey
 from parlio_api.contacts import ContactIntelligence
 from parlio_api.drafting import Drafter
+from parlio_api.help import HelpAssistant
 from parlio_api.improve import ImproveService
 from parlio_api.inbox import InboxService
 from parlio_api.integrations import IntegrationHub
@@ -68,6 +69,11 @@ def get_tickets(request: Request) -> TicketService:
 def get_drafter(request: Request) -> Drafter:
     d: Drafter = request.app.state.drafter
     return d
+
+
+def get_help(request: Request) -> HelpAssistant:
+    h: HelpAssistant = request.app.state.help
+    return h
 
 
 def get_voice_previewer(request: Request) -> VoicePreviewer:
@@ -287,6 +293,7 @@ SipDep = Annotated[SipService, Depends(get_sip)]
 HubDep = Annotated[IntegrationHub, Depends(get_hub)]
 TicketsDep = Annotated[TicketService, Depends(get_tickets)]
 DrafterDep = Annotated[Drafter, Depends(get_drafter)]
+HelpDep = Annotated[HelpAssistant, Depends(get_help)]
 VoicePreviewDep = Annotated[VoicePreviewer, Depends(get_voice_previewer)]
 PostCallDep = Annotated[PostCallProcessor, Depends(get_postcall)]
 SettingsDep = Annotated[Settings, Depends(get_settings)]

@@ -1495,3 +1495,17 @@ export const previewVoice = (body: { provider: string; voice_id: string; text?: 
 
 export const requestDraft = (assistantId: string, body: { field: DraftField; brief: string; current?: string; website?: string | null; context?: string | null }) =>
   request<Draft>(`/v1/assistants/${assistantId}/draft`, { method: "POST", body: JSON.stringify(body) });
+
+// -- in-app guide / Ask Parlio ------------------------------------------------------------------
+
+export type GuideSection = { page: string; page_title: string; route: string; heading: string; anchor: string; body: string };
+export type GuidePage = { slug: string; title: string; route: string; summary: string; keywords: string[]; sections: GuideSection[] };
+export type GuidePageSummary = { slug: string; title: string; route: string; summary: string; sections: string[] };
+export type HelpCitation = { page: string; title: string; route: string; heading: string; anchor: string; path: string };
+export type HelpAnswer = { answer: string; citations: HelpCitation[]; source: "llm" | "guide" | "none"; confident: boolean };
+
+export const fetchHelpPages = () => get<GuidePageSummary[]>("/v1/help/pages");
+export const fetchHelpPage = (slug: string) => get<GuidePage>(`/v1/help/pages/${encodeURIComponent(slug)}`);
+export const fetchHelpForRoute = (route: string) => get<GuidePage | null>(`/v1/help/for-route${qs({ route })}`);
+export const askHelp = (body: { question: string; route?: string; history?: { role: "user" | "assistant"; content: string }[] }) =>
+  post<HelpAnswer>("/v1/help/ask", body);
