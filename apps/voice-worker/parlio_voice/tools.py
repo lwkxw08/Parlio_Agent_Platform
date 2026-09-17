@@ -613,14 +613,19 @@ class ReceptionistTools:
         phone: str | None = None,
         notes: str | None = None,
         service: str | None = None,
+        address: str | None = None,
     ) -> dict[str, Any]:
         if self.api is None:
             return {"status": "unsent"}
         req = {
             "start": start,
             "name": name,
-            "phone": phone or self.caller,
+            "phone": normalise_number(
+                phone, self.caller, country_code_for_timezone(self.cfg.hours.timezone)
+            ),
             "notes": notes,
+            "address": address,
+            "caller_id": self.caller,
             "call_id": self.call_id,
             "service_id": service or None,
         }
@@ -788,17 +793,21 @@ def build_tools(t: ReceptionistTools) -> list[Any]:
             description=(
                 "Book one of the slots from check_calendar. Confirm the service, time, name and "
                 "phone number back to the caller first. start must be one of the returned slots; "
-                "pass the same service you used for check_calendar."
+                "pass the same service you used for check_calendar. Always fill notes with what "
+                "the caller needs done and anything the person attending should know (the "
+                "problem, urgency, access instructions), and address with the full address the "
+                "caller gave, including postcode. These go on the calendar entry."
             ),
         )
         async def book_appointment(
             start: str,
             name: str,
+            notes: str,
             phone: str | None = None,
-            notes: str | None = None,
+            address: str | None = None,
             service: str | None = None,
         ) -> dict[str, Any]:
-            return await t.book_appointment(start, name, phone, notes, service)
+            return await t.book_appointment(start, name, phone, notes, service, address)
 
         tools.extend([check_calendar, book_appointment])
 
@@ -902,8 +911,10 @@ def booking_first_instruction(cfg: AssistantConfig) -> str:
     return (
         "When a caller asks for an appointment, book it: use check_calendar to offer two or "
         "three slots and book_appointment to confirm. If check_calendar lists services, ask "
-        "which one the caller needs first and use it for both calls. If their problem sounds "
-        "urgent, do not "
+        "which one the caller needs first and use it for both calls. Before booking, collect "
+        "the caller's name, the best phone number, a clear description of what they need and, "
+        "when the business comes to the customer, the full address with postcode - the calendar "
+        "entry is what the person doing the job will read. If their problem sounds urgent, do not "
         f"transfer them unasked - ask whether they would like {who} now or the earliest "
         "appointment, and do whichever they choose. Only transfer straight away when the caller "
         "asks for a person or describes an immediate danger."

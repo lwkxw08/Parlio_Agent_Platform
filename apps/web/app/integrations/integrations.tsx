@@ -361,9 +361,9 @@ function Calendar(p: Props) {
       <div className="section">
         <h2>Bookings</h2>
         <table>
-          <thead><tr><th>Start</th><th>Service</th><th>Name</th><th>Phone</th><th>Notes</th><th>Status</th><th>Call</th></tr></thead>
+          <thead><tr><th>Start</th><th>Service</th><th>Name</th><th>Phone</th><th>Address</th><th>Details</th><th>Status</th><th>Call</th></tr></thead>
           <tbody>
-            {bookings.map((b) => <tr key={b.id}><td>{when(b.start)}</td><td className="small">{b.service_name ?? "—"}</td><td>{b.name}</td><td>{b.phone ?? "—"}</td><td className="small muted">{b.notes ?? ""}</td><td>{statusPill(b.status)}</td><td className="small">{b.call_id ? <Link href={`/calls/${b.call_id}`}>view</Link> : "—"}</td></tr>)}
+            {bookings.map((b) => <tr key={b.id}><td>{when(b.start)}</td><td className="small">{b.service_name ?? "—"}</td><td>{b.name}</td><td>{b.phone ?? "—"}</td><td className="small">{b.address ?? "—"}</td><td className="small muted">{b.notes ?? ""}</td><td>{statusPill(b.status)}</td><td className="small">{b.call_id ? <Link href={`/calls/${b.call_id}`}>view</Link> : "—"}</td></tr>)}
             {!bookings.length && <tr><td colSpan={7} className="muted">No bookings yet.</td></tr>}
           </tbody>
         </table>

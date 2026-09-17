@@ -612,6 +612,7 @@ export type Booking = {
   name: string;
   phone: string | null;
   notes: string | null;
+  address: string | null;
   service_id: string | null;
   service_name: string | null;
   status: string;
