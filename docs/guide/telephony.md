@@ -1,7 +1,7 @@
 ---
 title: Telephony
 route: /telephony
-summary: How calls reach Parlio — forwarding from your existing number, connecting your phone system (PBX) or registering a SIP handset — plus number routing.
+summary: How calls reach ParlioTec — forwarding from your existing number, connecting your phone system (PBX) or registering a SIP handset — plus number routing.
 keywords: telephony, forwarding, divert, forward calls, pbx, sip, trunk, registration, ddi, numbers, routing, test call, extension transfers, mobile divert, bt, vodafone, teams
 ---
 
@@ -9,15 +9,15 @@ keywords: telephony, forwarding, divert, forward calls, pbx, sip, trunk, registr
 
 Three ways to get calls to your assistant. You can use more than one.
 
-1. **Forward your number** – the simplest. Divert your existing landline or mobile to the Parlio number shown on the *Billing → Your numbers* page. Nothing to install. Divert codes for BT, Virgin, Vodafone, EE, O2, Three and Microsoft Teams are on the *Launch guide*.
-2. **Connect your phone system (PBX)** – Parlio gives you SIP credentials (shown once — copy them). Point your PBX at them, and set the **PBX address** so the assistant can transfer callers to internal extensions. **Allowed source IPs** restricts who may send calls on this connection.
-3. **Register a SIP handset or provider** – enter the **Registrar**, **Username / extension**, **Password**, optional **Outbound proxy**, **Transport** (UDP/TCP/TLS) and **DTMF** mode. Parlio registers to your provider as if it were a phone, so your existing number rings the assistant with no forwarding.
+1. **Forward your number** – the simplest. Divert your existing landline or mobile to the ParlioTec number shown on the *Billing → Your numbers* page. Nothing to install. Divert codes for BT, Virgin, Vodafone, EE, O2, Three and Microsoft Teams are on the *Launch guide*.
+2. **Connect your phone system (PBX)** – ParlioTec gives you SIP credentials (shown once — copy them). Point your PBX at them, and set the **PBX address** so the assistant can transfer callers to internal extensions. **Allowed source IPs** restricts who may send calls on this connection.
+3. **Register a SIP handset or provider** – enter the **Registrar**, **Username / extension**, **Password**, optional **Outbound proxy**, **Transport** (UDP/TCP/TLS) and **DTMF** mode. ParlioTec registers to your provider as if it were a phone, so your existing number rings the assistant with no forwarding.
 
 For any connection: **Max concurrent calls** caps simultaneous calls; **Refresh** re-checks registration; **Test call** places a synthetic call through the connection and reports the result; **Rotate creds** issues new SIP credentials; **Remove** deletes it.
 
 ## Numbers (DDIs) and routing
 
-Each number that reaches Parlio can be routed to a specific assistant (and, if you have several locations, to a location). Use this when one connection carries several numbers — for example a sales line and a support line answered differently.
+Each number that reaches ParlioTec can be routed to a specific assistant (and, if you have several locations, to a location). Use this when one connection carries several numbers — for example a sales line and a support line answered differently.
 
 ## PBX credentials — copy now, shown once
 

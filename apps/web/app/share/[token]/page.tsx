@@ -27,7 +27,7 @@ export default async function Shared({ params }: { params: Promise<{ token: stri
         <h2>Transcript</h2>
         <Transcript turns={c.transcript} startedAt={c.started_at} />
       </div>
-      <p className="muted small" style={{ textAlign: "center" }}>Shared via Parlio</p>
+      <p className="muted small" style={{ textAlign: "center" }}>Shared via ParlioTec</p>
     </div>
   );
 }

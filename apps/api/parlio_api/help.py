@@ -402,7 +402,8 @@ class HelpAssistant:
             f"[{i + 1}] {s.path} (screen: {s.route})\n{s.body}" for i, s in enumerate(sections)
         )
         system = (
-            "You are Parlio's in-app help. Answer the user's question about the Parlio dashboard "
+            "You are ParlioTec's in-app help. Answer the user's question about the ParlioTec "
+            "dashboard "
             "using ONLY the guide excerpts provided. Be brief (2-5 sentences or a short numbered "
             "list). Give the exact screen path and setting name in bold, e.g. **Assistant Studio → "
             "Call screening**. If the excerpts don't answer it, say so and suggest opening a "

@@ -53,7 +53,7 @@ async def _start_call(client: AsyncClient, call_id: str = "c-live-1") -> None:
             {"caller": "+447700900001", "dialed": "+442046206823", "room": f"room-{call_id}"},
         ),
         (CallEventType.CALL_ANSWERED, {"answer_latency_s": 0.4}),
-        (CallEventType.TRANSCRIPT_ITEM, {"role": "assistant", "text": "Hello, Parlio."}),
+        (CallEventType.TRANSCRIPT_ITEM, {"role": "assistant", "text": "Hello, ParlioTec."}),
         (CallEventType.TRANSCRIPT_ITEM, {"role": "user", "text": "I'd like a quote."}),
     ]:
         r = await client.post("/v1/worker/events", json=ev(t, call_id, p), headers=HEADERS)
@@ -126,7 +126,7 @@ async def test_active_calls_are_tenant_scoped(client: AsyncClient) -> None:
     assert r.status_code == 200
     (call,) = r.json()
     assert call["call_id"] == "c-live-1" and call["status"] == "in_progress"
-    assert [t["text"] for t in call["transcript"]] == ["Hello, Parlio.", "I'd like a quote."]
+    assert [t["text"] for t in call["transcript"]] == ["Hello, ParlioTec.", "I'd like a quote."]
     r = await client.get("/v1/live/calls/c-live-1", params=Q)
     assert r.status_code == 200 and call["room"] == "room-c-live-1"
     # strangers see nothing

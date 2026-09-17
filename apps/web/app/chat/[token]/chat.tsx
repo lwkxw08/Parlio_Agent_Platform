@@ -251,7 +251,7 @@ export default function Chat({ token, cfg }: { token: string; cfg: ChatConfig })
           <button type="submit" className="primary" disabled={busy || !text.trim() || !visitor}>Send</button>
         </div>
         {err && <span className="small" style={{ color: "var(--bad-fg)" }}>{err}</span>}
-        <span className="small muted chat-foot">Powered by Parlio</span>
+        <span className="small muted chat-foot">Powered by ParlioTec</span>
       </form>
     </div>
   );

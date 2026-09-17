@@ -181,7 +181,7 @@ async def send_sample(
         caller_phone="+447700900123",
         caller_email="sam@example.com",
         caller_type="new",
-        summary="Sample lead from Parlio - asked for a quote for a boiler service next week.",
+        summary="Sample lead from ParlioTec - asked for a quote for a boiler service next week.",
         reason="Quote request",
         department="Sales",
         priority="normal",

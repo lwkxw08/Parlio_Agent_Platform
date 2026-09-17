@@ -32,11 +32,11 @@ DEMO_CONFIG = AssistantConfig(
     tenant_id="demo",
     company_id="demo",
     assistant_id="demo",
-    name="Parlio",
-    business_name="Parlio Demo Plumbing",
+    name="ParlioTec",
+    business_name="ParlioTec Demo Plumbing",
     business=BusinessInfo(
         description=(
-            "Parlio Demo Plumbing is a family-run, Gas Safe registered plumbing and heating "
+            "ParlioTec Demo Plumbing is a family-run, Gas Safe registered plumbing and heating "
             "company based in Didsbury, serving homes and small businesses across South "
             "Manchester, Stockport and Trafford. Established in 2009, the team of six engineers "
             "handles everything from dripping taps to full boiler installations, with a 24/7 "

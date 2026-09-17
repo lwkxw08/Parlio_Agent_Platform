@@ -41,7 +41,7 @@ from .test_inbox import meta_wa, telnyx_sms
 
 Q = {"tenant_id": DEV_TENANT}
 OWNER = {"X-Parlio-User": "owner@demo.parlio.local"}
-FORWARDED_NUMBER = "+440000000000"  # the Parlio number the customer's phone diverts to
+FORWARDED_NUMBER = "+440000000000"  # the ParlioTec number the customer's phone diverts to
 DDI = "+442046206823"  # a number on the customer's own trunk
 CALLER = "+447700900321"
 OWNER_MOBILE = "+447700900001"

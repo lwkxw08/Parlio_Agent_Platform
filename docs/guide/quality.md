@@ -27,7 +27,7 @@ Try a change before your customers do. Create a scenario: a **Persona**, a **Goa
 
 ## Auto-improve
 
-After a batch of scores or simulations, Parlio drafts FAQ or rule changes that would fix the failures, re-runs the failing scenarios against the draft, and proposes only changes that make things better. **Approve & publish** applies them; **Reject** discards.
+After a batch of scores or simulations, ParlioTec drafts FAQ or rule changes that would fix the failures, re-runs the failing scenarios against the draft, and proposes only changes that make things better. **Approve & publish** applies them; **Reject** discards.
 
 ## Owner voice cloning
 

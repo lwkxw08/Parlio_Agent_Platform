@@ -515,7 +515,7 @@ async def test_whitelabel_branding_domain_and_agency(client: AsyncClient) -> Non
     r = await client.post("/v1/whitelabel/verify-domain", params=Q, json={"txt_records": ["nope"]})
     assert r.status_code == 200 and r.json()["domain_verified"] is False
     r = await client.get("/v1/public/branding", params={"host": "app.acme-answering.co.uk"})
-    assert r.json()["brand_name"] == "Parlio"  # unverified domains never serve tenant branding
+    assert r.json()["brand_name"] == "ParlioTec"  # unverified domains never serve tenant branding
     r = await client.post(
         "/v1/whitelabel/verify-domain", params=Q, json={"txt_records": [ins["txt_value"]]}
     )
@@ -525,7 +525,7 @@ async def test_whitelabel_branding_domain_and_agency(client: AsyncClient) -> Non
     assert r.status_code == 200 and r.json()["brand_name"] == "Acme Answering"
     assert r.json()["hide_powered_by"] is True
     r = await client.get("/v1/public/branding", params={"host": "unknown.example"})
-    assert r.json()["brand_name"] == "Parlio"
+    assert r.json()["brand_name"] == "ParlioTec"
 
     # agency: create a client tenant; parent members can manage it, client data is isolated
     r = await client.post(
@@ -561,7 +561,7 @@ async def test_whitelabel_service_isolation() -> None:
     await wl.save_branding(Branding(tenant_id="a", brand_name="A", custom_domain="a.example"))
     await wl.save_branding(Branding(tenant_id="b", brand_name="B"))
     assert (await wl.branding("b")).brand_name == "B"
-    assert (await wl.branding("c")).brand_name == "Parlio"
+    assert (await wl.branding("c")).brand_name == "ParlioTec"
     ins = await wl.domain_instructions("a")
     assert ins is not None
     with pytest.raises(ValueError):

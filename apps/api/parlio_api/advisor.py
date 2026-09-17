@@ -1033,9 +1033,8 @@ class AdvisorService:
     # -- weekly digest ---------------------------------------------------------------------------
     def render_digest(self, recs: list[Recommendation], business: str) -> tuple[str, str]:
         plural = "s" if len(recs) != 1 else ""
-        title = (
-            f"Parlio advisor: {len(recs)} recommendation{plural} for {business or 'your business'}"
-        )
+        who = business or "your business"
+        title = f"ParlioTec advisor: {len(recs)} recommendation{plural} for {who}"
         if not recs:
             return (
                 title,

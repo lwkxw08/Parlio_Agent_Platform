@@ -56,7 +56,7 @@ export default function Onboarding() {
   const [business, setBusiness] = useState<BusinessInfo>({ description: "", website: null, address: null, phone: null, email: null, services: [] });
   const [hours, setHours] = useState<Schedule>({ timezone: "Europe/London", always: false, hours: Object.fromEntries(DAYS.slice(0, 5).map((d) => [d, { open: "09:00", close: "17:30" }])) });
   const [faqs, setFaqs] = useState<Faq[]>([]);
-  const [assistantName, setAssistantName] = useState("Parlio");
+  const [assistantName, setAssistantName] = useState("ParlioTec");
   const [greeting, setGreeting] = useState("");
   const [rec, setRec] = useState<PlanRecommendation | null>(null);
   const [planId, setPlanId] = useState<string | null>(null);

@@ -254,7 +254,7 @@ async def places(query: str, settings: SettingsDep) -> list[PlaceResult]:
 
 class OnboardingRequest(BaseModel):
     organisation_name: str = Field(min_length=1)
-    assistant_name: str = "Parlio"
+    assistant_name: str = "ParlioTec"
     business: BusinessInfo = Field(default_factory=BusinessInfo)
     hours: Schedule = Field(default_factory=Schedule)
     faqs: list[Faq] = Field(default_factory=list)

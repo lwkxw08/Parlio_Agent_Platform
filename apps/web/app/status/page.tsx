@@ -6,12 +6,12 @@ export const dynamic = "force-dynamic";
 
 export default async function Page() {
   const s = await fetchPublicStatusPage();
-  if (!s) return <><h1>Parlio status</h1><p className="muted">Status service unreachable</p></>;
+  if (!s) return <><h1>ParlioTec status</h1><p className="muted">Status service unreachable</p></>;
   const open = s.incidents.filter((i) => i.status !== "resolved");
   const past = s.incidents.filter((i) => i.status === "resolved");
   return (
     <>
-      <h1>Parlio status</h1>
+      <h1>ParlioTec status</h1>
       <div className={`banner ${s.overall === "operational" ? "" : stateCls(s.overall)}`} style={{ marginBottom: "1rem" }}>
         <strong>{s.overall === "operational" ? "All systems operational" : STATE_LABEL[s.overall]}</strong>
         <span>30-day voice uptime {s.uptime_30d_pct.toFixed(2)}% · updated {when(s.generated_at)} · <a href="/trust">Trust centre</a></span>

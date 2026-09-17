@@ -174,8 +174,8 @@ export default function Sidebar({ account }: { account: Account }) {
     <>
     <ActivityAlerts alerts={alerts} dismiss={dismiss} />
     <aside className="side">
-      <Link href="/" className="logo" aria-label="Parlio home">
-        <Image src="/logo-icon.png" alt="Parlio" width={40} height={40} priority />
+      <Link href="/" className="logo" aria-label="ParlioTec home">
+        <Image src="/logo-icon.png" alt="ParlioTec" width={40} height={40} priority />
       </Link>
       <nav>
         {NAV.map(link)}

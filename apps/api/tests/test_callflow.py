@@ -153,7 +153,7 @@ async def test_owner_sms_rule_delivers_and_respects_gating(
     await run_call("own-1")
     owner_msgs = [m for m in prov.sent[before:] if m[1] == OWNER]
     assert len(owner_msgs) == 1
-    assert owner_msgs[0][2].startswith("Parlio Demo") or ": Call " in owner_msgs[0][2]
+    assert owner_msgs[0][2].startswith("ParlioTec Demo") or ": Call " in owner_msgs[0][2]
 
     # paused rule -> nothing sent to the owner
     r = await client.put(

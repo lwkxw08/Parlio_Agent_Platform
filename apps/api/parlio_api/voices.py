@@ -438,7 +438,7 @@ class VoicePreviewer:
             raise PreviewUnavailable(
                 f"Voice previews need a {req.provider.value} API key on the server."
             )
-        text = req.text.strip() or DEFAULT_SAMPLE.format(business="Parlio")
+        text = req.text.strip() or DEFAULT_SAMPLE.format(business="ParlioTec")
         client = self._client or httpx.AsyncClient(timeout=20)
         try:
             if req.provider == TTSProvider.CARTESIA:

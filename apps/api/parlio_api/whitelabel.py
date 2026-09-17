@@ -1,7 +1,7 @@
 """Phase 14 white-label / reseller mode and the compliance pack.
 
 `Branding` is a per-tenant document (name, logo, colours, custom dashboard domain, support
-contact, hide "powered by Parlio"). The dashboard fetches `/v1/public/branding?host=` to theme
+contact, hide "powered by ParlioTec"). The dashboard fetches `/v1/public/branding?host=` to theme
 itself by the domain it was loaded on; custom domains are verified with a DNS TXT record before
 they resolve. An *agency* tenant can create child (client) tenants: the child inherits the
 agency's branding unless overridden, the agency's admins get an admin membership on the child,
@@ -49,7 +49,7 @@ _HOST = re.compile(r"^(?=.{4,253}$)([a-z0-9-]+\.)+[a-z]{2,}$")
 
 class Branding(BaseModel):
     tenant_id: str
-    brand_name: str = Field("Parlio", min_length=1, max_length=60)
+    brand_name: str = Field("ParlioTec", min_length=1, max_length=60)
     logo_url: str | None = None
     icon_url: str | None = None
     primary_colour: str = Field("#3b6cf6", pattern=_HEX)

@@ -259,7 +259,7 @@ class NotificationService:
             tenant_id=rule.tenant_id,
             company_id=rule.company_id,
             event=rule.events[0] if rule.events else NotifyEvent.TICKET_CREATED,
-            title="Parlio test notification",
+            title="ParlioTec test notification",
             body=f"This confirms {rule.channel} alerts to {rule.target} are working.",
         )
         return await self.deliver(rule, ev)

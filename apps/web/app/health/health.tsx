@@ -17,11 +17,11 @@ import { humanize } from "@/app/breakdown";
 export const gradeCls = (g: string) => (g === "healthy" ? "ok" : g === "watch" ? "warn" : g === "inactive" ? "" : "bad");
 export const fmt = (v: number | null, unit: string) => (v == null ? "—" : `${Number.isInteger(v) ? v : v.toFixed(unit === "%" ? 0 : 2)}${unit === "%" ? "%" : unit ? ` ${unit}` : ""}`);
 const ATTR: Record<FaultReport["attribution"], string> = {
-  parlio: "Parlio platform", carrier: "Carrier", customer_provider: "Your phone provider / PBX", customer_config: "Your configuration", unknown: "Undetermined",
+  parlio: "ParlioTec platform", carrier: "Carrier", customer_provider: "Your phone provider / PBX", customer_config: "Your configuration", unknown: "Undetermined",
 };
 
 export function TrunkTable({ trunks, onDiagnose }: { trunks: TrunkHealth[]; onDiagnose?: (id: string) => void }) {
-  if (!trunks.length) return <p className="muted small">No SIP trunks configured — calls arrive on your Parlio number.</p>;
+  if (!trunks.length) return <p className="muted small">No SIP trunks configured — calls arrive on your ParlioTec number.</p>;
   return (
     <table>
       <thead><tr><th>Trunk</th><th>Registration</th><th>OPTIONS</th><th>INVITE failures</th><th>MOS</th><th>Jitter</th><th>Loss</th><th>Issues</th>{onDiagnose && <th />}</tr></thead>
@@ -152,7 +152,7 @@ export default function Health({ tenant, view: initial }: { tenant: string; view
 
       <div className="section">
         <h2>Fault reports</h2>
-        <p className="hint">Each diagnosis says whether the cause sits with Parlio, the carrier, your phone provider/PBX or your configuration, with a ready-to-send provider report. Diagnose a specific call from its detail page.</p>
+        <p className="hint">Each diagnosis says whether the cause sits with ParlioTec, the carrier, your phone provider/PBX or your configuration, with a ready-to-send provider report. Diagnose a specific call from its detail page.</p>
         {v.faults.length === 0 ? <p className="muted small">No fault reports.</p> : v.faults.map((f) => <FaultCard key={f.id} f={f} />)}
       </div>
     </>

@@ -14,10 +14,10 @@ from parlio_api.onboarding import analyse_html
 from parlio_api.sip import PROVIDER_GUIDES
 from parlio_voice.config_client import DEMO_CONFIG
 
-SITE = """<html><head><title>Parlio Demo Plumbing</title>
+SITE = """<html><head><title>ParlioTec Demo Plumbing</title>
 <meta name="description"
  content="Family-run plumbers covering Manchester. 24/7 emergency call-outs."></head>
-<body><h1>Parlio Demo Plumbing</h1><h2>Our services</h2>
+<body><h1>ParlioTec Demo Plumbing</h1><h2>Our services</h2>
 <h3>Boiler repairs</h3><h3>Leak detection</h3>
 <p>Call 0161 123 4567. Open Mon-Fri 8am-6pm.</p></body></html>"""
 
@@ -33,9 +33,9 @@ def test_find_url() -> None:
 
 def test_template_fallback_uses_site_facts() -> None:
     site = analyse_html("https://parliodemo.co.uk", SITE)
-    req = DraftRequest(field="description", brief="describe Parlio Demo Plumbing")
+    req = DraftRequest(field="description", brief="describe ParlioTec Demo Plumbing")
     text = template_draft(req, DEMO_CONFIG, site)
-    assert "Parlio Demo Plumbing" in text and "24/7" in text
+    assert "ParlioTec Demo Plumbing" in text and "24/7" in text
     generic = template_draft(
         DraftRequest(field="description", brief="help me write a description"), DEMO_CONFIG, None
     )

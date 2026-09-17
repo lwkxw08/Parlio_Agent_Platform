@@ -112,7 +112,7 @@ PROVIDERS: list[ProviderInfo] = [
         category="sheet",
         auth="oauth",
         fields=["spreadsheet_id", "sheet"],
-        help="Appends one row per event to the sheet tab (default 'Parlio').",
+        help="Appends one row per event to the sheet tab (default 'ParlioTec').",
     ),
     ProviderInfo(
         provider=Provider.HUBSPOT,
@@ -259,7 +259,7 @@ class Payload(BaseModel):
             bits.append(f"Duration: {int(self.duration_s)}s")
         if self.recording_url:
             bits.append(f"Recording: {self.recording_url}")
-        bits.append(f"Via Parlio for {self.business_name}")
+        bits.append(f"Via ParlioTec for {self.business_name}")
         return "\n".join(b for b in bits if b)
 
 
@@ -564,7 +564,9 @@ class TeamsBackend:
     async def test(self, c: Connector, secret: str | None) -> str:
         r = await self._http.post(
             _need(c.target_url, "Teams webhook URL"),
-            json=self.card("Parlio connected", "Alerts from your AI receptionist land here.", {}),
+            json=self.card(
+                "ParlioTec connected", "Alerts from your AI receptionist land here.", {}
+            ),
         )
         r.raise_for_status()
         return f"HTTP {r.status_code}"
@@ -1014,7 +1016,7 @@ class GoogleSheetsBackend:
 
     def _range(self, c: Connector) -> tuple[str, str]:
         sid = _need(c.options.get("spreadsheet_id"), "spreadsheet_id")
-        return sid, c.options.get("sheet") or "Parlio"
+        return sid, c.options.get("sheet") or "ParlioTec"
 
     async def test(self, c: Connector, secret: str | None) -> str:
         tok = await self._access(secret)

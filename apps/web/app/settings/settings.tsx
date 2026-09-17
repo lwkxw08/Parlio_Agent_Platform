@@ -76,7 +76,7 @@ function Brand({ tenant, canManage, view, flash }: { tenant: string; canManage: 
         {v.parent && <p className="hint">This account is managed by an agency ({v.parent.parent_tenant_id}){v.parent.inherit_branding ? " and inherits its branding on the public chat widget and emails" : ""}.</p>}
         <div className="row">
           <label>Brand name<input value={b.brand_name} required disabled={!canManage} onChange={(e) => setB({ ...b, brand_name: e.target.value })} /></label>
-          <label className="check" style={{ alignSelf: "end" }}><input type="checkbox" checked={b.hide_powered_by} disabled={!canManage} onChange={(e) => setB({ ...b, hide_powered_by: e.target.checked })} /> Hide &ldquo;Powered by Parlio&rdquo;</label>
+          <label className="check" style={{ alignSelf: "end" }}><input type="checkbox" checked={b.hide_powered_by} disabled={!canManage} onChange={(e) => setB({ ...b, hide_powered_by: e.target.checked })} /> Hide &ldquo;Powered by ParlioTec&rdquo;</label>
         </div>
         <div className="row">
           <label>Logo URL<input value={b.logo_url ?? ""} disabled={!canManage} onChange={(e) => setB({ ...b, logo_url: e.target.value })} placeholder="https://…/logo.png" /></label>
@@ -299,7 +299,7 @@ function Security({ tenant, isOwner, view, error, mfaRequired, flash }: { tenant
             <p className="hint">
               {v.sso_status === "live"
                 ? "Users on these domains can sign in with your identity provider."
-                : "Saving records the configuration for your provider. Sign-in via the provider goes live once Parlio connects it on the auth layer (a support step) — until then, users continue to sign in with email or Google."}
+                : "Saving records the configuration for your provider. Sign-in via the provider goes live once ParlioTec connects it on the auth layer (a support step) — until then, users continue to sign in with email or Google."}
             </p>
           </>
         )}
@@ -307,7 +307,7 @@ function Security({ tenant, isOwner, view, error, mfaRequired, flash }: { tenant
       </form>
       <div className="section">
         <h2>SCIM user provisioning <span className={`pill ${pol.scim.enabled ? "ok" : ""}`}>{pol.scim.enabled ? "enabled" : "off"}</span></h2>
-        <p className="hint">Let your identity provider (Entra, Okta, Google) create, update and deactivate Parlio users automatically. Enterprise / Sovereign tiers.</p>
+        <p className="hint">Let your identity provider (Entra, Okta, Google) create, update and deactivate ParlioTec users automatically. Enterprise / Sovereign tiers.</p>
         <dl className="kv">
           <dt>SCIM base URL</dt><dd><code>{v.scim_endpoint}</code></dd>
           <dt>Default role</dt><dd>{pol.scim.default_role}</dd>

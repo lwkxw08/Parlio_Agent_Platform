@@ -302,7 +302,7 @@ function Policy({ tenant, policy, jurisdictions, canManage, onSaved }: {
         <label>Speed-to-lead target (seconds)<input type="number" min={10} value={f.speed_to_lead_target_s} disabled={!canManage} onChange={num("speed_to_lead_target_s")} /></label>
         <label>Reminder (hours before booking)<input type="number" min={1} value={f.reminder_hours_before} disabled={!canManage} onChange={num("reminder_hours_before")} /></label>
         <label>Review request (hours after)<input type="number" min={1} value={f.review_request_delay_h} disabled={!canManage} onChange={num("review_request_delay_h")} /></label>
-        <label>Caller ID shown (E.164)<input placeholder="Your Parlio number" value={f.caller_id ?? ""} disabled={!canManage} onChange={(e) => setF({ ...f, caller_id: e.target.value })} /></label>
+        <label>Caller ID shown (E.164)<input placeholder="Your ParlioTec number" value={f.caller_id ?? ""} disabled={!canManage} onChange={(e) => setF({ ...f, caller_id: e.target.value })} /></label>
         <label>Opt-out phrases<input value={f.opt_out_keywords.join(", ")} disabled={!canManage} onChange={(e) => setF({ ...f, opt_out_keywords: e.target.value.split(",").map((s) => s.trim()).filter(Boolean) })} /></label>
       </div>
       <div className="row">

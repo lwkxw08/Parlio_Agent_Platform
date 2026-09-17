@@ -1,4 +1,4 @@
-# Parlio
+# ParlioTec
 
 Proprietary, low-latency, UK-first AI phone assistant platform. Phase 1 of the
 [build plan](docs/BUILD_PLAN.md): monorepo, LiveKit Agents voice worker, Core API, Telnyx

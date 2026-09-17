@@ -9,7 +9,7 @@ export default async function Page() {
   return (
     <>
       <h1>Trust centre</h1>
-      <p className="hint">How Parlio handles your callers&apos; data. Updated {when(t.updated_at)} · live service status at <Link href={t.status_url}>/status</Link>.</p>
+      <p className="hint">How ParlioTec handles your callers&apos; data. Updated {when(t.updated_at)} · live service status at <Link href={t.status_url}>/status</Link>.</p>
       <div className="grid">
         <div className="card"><div className="label">Data residency</div><div className="value" style={{ fontSize: "1.05rem" }}>{t.data_residency}</div></div>
         <div className="card"><div className="label">Sub-processors</div><div className="value">{t.sub_processors.length}</div><div className="small muted">listed below with purpose and region</div></div>

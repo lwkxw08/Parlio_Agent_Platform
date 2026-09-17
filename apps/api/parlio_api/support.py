@@ -1,6 +1,6 @@
 """Phase 18: AI-powered support desk incl. telephony fault assist.
 
-Parlio runs its own support on Parlio: a reserved *support tenant* whose assistant answers the
+ParlioTec runs its own support on ParlioTec: a reserved *support tenant* whose assistant answers the
 support line, in-app chat, WhatsApp and email 24/7 (dogfooding). ``SupportTools`` are the tool
 surface the agent (text agent here, voice worker via ``/v1/worker/support``) calls: KB search,
 tenant status (identity-verified), forwarding/SIP walkthroughs, synthetic call, SIP diagnostics,
@@ -81,9 +81,9 @@ class KbArticle(BaseModel):
 KB: list[KbArticle] = [
     KbArticle(
         id="forwarding",
-        title="Setting up call forwarding to Parlio",
+        title="Setting up call forwarding to ParlioTec",
         body=(
-            "Forward your existing business number to your Parlio number in your provider's "
+            "Forward your existing business number to your ParlioTec number in your provider's "
             "portal or with a dial code (BT: *21*<number># to enable, #21# to disable; "
             "Vodafone/EE/O2/Three mobiles: **21*<number># enable, ##21# disable). Use "
             "'no answer' forwarding for overflow. Test by calling your number from a mobile."
@@ -92,11 +92,11 @@ KB: list[KbArticle] = [
     ),
     KbArticle(
         id="forwarding-off",
-        title="Calls stopped reaching Parlio (forwarding switched off)",
+        title="Calls stopped reaching ParlioTec (forwarding switched off)",
         body=(
             "Providers sometimes clear forwarding after a line fault, a PBX reboot or a plan "
             "change. Re-enable with the dial code or portal, then run a test call from the "
-            "dashboard Health page. Consider porting your number or a Parlio SIP trunk so "
+            "dashboard Health page. Consider porting your number or a ParlioTec SIP trunk so "
             "there is nothing to switch off."
         ),
         tags=["forwarding", "fault"],
@@ -105,9 +105,10 @@ KB: list[KbArticle] = [
         id="sip",
         title="Connecting a SIP trunk or PBX",
         body=(
-            "Telephony page: choose Forwarding, PBX trunk (Parlio issues credentials / IP auth) or "
-            "BYO registration (Parlio registers to your provider). Use G.711 A-law and RFC 2833 "
-            "DTMF. Allow UDP 5060 and RTP 10000-20000 from Parlio's edge."
+            "Telephony page: choose Forwarding, PBX trunk (ParlioTec issues credentials / IP auth) "
+            "or "
+            "BYO registration (ParlioTec registers to your provider). Use G.711 A-law and RFC 2833 "
+            "DTMF. Allow UDP 5060 and RTP 10000-20000 from ParlioTec's edge."
         ),
         tags=["sip", "pbx", "setup"],
     ),
@@ -125,8 +126,9 @@ KB: list[KbArticle] = [
         id="latency",
         title="Assistant takes too long to answer or reply",
         body=(
-            "Parlio targets under 2 seconds ring-to-first-word and ~1s per turn. Check the Health "
-            "page for pickup latency p95; sustained slowness is Parlio-side and we investigate."
+            "ParlioTec targets under 2 seconds ring-to-first-word and ~1s per turn. Check the "
+            "Health "
+            "page for pickup latency p95; sustained slowness is ParlioTec-side and we investigate."
         ),
         tags=["latency", "quality"],
     ),
@@ -153,7 +155,7 @@ KB: list[KbArticle] = [
     ),
     KbArticle(
         id="porting",
-        title="Porting your number to Parlio",
+        title="Porting your number to ParlioTec",
         body=(
             "Porting removes the forwarding dependency. Send a letter of authority and a recent "
             "bill; UK ports take 7-10 working days for single lines. We route the number to your "
@@ -165,12 +167,12 @@ KB: list[KbArticle] = [
 
 FORWARDING_GUIDES: dict[str, list[str]] = {
     "bt": [
-        "Lift the handset and dial *21*<your Parlio number># to divert all calls.",
+        "Lift the handset and dial *21*<your ParlioTec number># to divert all calls.",
         "Dial #21# to cancel. For divert-on-no-answer use *61*<number>#.",
         "BT Cloud Voice / Business: Portal > Users > Call forwarding > Always.",
     ],
     "virgin": [
-        "Dial *21*<your Parlio number># (divert all) or *61*<number># (no answer).",
+        "Dial *21*<your ParlioTec number># (divert all) or *61*<number># (no answer).",
         "Cancel with #21# / #61#.",
     ],
     "vodafone": ["Dial **21*<number># to enable, ##21# to disable (also on Vodafone Business)."],
@@ -183,7 +185,7 @@ FORWARDING_GUIDES: dict[str, list[str]] = {
     ],
     "generic": [
         "Log in to your provider portal and find Call forwarding / Divert.",
-        "Set 'Always' (or 'No answer' for overflow) to your Parlio number.",
+        "Set 'Always' (or 'No answer' for overflow) to your ParlioTec number.",
         "Call your number from a mobile: the assistant should answer within one ring.",
     ],
 }
@@ -227,16 +229,16 @@ def support_assistant(number: str | None) -> AssistantConfig:
         tenant_id=SUPPORT_TENANT,
         company_id=SUPPORT_TENANT,
         assistant_id="parlio-support",
-        name="Parlio Support",
-        business_name="Parlio",
+        name="ParlioTec Support",
+        business_name="ParlioTec",
         hours=Schedule(always=True),
         faqs=faqs,
         greeting=(
-            "Hi, you've reached Parlio support. I can check your service status, walk you "
+            "Hi, you've reached ParlioTec support. I can check your service status, walk you "
             "through forwarding or SIP setup, run a test call, or raise a ticket. How can I help?"
         ),
         instructions=(
-            "You are {name}, the 24/7 support assistant for Parlio, an AI phone receptionist "
+            "You are {name}, the 24/7 support assistant for ParlioTec, an AI phone receptionist "
             "platform. Verify the caller's identity (account email or business number) before "
             "sharing account details. Use tools to check tenant status, run synthetic calls and "
             "SIP diagnostics, and raise tickets. Human support is 8am-8pm UK Mon-Sat; P1 outages "
@@ -719,8 +721,8 @@ class SupportDesk:
         side = {
             "customer_provider": "your phone provider / PBX",
             "carrier": "our carrier",
-            "parlio": "Parlio",
-            "customer_config": "your Parlio configuration",
+            "parlio": "ParlioTec",
+            "customer_config": "your ParlioTec configuration",
             "unknown": "unknown",
         }[fault.attribution]
         pri: Priority = "p2" if fault.attribution in ("parlio", "carrier") else "p3"
@@ -732,7 +734,7 @@ class SupportDesk:
                 body=(
                     f"Suspected side: {side}.\n{fault.explanation}\n\nNext steps:\n- "
                     + "\n- ".join(fault.next_steps)
-                    + "\n\nPermanent fix: port your number to Parlio or move to a Parlio SIP "
+                    + "\n\nPermanent fix: port your number to ParlioTec or move to a ParlioTec SIP "
                     "trunk so forwarding cannot be switched off."
                 ),
                 priority=pri,
@@ -750,9 +752,9 @@ class SupportDesk:
             raise ValueError("customer consent is required before contacting their provider")
         if t.fault is None:
             raise ValueError("ticket has no fault report")
-        subject = f"Fault report: {t.fault.headline} (Parlio ref {t.id})"
+        subject = f"Fault report: {t.fault.headline} (ParlioTec ref {t.id})"
         body = (
-            f"Hello,\n\nOn behalf of our mutual customer (Parlio account {t.tenant_id}) we are "
+            f"Hello,\n\nOn behalf of our mutual customer (ParlioTec account {t.tenant_id}) we are "
             f"reporting the following fault.\n\n{t.fault.provider_report}\n\nPlease reply to this "
             f"address quoting {t.id}.\n\nParlio Support"
         )

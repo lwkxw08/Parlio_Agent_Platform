@@ -9,7 +9,7 @@ const UK: Carrier[] = [
   { name: "Sky Talk", on: "*21*<number>#", off: "#21#" },
   { name: "TalkTalk", on: "*21*<number>#", off: "#21#", note: "Enable Call Divert in My Account first." },
   { name: "EE / O2 / Vodafone / Three (mobile)", on: "**21*<number>#", off: "##21#", note: "No answer: **61*<number>*11*<seconds>#. Busy: **67*<number>#. Unreachable: **62*<number>#." },
-  { name: "3CX / FreePBX / Horizon / RingCentral (PBX)", on: "Set an inbound rule or hunt-group overflow to the Parlio number", off: "Remove the rule", note: "Better: connect the PBX directly over SIP (coming in the BYO SIP release) so calls arrive with caller ID and without PSTN charges." },
+  { name: "3CX / FreePBX / Horizon / RingCentral (PBX)", on: "Set an inbound rule or hunt-group overflow to the ParlioTec number", off: "Remove the rule", note: "Better: connect the PBX directly over SIP (coming in the BYO SIP release) so calls arrive with caller ID and without PSTN charges." },
 ];
 
 const US: Carrier[] = [
@@ -18,7 +18,7 @@ const US: Carrier[] = [
   { name: "T-Mobile", on: "**21*<number>#", off: "##21#", note: "No answer: **61*<number>#. Busy: **67*<number>#." },
   { name: "Spectrum / Comcast Xfinity / Cox", on: "*72 <number>", off: "*73", note: "Some plans use 72# and 73#." },
   { name: "Google Voice", on: "Settings → Calls → Forward calls to linked number", off: "Unlink the number" },
-  { name: "RingCentral / Dialpad / Zoom Phone", on: "Set the after-hours or overflow forwarding rule to the Parlio number", off: "Remove the rule" },
+  { name: "RingCentral / Dialpad / Zoom Phone", on: "Set the after-hours or overflow forwarding rule to the ParlioTec number", off: "Remove the rule" },
 ];
 
 function Table({ rows, number }: { rows: Carrier[]; number: string }) {
@@ -43,12 +43,12 @@ function Table({ rows, number }: { rows: Carrier[]; number: string }) {
 export default async function Launch({ searchParams }: { searchParams: Promise<{ region?: string }> }) {
   const sp = await searchParams;
   const region = sp.region === "us" ? "us" : "uk";
-  const number = "<your Parlio number>";
+  const number = "<your ParlioTec number>";
 
   return (
     <>
       <h1>How to launch</h1>
-      <p className="muted small">Your Parlio number is assigned when telephony is connected (Telnyx UK/US numbers). Until then use the placeholder below.</p>
+      <p className="muted small">Your ParlioTec number is assigned when telephony is connected (Telnyx UK/US numbers). Until then use the placeholder below.</p>
       <div className="chips" style={{ marginBottom: "1rem" }}>
         <a href="/launch?region=uk" className={region === "uk" ? "active" : ""}>United Kingdom</a>
         <a href="/launch?region=us" className={region === "us" ? "active" : ""}>United States</a>
@@ -56,22 +56,22 @@ export default async function Launch({ searchParams }: { searchParams: Promise<{
 
       <div className="section">
         <h2>1. Test the assistant</h2>
-        <p className="hint">Call your Parlio number directly from a mobile. Check the greeting, ask a few FAQs, and try “Can I speak to someone?” to test transfer or ticket behaviour. Review the call under Calls and leave feedback on anything that was wrong.</p>
+        <p className="hint">Call your ParlioTec number directly from a mobile. Check the greeting, ask a few FAQs, and try “Can I speak to someone?” to test transfer or ticket behaviour. Review the call under Calls and leave feedback on anything that was wrong.</p>
       </div>
 
       <div className="section">
-        <h2>2. Choose how calls reach Parlio</h2>
+        <h2>2. Choose how calls reach ParlioTec</h2>
         <ul className="small">
-          <li><b>Forward everything</b> — your existing number diverts to Parlio; the assistant answers every call and transfers to you when needed.</li>
-          <li><b>Overflow only</b> — divert on <i>no answer</i> / <i>busy</i>, so Parlio picks up only what you miss (most popular for small teams).</li>
-          <li><b>Out of hours</b> — set a time-based rule on your PBX or mobile so Parlio covers evenings and weekends.</li>
+          <li><b>Forward everything</b> — your existing number diverts to ParlioTec; the assistant answers every call and transfers to you when needed.</li>
+          <li><b>Overflow only</b> — divert on <i>no answer</i> / <i>busy</i>, so ParlioTec picks up only what you miss (most popular for small teams).</li>
+          <li><b>Out of hours</b> — set a time-based rule on your PBX or mobile so ParlioTec covers evenings and weekends.</li>
           <li><b>Connect your PBX over SIP</b> — no forwarding codes, caller ID preserved, transfers to extensions. Available in the BYO SIP release.</li>
         </ul>
       </div>
 
       <div className="section">
         <h2>3. Forwarding codes — {region === "uk" ? "UK" : "US"}</h2>
-        <p className="hint">Dial the code from the phone or line you want to forward, then hang up when you hear the confirmation tone. Replace <code>{number}</code> with your Parlio number{region === "uk" ? " (dial as 0… or +44…)" : " (10 digits)"}.</p>
+        <p className="hint">Dial the code from the phone or line you want to forward, then hang up when you hear the confirmation tone. Replace <code>{number}</code> with your ParlioTec number{region === "uk" ? " (dial as 0… or +44…)" : " (10 digits)"}.</p>
         <Table rows={region === "uk" ? UK : US} number={number} />
         <p className="small muted" style={{ marginTop: 8 }}>
           Codes vary by plan; if a code fails, use your provider&apos;s app/portal or call them. {region === "uk" ? "With the PSTN switch-off (completed by Jan 2027) most UK lines are now VoIP; your provider's portal usually has a “Call forwarding” setting." : "Some carriers charge for forwarded minutes — check your plan."}
@@ -80,7 +80,7 @@ export default async function Launch({ searchParams }: { searchParams: Promise<{
 
       <div className="section">
         <h2>4. Verify</h2>
-        <p className="hint">Call your business number from another phone. Parlio should answer within a second. If the caller ID shown in Calls is your own number rather than the caller&apos;s, your provider is masking CLI on diverted calls — ask them to enable “pass original caller ID” or connect via SIP instead.</p>
+        <p className="hint">Call your business number from another phone. ParlioTec should answer within a second. If the caller ID shown in Calls is your own number rather than the caller&apos;s, your provider is masking CLI on diverted calls — ask them to enable “pass original caller ID” or connect via SIP instead.</p>
       </div>
 
       <div className="section">
