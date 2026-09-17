@@ -3,6 +3,7 @@ from typing import Any
 
 import pytest
 
+from parlio_voice.config_client import DEMO_CONFIG
 from parlio_voice.models import (
     AssistantConfig,
     CallEventType,
@@ -15,6 +16,7 @@ from parlio_voice.models import (
 from parlio_voice.tools import (
     ReceptionistTools,
     after_hours_instruction,
+    booking_first_instruction,
     caller_id_instruction,
     guess_department,
     mentions_connecting,
@@ -96,7 +98,9 @@ async def test_warm_transfer_answered_briefs_and_leaves() -> None:
     assert res.succeeded and res.connected and res.connected.id == "office"
     assert bridge.dialed == ["office"] and bridge.left
     assert "Connecting you" in rec.said[0]
-    assert "Office" in rec.said[-1] and "leaking tap" in rec.said[-1]
+    briefing = rec.said[-1]
+    assert briefing.startswith("Hi, this is") and "Hi Office" not in briefing
+    assert "leaking tap" in briefing and "0 7 7 0 0" in briefing
     assert tools.transfer_attempted
     types = [t for t, _ in rec.events]
     assert types == [CallEventType.TRANSFER_STARTED, CallEventType.TRANSFER_COMPLETED]
@@ -133,6 +137,23 @@ async def test_out_of_hours_is_unavailable_and_prompts_ticket() -> None:
     assert not tools.transfer_attempted
     assert "ticket" in after_hours_instruction(c, False).lower()
     assert after_hours_instruction(c, True) == ""
+
+
+def test_booking_first_instruction_offers_choice_not_unasked_transfer() -> None:
+    text = booking_first_instruction(cfg([office(), oncall()]))
+    assert "check_calendar" in text and "book_appointment" in text
+    assert "the emergencies team now or the earliest appointment" in text
+    assert booking_first_instruction(cfg([])) == ""
+    assert "the general team" in booking_first_instruction(cfg([office()]))
+
+
+def test_demo_profile_books_and_only_flags_real_emergencies() -> None:
+    t = DEMO_CONFIG.transfer
+    assert t.matches_urgent("the boiler's packed in and I've got no hot water") is None
+    assert t.matches_urgent("there's a small leak under the sink") is None
+    assert t.matches_urgent("I can smell gas in the kitchen") == "smell gas"
+    assert t.matches_urgent("a pipe has burst upstairs") == "burst"
+    assert "check_calendar" in DEMO_CONFIG.instructions
 
 
 async def test_urgent_keyword_escalates_and_forces_urgent_ticket() -> None:

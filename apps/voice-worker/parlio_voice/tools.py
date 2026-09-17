@@ -405,11 +405,12 @@ class ReceptionistTools:
         return f"Connecting you to {who} now. Please bear with me, this can take a moment."
 
     def briefing(self, human: str, reason: str) -> str:
-        who = self.caller or "a caller"
+        num = spoken_number(self.caller) if self.caller else None
+        who = f"a caller on {num}" if num else "a caller"
         urgent = " This is flagged as urgent." if self.urgent_hit else ""
         return (
-            f"Hi {human}, this is {self.cfg.name} from {self.cfg.business_name}. "
-            f"I have {who} on the line about: {reason}.{urgent} Connecting you now."
+            f"Hi, this is {self.cfg.name} from {self.cfg.business_name}. "
+            f"I have {who} on the line about: {reason}.{urgent} Putting them through now."
         )
 
     # -- tickets ------------------------------------------------------------------------------
@@ -680,8 +681,11 @@ def build_tools(t: ReceptionistTools) -> list[Any]:
         name="transfer_to_human",
         description=(
             "Transfer the caller to a human. Call it immediately when the caller asks for a "
-            "person, when the matter is urgent, or when you cannot help - in the same turn, "
+            "person, agrees to be put through, or when you cannot help - in the same turn, "
             "without announcing it first (the tool tells the caller it is connecting them). "
+            "An urgent-sounding problem is not by itself a request to be transferred: if the "
+            "caller asked for an appointment or a callback, offer the choice (put them through "
+            "now, or book/arrange the earliest slot) and only transfer if they choose it. "
             f"Departments: {depts}. Returns the outcome; if not 'answered', tell the caller "
             "nobody could pick up and offer to take a message (create_ticket)."
         ),
@@ -845,6 +849,26 @@ def build_tools(t: ReceptionistTools) -> list[Any]:
         tools.append(end_call)
 
     return tools
+
+
+def booking_first_instruction(cfg: AssistantConfig) -> str:
+    """Prompt section when the assistant can book: an urgent-sounding problem must not turn a
+    booking request into an unasked-for transfer."""
+    if not cfg.transfer.enabled or not cfg.transfer.destinations:
+        return ""
+    on_call = [d for d in cfg.transfer.destinations if d.on_call]
+    who = (
+        f"the {on_call[0].department} team"
+        if on_call
+        else f"the {cfg.transfer.departments()[0]} team"
+    )
+    return (
+        "When a caller asks for an appointment, book it: use check_calendar to offer two or "
+        "three slots and book_appointment to confirm. If their problem sounds urgent, do not "
+        f"transfer them unasked - ask whether they would like {who} now or the earliest "
+        "appointment, and do whichever they choose. Only transfer straight away when the caller "
+        "asks for a person or describes an immediate danger."
+    )
 
 
 def caller_context_instruction(ctx: dict[str, Any] | None) -> str:

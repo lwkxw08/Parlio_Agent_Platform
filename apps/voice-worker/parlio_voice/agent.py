@@ -56,6 +56,7 @@ from parlio_voice.tools import (
     CoreApiClient,
     ReceptionistTools,
     after_hours_instruction,
+    booking_first_instruction,
     build_tools,
     caller_context_instruction,
     caller_id_instruction,
@@ -96,6 +97,10 @@ class Receptionist(Agent):
                 avail = tools.availability()
                 instructions += after_hours_instruction(cfg, avail["someone_available"])
             fn_tools = build_tools(tools)
+            if tools.api is not None and outbound is None:
+                booking = booking_first_instruction(cfg)
+                if booking:
+                    instructions += "\n\n" + booking
             if outbound is None and web is None:
                 instructions += "\n\n" + caller_id_instruction(tools.caller)
                 known = caller_context_instruction(tools.caller_ctx)
@@ -413,7 +418,8 @@ async def entrypoint(ctx: JobContext) -> None:
             return
         t_human = time.perf_counter()
         human_leg.update({"transfer_id": tools.connected_transfer_id, "recorded": True})
-        await session.interrupt(force=True)
+        # Runs inside the transfer tool call, i.e. inside the current speech turn, so
+        # interrupting that turn here would wait on itself; muting is enough.
         session.input.set_audio_enabled(False)
         session.output.set_audio_enabled(False)
 
