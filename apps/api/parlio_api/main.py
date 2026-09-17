@@ -149,8 +149,13 @@ from parlio_api.routes import (
     screening as screening_routes,
 )
 from parlio_api.routes import (
+    team as team_routes,
+)
+from parlio_api.routes import (
     value as value_routes,
 )
+from parlio_api.schedule import ScheduleService
+from parlio_api.scheduling import SchedulingService
 from parlio_api.screening import ScreeningService
 from parlio_api.security import SecurityService
 from parlio_api.settings import Settings, get_settings
@@ -372,10 +377,17 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         store, build_email(settings), sms, fallback_webhook_url=settings.notify_webhook_url
     )
     app.state.notifications = notifications
+    scheduling = SchedulingService(store, vault)
+    app.state.scheduling = scheduling
     calendar = CalendarService(
-        store, vault, build_calendar_backends(settings, vault), dashboard_url=settings.dashboard_url
+        store,
+        vault,
+        build_calendar_backends(settings, vault),
+        dashboard_url=settings.dashboard_url,
+        scheduler=scheduling,
     )
     app.state.calendar = calendar
+    app.state.schedule = ScheduleService(calendar)
     app.state.screening = ScreeningService(store)
     sip = SipService(
         store,
@@ -699,6 +711,8 @@ def create_app() -> FastAPI:
     app.include_router(advisor_routes.router)
     app.include_router(screening_routes.worker)
     app.include_router(reminders_routes.router)
+    app.include_router(team_routes.router)
+    app.include_router(team_routes.public)
     app.include_router(connectors.router)
     app.include_router(connectors.public)
     app.include_router(connectors.inbound)

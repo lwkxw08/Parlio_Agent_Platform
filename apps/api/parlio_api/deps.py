@@ -31,6 +31,8 @@ from parlio_api.postcall import PostCallProcessor
 from parlio_api.qa import QAService, SimulationService, VoiceCloneService
 from parlio_api.reminders import ReminderService
 from parlio_api.reports import ReportService
+from parlio_api.schedule import ScheduleService
+from parlio_api.scheduling import SchedulingService
 from parlio_api.screening import ScreeningService
 from parlio_api.security import SecurityService
 from parlio_api.settings import Settings, get_settings
@@ -93,6 +95,16 @@ def get_notifications(request: Request) -> NotificationService:
 
 def get_calendar(request: Request) -> CalendarService:
     svc: CalendarService = request.app.state.calendar
+    return svc
+
+
+def get_scheduling(request: Request) -> SchedulingService:
+    svc: SchedulingService = request.app.state.scheduling
+    return svc
+
+
+def get_schedule(request: Request) -> ScheduleService:
+    svc: ScheduleService = request.app.state.schedule
     return svc
 
 
@@ -284,6 +296,8 @@ ApprovalsDep = Annotated[ApprovalService, Depends(get_approvals)]
 SmsDep = Annotated[MessageService, Depends(get_sms)]
 NotificationsDep = Annotated[NotificationService, Depends(get_notifications)]
 CalendarDep = Annotated[CalendarService, Depends(get_calendar)]
+SchedulingDep = Annotated[SchedulingService, Depends(get_scheduling)]
+ScheduleDep = Annotated[ScheduleService, Depends(get_schedule)]
 ScreeningDep = Annotated[ScreeningService, Depends(get_screening)]
 ContactsDep = Annotated[ContactIntelligence, Depends(get_contacts)]
 AdvisorDep = Annotated[AdvisorService, Depends(get_advisor)]

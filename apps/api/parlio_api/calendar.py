@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import logging
 import secrets
+from collections import Counter
 from collections.abc import Awaitable, Callable
 from datetime import UTC, date, datetime, time, timedelta
 from enum import StrEnum
@@ -25,6 +26,17 @@ from zoneinfo import ZoneInfo
 import httpx
 from pydantic import BaseModel, Field
 
+from parlio_api.resources import (
+    AssignmentPolicy,
+    BookingMode,
+    Resource,
+    ResourceService,
+    choose,
+    day_key,
+    eligible,
+    outward_code,
+)
+from parlio_api.scheduling import ExternalSlot, SchedulerConfig, SchedulingService
 from parlio_api.store import CallStore, TenantDoc
 from parlio_api.vault import Vault
 from parlio_voice.models import WEEKDAYS, Schedule
@@ -169,7 +181,15 @@ class Booking(BaseModel):
     service_name: str | None = None
     provider_ref: str | None = None
     status: str = "confirmed"
+    resource_id: str | None = None
+    resource_name: str | None = None
+    source: str = Field(default="calendar", description="calendar | scheduler")
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    updated_at: datetime | None = None
+
+    @property
+    def postcode_area(self) -> str | None:
+        return outward_code(self.address)
 
     def event_title(self) -> str:
         return f"{self.service_name} - {self.name}" if self.service_name else self.name
@@ -185,6 +205,8 @@ class Booking(BaseModel):
         ]
         if self.caller_id and self.caller_id != self.phone:
             rows.append(("Called from", self.caller_id))
+        if self.resource_name:
+            rows.append(("Assigned to", self.resource_name))
         lines = [f"{k}: {v}" for k, v in rows if v]
         lines.append("")
         lines.append(
@@ -367,6 +389,7 @@ class CalendarBackend(Protocol):
         self, conn: CalendarConnection, start: datetime, end: datetime
     ) -> list[Slot]: ...
     async def create_event(self, conn: CalendarConnection, booking: Booking) -> str: ...
+    async def delete_event(self, conn: CalendarConnection, provider_ref: str) -> None: ...
 
 
 class OAuthBackend(CalendarBackend, Protocol):
@@ -375,24 +398,45 @@ class OAuthBackend(CalendarBackend, Protocol):
 
 
 class SimulatedBackend:
+    """In-memory diary; one independent set of busy slots per calendar id so a shared
+    connection with one calendar per engineer behaves like the real providers."""
+
     provider = CalendarProvider.SIMULATED
 
     def __init__(self, busy: list[Slot] | None = None) -> None:
         self.busy_slots = busy or []
+        self._per_calendar: dict[str, list[Slot]] = {}
         self.events: list[Booking] = []
         self.fail = False
+
+    def _diary(self, conn: CalendarConnection) -> list[Slot]:
+        cid = conn.calendar_id or "primary"
+        if cid == "primary":
+            return self.busy_slots
+        return self._per_calendar.setdefault(cid, [])
 
     async def busy(self, conn: CalendarConnection, start: datetime, end: datetime) -> list[Slot]:
         if self.fail:
             raise RuntimeError("simulated calendar outage")
-        return [b for b in self.busy_slots if b.overlaps(Slot(start=start, end=end))]
+        return [b for b in self._diary(conn) if b.overlaps(Slot(start=start, end=end))]
 
     async def create_event(self, conn: CalendarConnection, booking: Booking) -> str:
         if self.fail:
             raise RuntimeError("simulated calendar outage")
         self.events.append(booking)
-        self.busy_slots.append(Slot(start=booking.start, end=booking.end))
+        self._diary(conn).append(Slot(start=booking.start, end=booking.end))
         return f"sim-{len(self.events)}"
+
+    async def delete_event(self, conn: CalendarConnection, provider_ref: str) -> None:
+        if self.fail:
+            raise RuntimeError("simulated calendar outage")
+        ev = next((b for b in self.events if b.provider_ref == provider_ref), None)
+        if ev is not None:
+            self.events.remove(ev)
+            slot = Slot(start=ev.start, end=ev.end)
+            diary = self._diary(conn)
+            if slot in diary:
+                diary.remove(slot)
 
 
 class GoogleCalendarBackend:
@@ -496,6 +540,15 @@ class GoogleCalendarBackend:
         r.raise_for_status()
         return str(r.json()["id"])
 
+    async def delete_event(self, conn: CalendarConnection, provider_ref: str) -> None:
+        tok = await self._access_token(conn)
+        r = await self._http.delete(
+            f"{self.API}/calendars/{conn.calendar_id}/events/{provider_ref}",
+            headers={"Authorization": f"Bearer {tok}"},
+        )
+        if r.status_code not in (404, 410):
+            r.raise_for_status()
+
 
 class MicrosoftCalendarBackend:
     provider = CalendarProvider.MICROSOFT
@@ -564,10 +617,17 @@ class MicrosoftCalendarBackend:
         r.raise_for_status()
         return str(r.json()["access_token"])
 
+    def _cal(self, conn: CalendarConnection) -> str:
+        return (
+            f"{self.GRAPH}/me"
+            if conn.calendar_id in ("primary", "", None)
+            else f"{self.GRAPH}/me/calendars/{conn.calendar_id}"
+        )
+
     async def busy(self, conn: CalendarConnection, start: datetime, end: datetime) -> list[Slot]:
         tok = await self._access_token(conn)
         r = await self._http.get(
-            f"{self.GRAPH}/me/calendarView",
+            f"{self._cal(conn)}/calendarView",
             headers={"Authorization": f"Bearer {tok}", "Prefer": 'outlook.timezone="UTC"'},
             params={
                 "startDateTime": start.astimezone(UTC).isoformat(),
@@ -592,7 +652,7 @@ class MicrosoftCalendarBackend:
     async def create_event(self, conn: CalendarConnection, booking: Booking) -> str:
         tok = await self._access_token(conn)
         r = await self._http.post(
-            f"{self.GRAPH}/me/events",
+            f"{self._cal(conn)}/events",
             headers={"Authorization": f"Bearer {tok}"},
             json={
                 "subject": booking.event_title(),
@@ -604,6 +664,15 @@ class MicrosoftCalendarBackend:
         )
         r.raise_for_status()
         return str(r.json()["id"])
+
+    async def delete_event(self, conn: CalendarConnection, provider_ref: str) -> None:
+        tok = await self._access_token(conn)
+        r = await self._http.delete(
+            f"{self.GRAPH}/me/events/{provider_ref}",
+            headers={"Authorization": f"Bearer {tok}"},
+        )
+        if r.status_code != 404:
+            r.raise_for_status()
 
 
 def _graph_dt(s: str) -> datetime:
@@ -623,6 +692,26 @@ class AvailabilityResult(BaseModel):
     services: list[ServiceType] = Field(default_factory=list)
     service_id: str | None = None
     slot_minutes: int | None = None
+    source: str = "calendar"
+    resources: int = Field(default=0, description="Resources pooled into these slots")
+
+
+class Candidate(BaseModel):
+    """A resource that can take a slot, with the calendar it books into."""
+
+    resource: Resource
+    conn: CalendarConnection
+
+
+def external_slots(slots: list[ExternalSlot]) -> list[Slot]:
+    seen: set[datetime] = set()
+    out: list[Slot] = []
+    for s in sorted(slots, key=lambda x: x.start):
+        if s.start in seen:
+            continue
+        seen.add(s.start)
+        out.append(Slot(start=s.start, end=s.end))
+    return out
 
 
 class CalendarService:
@@ -632,12 +721,17 @@ class CalendarService:
         vault: Vault,
         backends: dict[CalendarProvider, CalendarBackend] | None = None,
         dashboard_url: str = "",
+        resources: ResourceService | None = None,
+        scheduler: SchedulingService | None = None,
     ) -> None:
         self.store = store
         self.vault = vault
         self.backends = backends or {}
         self.dashboard_url = dashboard_url.rstrip("/")
+        self.resources = resources or ResourceService(store)
+        self.scheduler = scheduler
         self.on_booked: Callable[[Booking], Awaitable[None]] | None = None
+        self.on_changed: Callable[[Booking, str], Awaitable[None]] | None = None
 
     # connections
     async def connections(self, tenant_id: str) -> list[CalendarConnection]:
@@ -746,7 +840,73 @@ class CalendarService:
         await self._log(conn, "oauth", True, tokens.account_email)
         return conn
 
-    # availability & booking
+    # -- resources / scheduler resolution ---------------------------------------------------------
+    async def _resolve_conn(
+        self, tenant_id: str, connection_id: str | None
+    ) -> CalendarConnection | None:
+        return (
+            await self.get(tenant_id, connection_id)
+            if connection_id
+            else await self.primary(tenant_id)
+        )
+
+    async def _scheduler(self, tenant_id: str) -> SchedulerConfig | None:
+        if self.scheduler is None:
+            return None
+        settings = await self.resources.settings(tenant_id)
+        if settings.mode != BookingMode.SCHEDULER:
+            return None
+        return await self.scheduler.active(tenant_id)
+
+    async def team(self, tenant_id: str) -> list[Resource]:
+        """Active resources that book into a calendar (an empty list = single-calendar tenant)."""
+        return await self.resources.all(tenant_id, include_inactive=False)
+
+    async def _conn_for(
+        self, r: Resource, default: CalendarConnection, cache: dict[str, CalendarConnection | None]
+    ) -> CalendarConnection | None:
+        """The connection (with the resource's own calendar id) this resource books into."""
+        base = default
+        if r.connection_id and r.connection_id != default.id:
+            if r.connection_id not in cache:
+                cache[r.connection_id] = await self.get(r.tenant_id, r.connection_id)
+            found = cache[r.connection_id]
+            if found is None or not found.bookable:
+                return None
+            base = found
+        return base.model_copy(update={"calendar_id": r.calendar_id or base.calendar_id})
+
+    async def resource_hours(self, r: Resource, conn: CalendarConnection) -> Schedule:
+        return r.hours if r.hours is not None else await self.booking_hours(conn)
+
+    def _rules_conn(
+        self, conn: CalendarConnection, default: CalendarConnection
+    ) -> CalendarConnection:
+        """Booking rules always come from the tenant's primary connection, whichever calendar."""
+        return conn.model_copy(
+            update={
+                "rules": default.rules,
+                "slot_minutes": default.slot_minutes,
+                "buffer_minutes": default.buffer_minutes,
+            }
+        )
+
+    async def _day_load(self, tenant_id: str, day: date, tz: str) -> Counter[str]:
+        load: Counter[str] = Counter()
+        for b in await self.bookings(tenant_id, 2000):
+            if b.resource_id and b.status != "cancelled" and day_key(b.start, tz) == day:
+                load[b.resource_id] += 1
+        return load
+
+    async def _preferred(self, tenant_id: str, phone: str | None) -> str | None:
+        if not phone:
+            return None
+        for b in await self.bookings(tenant_id, 2000):
+            if b.phone == phone and b.resource_id and b.status != "cancelled":
+                return b.resource_id
+        return None
+
+    # -- availability & booking ---------------------------------------------------------------
     async def availability(
         self,
         tenant_id: str,
@@ -757,12 +917,17 @@ class CalendarService:
         duration_minutes: int | None = None,
         now: datetime | None = None,
         service_id: str | None = None,
+        area: str | None = None,
     ) -> AvailabilityResult:
-        conn = (
-            await self.get(tenant_id, connection_id)
-            if connection_id
-            else await self.primary(tenant_id)
-        )
+        now = now or datetime.now(UTC)
+        start = start or now
+        end = start + timedelta(days=days)
+        conn = await self._resolve_conn(tenant_id, connection_id)
+        sched = await self._scheduler(tenant_id)
+        if sched is not None:
+            return await self._scheduler_availability(
+                sched, conn, start, end, now, duration_minutes, service_id, area
+            )
         if conn is None:
             return AvailabilityResult(
                 connection_id=None, provider=None, error="no calendar connected"
@@ -784,42 +949,144 @@ class CalendarService:
                 services=conn.rules.services,
                 error=f"unknown service '{service_id}'",
             )
-        now = now or datetime.now(UTC)
-        start = start or now
-        end = start + timedelta(days=days)
+        team = await self.team(tenant_id)
+        pool = (
+            eligible(
+                team,
+                service_id=service.id if service else None,
+                service_name=service.name if service else None,
+                emergency=bool(service and service.emergency),
+                prefer_on_call=(await self.resources.settings(tenant_id)).emergency_to_on_call,
+            )
+            if team
+            else []
+        )
+        if team and not pool:
+            return AvailabilityResult(
+                connection_id=conn.id,
+                provider=conn.provider,
+                services=conn.rules.services,
+                error="no one on the team is set up for that service",
+            )
+        if area and pool:
+            covering = [r for r in pool if r.covers(area)]
+            pool = covering or pool
+        hours = await self.booking_hours(conn)
+        length = slot_length(conn, duration_minutes, service)
+        slots: list[Slot] = []
+        cache: dict[str, CalendarConnection | None] = {}
         try:
-            busy = await be.busy(conn, start, end)
+            if not pool:
+                busy = await be.busy(conn, start, end)
+                slots = free_slots(
+                    conn,
+                    busy,
+                    start,
+                    end,
+                    now=now,
+                    duration_minutes=duration_minutes,
+                    hours=hours,
+                    service=service,
+                )
+            else:
+                merged: dict[datetime, Slot] = {}
+                for r in pool:
+                    rconn = await self._conn_for(r, conn, cache)
+                    if rconn is None:
+                        continue
+                    rbe = self.backends.get(rconn.provider)
+                    if rbe is None:
+                        continue
+                    busy = await rbe.busy(rconn, start, end)
+                    for s in free_slots(
+                        self._rules_conn(rconn, conn),
+                        busy,
+                        start,
+                        end,
+                        now=now,
+                        duration_minutes=duration_minutes,
+                        hours=r.hours or hours,
+                        service=service,
+                        limit=60,
+                    ):
+                        merged.setdefault(s.start, s)
+                slots = [merged[k] for k in sorted(merged)][:20]
         except Exception as e:
             await self._log(conn, "availability", False, str(e)[:300])
             return AvailabilityResult(
                 connection_id=conn.id, provider=conn.provider, error=str(e)[:300]
             )
-        slots = free_slots(
+        await self._log(
             conn,
-            busy,
-            start,
-            end,
-            now=now,
-            duration_minutes=duration_minutes,
-            hours=await self.booking_hours(conn),
-            service=service,
+            "availability",
+            True,
+            f"{len(slots)} free slots" + (f" across {len(pool)} resources" if pool else ""),
         )
-        await self._log(conn, "availability", True, f"{len(slots)} free slots")
         return AvailabilityResult(
             connection_id=conn.id,
             provider=conn.provider,
             slots=slots,
             services=conn.rules.services,
             service_id=service.id if service else None,
-            slot_minutes=int(slot_length(conn, duration_minutes, service).total_seconds() // 60),
+            slot_minutes=int(length.total_seconds() // 60),
+            resources=len(pool),
+        )
+
+    async def _scheduler_availability(
+        self,
+        sched: SchedulerConfig,
+        conn: CalendarConnection | None,
+        start: datetime,
+        end: datetime,
+        now: datetime,
+        duration_minutes: int | None,
+        service_id: str | None,
+        area: str | None,
+    ) -> AvailabilityResult:
+        assert self.scheduler is not None
+        rules = conn.rules if conn else BookingRules()
+        service = rules.service(service_id)
+        if service_id and service is None:
+            return AvailabilityResult(
+                connection_id=None,
+                provider=None,
+                services=rules.services,
+                source="scheduler",
+                error=f"unknown service '{service_id}'",
+            )
+        minutes = service.minutes if service else (duration_minutes or sched.default_minutes)
+        earliest = now + timedelta(minutes=rules.min_notice_minutes)
+        horizon = min(end, now + timedelta(days=rules.max_days_ahead))
+        try:
+            ext = await self.scheduler.availability(
+                sched,
+                start=max(start, earliest),
+                end=horizon,
+                minutes=minutes,
+                service=service.name if service else None,
+                area=area,
+            )
+        except Exception as e:
+            return AvailabilityResult(
+                connection_id=None, provider=None, source="scheduler", error=str(e)[:300]
+            )
+        slots = [s for s in external_slots(ext) if s.start >= earliest and s.end <= horizon][:20]
+        return AvailabilityResult(
+            connection_id=conn.id if conn else None,
+            provider=None,
+            slots=slots,
+            services=rules.services,
+            service_id=service.id if service else None,
+            slot_minutes=minutes,
+            source="scheduler",
+            resources=len({s.resource_id for s in ext if s.resource_id}),
         )
 
     async def book(self, tenant_id: str, req: BookingRequest) -> Booking:
-        conn = (
-            await self.get(tenant_id, req.connection_id)
-            if req.connection_id
-            else await self.primary(tenant_id)
-        )
+        conn = await self._resolve_conn(tenant_id, req.connection_id)
+        sched = await self._scheduler(tenant_id)
+        if sched is not None:
+            return await self._scheduler_book(sched, conn, tenant_id, req)
         if conn is None or conn.provider == CalendarProvider.BOOKING_LINK or not conn.bookable:
             raise ValueError("no bookable calendar connected")
         be = self.backends.get(conn.provider)
@@ -829,22 +1096,119 @@ class CalendarService:
         if req.service_id and service is None:
             raise ValueError(f"unknown service '{req.service_id}'")
         now = datetime.now(UTC)
-        why = slot_allowed(
-            conn,
-            req.start,
-            now=now,
-            hours=await self.booking_hours(conn),
-            duration_minutes=req.duration_minutes,
-            service=service,
-        )
-        if why is not None:
-            await self._log(conn, "book", False, why)
-            raise ValueError(why)
+        hours = await self.booking_hours(conn)
         length = slot_length(conn, req.duration_minutes, service)
-        booking = Booking(
+        booking = self._new_booking(tenant_id, conn, req, length, service)
+        team = await self.team(tenant_id)
+        if not team:
+            why = slot_allowed(
+                conn,
+                req.start,
+                now=now,
+                hours=hours,
+                duration_minutes=req.duration_minutes,
+                service=service,
+            )
+            if why is not None:
+                await self._log(conn, "book", False, why)
+                raise ValueError(why)
+            if not await self._free(be, conn, booking):
+                await self._log(conn, "book", False, "slot no longer free")
+                raise ValueError("that slot is no longer available")
+            target = conn
+        else:
+            settings = await self.resources.settings(tenant_id)
+            pool = eligible(
+                team,
+                service_id=service.id if service else None,
+                service_name=service.name if service else None,
+                emergency=bool(service and service.emergency),
+                prefer_on_call=settings.emergency_to_on_call,
+            )
+            if not pool:
+                raise ValueError("no one on the team is set up for that service")
+            area = outward_code(req.address)
+            # Engineers covering the caller's area are tried first; anyone else on the team is
+            # a fallback so a slot the caller was offered can still be booked.
+            ordered = sorted(pool, key=lambda r: not r.covers(area)) if area else list(pool)
+            cache: dict[str, CalendarConnection | None] = {}
+            free: list[Candidate] = []
+            reasons: list[str] = []
+            for r in ordered:
+                if free and area and not r.covers(area):
+                    break
+                rconn = await self._conn_for(r, conn, cache)
+                if rconn is None:
+                    continue
+                why = slot_allowed(
+                    self._rules_conn(rconn, conn),
+                    req.start,
+                    now=now,
+                    hours=r.hours or hours,
+                    duration_minutes=req.duration_minutes,
+                    service=service,
+                )
+                if why is not None:
+                    reasons.append(why)
+                    continue
+                rbe = self.backends.get(rconn.provider)
+                if rbe is None:
+                    continue
+                if await self._free(rbe, self._rules_conn(rconn, conn), booking):
+                    free.append(Candidate(resource=r, conn=rconn))
+            if not free:
+                why = (
+                    reasons[0]
+                    if reasons and len(reasons) == len(pool)
+                    else "that slot is no longer available"
+                )
+                await self._log(conn, "book", False, why)
+                raise ValueError(why)
+            tz = hours.timezone
+            chosen = choose(
+                [c.resource for c in free],
+                settings.policy,
+                day_load=await self._day_load(tenant_id, day_key(req.start, tz), tz),
+                cursor=settings.round_robin_cursor,
+                postcode_area=area,
+                preferred_id=await self._preferred(tenant_id, req.phone),
+            )
+            assert chosen is not None
+            target = next(c.conn for c in free if c.resource.id == chosen.id)
+            be = self.backends[target.provider]
+            booking.resource_id, booking.resource_name = chosen.id, chosen.name
+            booking.connection_id = target.id
+            if settings.policy == AssignmentPolicy.ROUND_ROBIN:
+                await self.resources.advance_round_robin(tenant_id)
+        try:
+            booking.provider_ref = await be.create_event(target, booking)
+        except Exception as e:
+            await self._log(conn, "book", False, str(e)[:300])
+            raise
+        await self.store.put_doc(booking.to_doc())
+        await self._log(
+            conn,
+            "book",
+            True,
+            f"{booking.name} @ {booking.start.isoformat()}"
+            + (f" -> {booking.resource_name}" if booking.resource_name else ""),
+        )
+        if self.on_booked is not None:
+            await self.on_booked(booking)
+        return booking
+
+    def _new_booking(
+        self,
+        tenant_id: str,
+        conn: CalendarConnection | None,
+        req: BookingRequest,
+        length: timedelta,
+        service: ServiceType | None,
+    ) -> Booking:
+        return Booking(
             tenant_id=tenant_id,
-            company_id=conn.company_id,
-            connection_id=conn.id,
+            company_id=conn.company_id if conn else f"{tenant_id}-main",
+            connection_id=conn.id if conn else "scheduler",
             call_id=req.call_id,
             start=req.start,
             end=req.start + length,
@@ -861,19 +1225,203 @@ class CalendarService:
             service_id=service.id if service else None,
             service_name=service.name if service else None,
         )
+
+    async def _free(self, be: CalendarBackend, conn: CalendarConnection, booking: Booking) -> bool:
         pad = timedelta(minutes=conn.buffer_minutes)
         busy = await be.busy(conn, booking.start - pad, booking.end + pad)
         padded = Slot(start=booking.start - pad, end=booking.end + pad)
-        if any(padded.overlaps(b) for b in busy):
-            await self._log(conn, "book", False, "slot no longer free")
+        return not any(padded.overlaps(b) for b in busy)
+
+    async def _scheduler_book(
+        self,
+        sched: SchedulerConfig,
+        conn: CalendarConnection | None,
+        tenant_id: str,
+        req: BookingRequest,
+    ) -> Booking:
+        assert self.scheduler is not None
+        rules = conn.rules if conn else BookingRules()
+        service = rules.service(req.service_id)
+        if req.service_id and service is None:
+            raise ValueError(f"unknown service '{req.service_id}'")
+        minutes = service.minutes if service else (req.duration_minutes or sched.default_minutes)
+        now = datetime.now(UTC)
+        if req.start < now + timedelta(minutes=rules.min_notice_minutes):
+            raise ValueError(f"bookings need at least {rules.min_notice_minutes} minutes' notice")
+        if req.start > now + timedelta(days=rules.max_days_ahead):
+            raise ValueError(f"bookings can be made up to {rules.max_days_ahead} days ahead")
+        booking = self._new_booking(tenant_id, conn, req, timedelta(minutes=minutes), service)
+        booking.source = "scheduler"
+        team = {r.external_ref: r for r in await self.team(tenant_id) if r.external_ref}
+        ext = await self.scheduler.availability(
+            sched,
+            start=req.start,
+            end=req.start + timedelta(minutes=minutes),
+            minutes=minutes,
+            service=service.name if service else None,
+            area=outward_code(req.address),
+        )
+        hit = next((s for s in ext if s.start == req.start), None)
+        if hit is None:
             raise ValueError("that slot is no longer available")
-        try:
-            booking.provider_ref = await be.create_event(conn, booking)
-        except Exception as e:
-            await self._log(conn, "book", False, str(e)[:300])
-            raise
+        if hit.resource_id and hit.resource_id in team:
+            booking.resource_id = team[hit.resource_id].id
+            booking.resource_name = team[hit.resource_id].name
+        booking.provider_ref = await self.scheduler.create(sched, booking, hit.resource_id)
         await self.store.put_doc(booking.to_doc())
-        await self._log(conn, "book", True, f"{booking.name} @ {booking.start.isoformat()}")
         if self.on_booked is not None:
             await self.on_booked(booking)
         return booking
+
+    # -- changes to existing bookings ---------------------------------------------------------
+    async def booking(self, tenant_id: str, booking_id: str) -> Booking | None:
+        d = await self.store.get_doc(BOOKING_KIND, booking_id)
+        if d is None or d.tenant_id != tenant_id:
+            return None
+        return Booking.model_validate(d.data)
+
+    async def _save_change(self, booking: Booking, action: str) -> Booking:
+        booking.updated_at = datetime.now(UTC)
+        await self.store.put_doc(booking.to_doc())
+        if self.on_changed is not None:
+            await self.on_changed(booking, action)
+        return booking
+
+    async def _move_event(
+        self,
+        booking: Booking,
+        new_conn: CalendarConnection | None,
+        old_conn: CalendarConnection | None,
+    ) -> None:
+        """Calendar mode: drop the old event and create the new one (or a scheduler update)."""
+        sched = await self._scheduler(booking.tenant_id) if booking.source == "scheduler" else None
+        if sched is not None and self.scheduler is not None:
+            res = await self.resources.get(booking.tenant_id, booking.resource_id or "")
+            await self.scheduler.update(sched, booking, res.external_ref if res else None)
+            return
+        if old_conn is not None and booking.provider_ref:
+            old_be = self.backends.get(old_conn.provider)
+            if old_be is not None:
+                try:
+                    await old_be.delete_event(old_conn, booking.provider_ref)
+                except Exception as e:
+                    await self._log(old_conn, "move", False, str(e)[:300])
+                    raise
+        if new_conn is not None:
+            be = self.backends.get(new_conn.provider)
+            if be is None:
+                raise ValueError(f"{new_conn.provider} backend not configured")
+            booking.provider_ref = await be.create_event(new_conn, booking)
+            booking.connection_id = new_conn.id
+            await self._log(
+                new_conn, "move", True, f"{booking.name} -> {booking.start.isoformat()}"
+            )
+
+    async def _booking_conn(self, booking: Booking) -> CalendarConnection | None:
+        conn = await self.get(booking.tenant_id, booking.connection_id)
+        if conn is None:
+            return None
+        if booking.resource_id:
+            res = await self.resources.get(booking.tenant_id, booking.resource_id)
+            if res is not None:
+                return conn.model_copy(update={"calendar_id": res.calendar_id})
+        return conn
+
+    @staticmethod
+    def _require_owned(booking: Booking) -> None:
+        """Scheduler-made bookings belong to the tenant's tool; change them there and the
+        webhook brings the update back."""
+        if booking.source == "scheduler":
+            raise PermissionError("this booking is managed by your scheduling tool")
+
+    async def reassign(self, tenant_id: str, booking_id: str, resource_id: str) -> Booking:
+        booking = await self.booking(tenant_id, booking_id)
+        if booking is None:
+            raise LookupError("booking not found")
+        if booking.status == "cancelled":
+            raise ValueError("booking is cancelled")
+        self._require_owned(booking)
+        res = await self.resources.get(tenant_id, resource_id)
+        if res is None or not res.active:
+            raise ValueError("resource not found or inactive")
+        primary = await self.primary(tenant_id)
+        if primary is None:
+            raise ValueError("no calendar connected")
+        old_conn = await self._booking_conn(booking)
+        new_conn = await self._conn_for(res, primary, {})
+        if booking.source != "scheduler":
+            if new_conn is None:
+                raise ValueError("that resource has no bookable calendar")
+            be = self.backends.get(new_conn.provider)
+            if be is None:
+                raise ValueError(f"{new_conn.provider} backend not configured")
+            probe = booking.model_copy()
+            if not await self._free(be, self._rules_conn(new_conn, primary), probe):
+                raise ValueError(f"{res.name} is not free at that time")
+        booking.resource_id, booking.resource_name = res.id, res.name
+        await self._move_event(booking, new_conn, old_conn)
+        return await self._save_change(booking, "reassigned")
+
+    async def reschedule(self, tenant_id: str, booking_id: str, start: datetime) -> Booking:
+        booking = await self.booking(tenant_id, booking_id)
+        if booking is None:
+            raise LookupError("booking not found")
+        if booking.status == "cancelled":
+            raise ValueError("booking is cancelled")
+        self._require_owned(booking)
+        length = booking.end - booking.start
+        primary = await self.primary(tenant_id)
+        old_conn = await self._booking_conn(booking)
+        moved = booking.model_copy(update={"start": start, "end": start + length})
+        if booking.source != "scheduler":
+            if primary is None or old_conn is None:
+                raise ValueError("no calendar connected")
+            service = primary.rules.service(booking.service_id)
+            res = (
+                await self.resources.get(tenant_id, booking.resource_id)
+                if booking.resource_id
+                else None
+            )
+            hours = res.hours if res and res.hours else await self.booking_hours(primary)
+            why = slot_allowed(primary, start, now=datetime.now(UTC), hours=hours, service=service)
+            if why is not None:
+                raise ValueError(why)
+            be = self.backends.get(old_conn.provider)
+            if be is None:
+                raise ValueError(f"{old_conn.provider} backend not configured")
+            busy = await be.busy(
+                old_conn,
+                start - timedelta(minutes=primary.buffer_minutes),
+                moved.end + timedelta(minutes=primary.buffer_minutes),
+            )
+            own = Slot(start=booking.start, end=booking.end)
+            pad = timedelta(minutes=primary.buffer_minutes)
+            padded = Slot(start=start - pad, end=moved.end + pad)
+            if any(
+                padded.overlaps(b) and not (b.start == own.start and b.end == own.end) for b in busy
+            ):
+                raise ValueError("that slot is no longer available")
+        booking.start, booking.end = moved.start, moved.end
+        if booking.status == "reschedule_requested":
+            booking.status = "confirmed"
+        await self._move_event(booking, old_conn, old_conn)
+        return await self._save_change(booking, "rescheduled")
+
+    async def cancel(self, tenant_id: str, booking_id: str) -> Booking:
+        booking = await self.booking(tenant_id, booking_id)
+        if booking is None:
+            raise LookupError("booking not found")
+        if booking.status == "cancelled":
+            return booking
+        self._require_owned(booking)
+        conn = await self._booking_conn(booking)
+        be = self.backends.get(conn.provider) if conn else None
+        if conn is not None and be is not None and booking.provider_ref:
+            try:
+                await be.delete_event(conn, booking.provider_ref)
+            except Exception as e:
+                await self._log(conn, "cancel", False, str(e)[:300])
+                raise
+            await self._log(conn, "cancel", True, booking.name)
+        booking.status = "cancelled"
+        return await self._save_change(booking, "cancelled")
