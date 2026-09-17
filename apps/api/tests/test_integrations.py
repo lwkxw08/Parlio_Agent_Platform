@@ -7,6 +7,7 @@ manual step once the UK number leaves `requirement-info-pending`.
 from __future__ import annotations
 
 from datetime import UTC, datetime, time, timedelta
+from itertools import pairwise
 from typing import Any
 
 import pytest
@@ -402,13 +403,16 @@ async def test_booking_rules_api_and_service_aware_booking(client: AsyncClient) 
     )
     assert r.status_code == 200 and "unknown service" in r.json()["error"]
 
-    # off-grid or too-short-notice bookings are refused before touching the calendar
+    # off-grid bookings are refused before touching the calendar (pick a slot that is not the
+    # last of its day so shifting it by 10 minutes still ends inside booking hours)
+    starts = [datetime.fromisoformat(s["start"]) for s in slots]
+    mid = next(a for a, b in pairwise(starts) if b - a == timedelta(minutes=30))
     r = await client.post(
         "/v1/worker/calendar/bookings",
         params={"tenant_id": "demo"},
         json={
             "connection_id": conn_id,
-            "start": (start + timedelta(minutes=10)).isoformat(),
+            "start": (mid + timedelta(minutes=10)).isoformat(),
             "name": "Sam",
             "service_id": boiler,
         },
