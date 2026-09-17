@@ -372,7 +372,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         store, build_email(settings), sms, fallback_webhook_url=settings.notify_webhook_url
     )
     app.state.notifications = notifications
-    calendar = CalendarService(store, vault, build_calendar_backends(settings, vault))
+    calendar = CalendarService(
+        store, vault, build_calendar_backends(settings, vault), dashboard_url=settings.dashboard_url
+    )
     app.state.calendar = calendar
     app.state.screening = ScreeningService(store)
     sip = SipService(

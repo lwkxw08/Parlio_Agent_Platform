@@ -162,11 +162,37 @@ class Booking(BaseModel):
     name: str
     phone: str | None = None
     notes: str | None = None
+    address: str | None = None
+    caller_id: str | None = None
+    call_link: str | None = None
     service_id: str | None = None
     service_name: str | None = None
     provider_ref: str | None = None
     status: str = "confirmed"
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+
+    def event_title(self) -> str:
+        return f"{self.service_name} - {self.name}" if self.service_name else self.name
+
+    def event_description(self) -> str:
+        """Everything the person doing the job needs, as plain text for the calendar event."""
+        rows: list[tuple[str, str | None]] = [
+            ("Service", self.service_name),
+            ("Customer", self.name),
+            ("Phone", self.phone),
+            ("Address", self.address),
+            ("Details", self.notes),
+        ]
+        if self.caller_id and self.caller_id != self.phone:
+            rows.append(("Called from", self.caller_id))
+        lines = [f"{k}: {v}" for k, v in rows if v]
+        lines.append("")
+        lines.append(
+            f"Booked by Parlio from a call. Recording and transcript: {self.call_link}"
+            if self.call_link
+            else "Booked by Parlio."
+        )
+        return "\n".join(lines)
 
     def to_doc(self) -> TenantDoc:
         return TenantDoc(
@@ -203,6 +229,8 @@ class BookingRequest(BaseModel):
     name: str = Field(min_length=1)
     phone: str | None = None
     notes: str | None = None
+    address: str | None = None
+    caller_id: str | None = None
     call_id: str | None = None
     duration_minutes: int | None = None
     service_id: str | None = None
@@ -454,15 +482,13 @@ class GoogleCalendarBackend:
 
     async def create_event(self, conn: CalendarConnection, booking: Booking) -> str:
         tok = await self._access_token(conn)
-        desc = "\n".join(
-            filter(None, [f"Phone: {booking.phone}" if booking.phone else None, booking.notes])
-        )
         r = await self._http.post(
             f"{self.API}/calendars/{conn.calendar_id}/events",
             headers={"Authorization": f"Bearer {tok}"},
             json={
-                "summary": f"{booking.name} (booked by Parlio)",
-                "description": desc,
+                "summary": booking.event_title(),
+                "description": booking.event_description(),
+                **({"location": booking.address} if booking.address else {}),
                 "start": {"dateTime": booking.start.isoformat()},
                 "end": {"dateTime": booking.end.isoformat()},
             },
@@ -565,15 +591,13 @@ class MicrosoftCalendarBackend:
 
     async def create_event(self, conn: CalendarConnection, booking: Booking) -> str:
         tok = await self._access_token(conn)
-        body = "\n".join(
-            filter(None, [f"Phone: {booking.phone}" if booking.phone else None, booking.notes])
-        )
         r = await self._http.post(
             f"{self.GRAPH}/me/events",
             headers={"Authorization": f"Bearer {tok}"},
             json={
-                "subject": f"{booking.name} (booked by Parlio)",
-                "body": {"contentType": "text", "content": body},
+                "subject": booking.event_title(),
+                "body": {"contentType": "text", "content": booking.event_description()},
+                **({"location": {"displayName": booking.address}} if booking.address else {}),
                 "start": {"dateTime": booking.start.astimezone(UTC).isoformat(), "timeZone": "UTC"},
                 "end": {"dateTime": booking.end.astimezone(UTC).isoformat(), "timeZone": "UTC"},
             },
@@ -607,10 +631,12 @@ class CalendarService:
         store: CallStore,
         vault: Vault,
         backends: dict[CalendarProvider, CalendarBackend] | None = None,
+        dashboard_url: str = "",
     ) -> None:
         self.store = store
         self.vault = vault
         self.backends = backends or {}
+        self.dashboard_url = dashboard_url.rstrip("/")
         self.on_booked: Callable[[Booking], Awaitable[None]] | None = None
 
     # connections
@@ -825,6 +851,13 @@ class CalendarService:
             name=req.name,
             phone=req.phone,
             notes=req.notes,
+            address=req.address,
+            caller_id=req.caller_id,
+            call_link=(
+                f"{self.dashboard_url}/calls/{req.call_id}"
+                if req.call_id and self.dashboard_url
+                else None
+            ),
             service_id=service.id if service else None,
             service_name=service.name if service else None,
         )

@@ -50,7 +50,7 @@ Create the services callers can book, each with its own length: **Name** (e.g. B
 
 ## Connect
 
-- **Google Calendar** – press Connect and sign in with the Google account whose calendar you want used. The assistant reads free/busy and creates events on it.
+- **Google Calendar** – press Connect and sign in with the Google account whose calendar you want used. The assistant reads free/busy and creates events on it. Each event is titled with the service and customer name, and its description carries everything the person attending needs: phone number, address (also set as the event location), what the caller asked for, the number they called from and a link to the call's recording and transcript in Parlio.
 - **Outlook / Microsoft 365** – the same flow with a Microsoft sign-in.
 - **Booking link** – if you use Cal.com, Square Appointments, GoHighLevel or another booking page, choose the **Vendor**, paste the **Booking URL** and set the **Slot length**. The assistant offers to text the link rather than booking directly.
 - **Demo calendar** – a built-in diary for trying bookings without connecting an account.
@@ -59,7 +59,7 @@ Google and Microsoft connections are made once by Parlio at platform level; you 
 
 ## Bookings
 
-Appointments the assistant has made, with the caller's name, phone, notes, status (confirmed, rescheduled, cancelled, no-show) and a link to the call. Statuses update automatically when a customer replies to a reminder text.
+Appointments the assistant has made, with the caller's name, phone, address, details of the job, status (confirmed, rescheduled, cancelled, no-show) and a link to the call. Statuses update automatically when a customer replies to a reminder text.
 
 ## SMS appointment reminders
 

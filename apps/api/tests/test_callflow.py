@@ -582,6 +582,7 @@ def _service(vault: LocalVault, fake: _Fake) -> CalendarService:
             CalendarProvider.GOOGLE: GoogleCalendarBackend("gid", "gsecret", vault, http),
             CalendarProvider.MICROSOFT: MicrosoftCalendarBackend("mid", "msecret", vault, http),
         },
+        dashboard_url="https://app.parlio.test/",
     )
 
 
@@ -619,14 +620,26 @@ async def test_oauth_freebusy_and_booking_mocked(provider: CalendarProvider) -> 
 
     booked = await svc.book(
         "demo",
-        BookingRequest(start=day.replace(hour=10), name="Sam", phone=CALLER, connection_id=conn.id),
+        BookingRequest(
+            start=day.replace(hour=10),
+            name="Sam",
+            phone=CALLER,
+            notes="Boiler losing pressure, no hot water upstairs",
+            address="12 High Street, Leeds LS1 4AB",
+            call_id="call-1",
+            connection_id=conn.id,
+        ),
     )
     assert booked.provider_ref in ("AAMk-evt-1", "gevt-1")
     create = fake.calls[-1]
     assert create[0] == "POST" and "events" in create[1]
-    assert create[2]["subject" if provider == CalendarProvider.MICROSOFT else "summary"].startswith(
-        "Sam"
-    )
+    ms = provider == CalendarProvider.MICROSOFT
+    assert create[2]["subject" if ms else "summary"].startswith("Sam")
+    body = create[2]["body"]["content"] if ms else create[2]["description"]
+    for needle in (CALLER, "no hot water", "LS1 4AB", "Details:", "/calls/call-1"):
+        assert needle in body, body
+    loc = create[2]["location"]["displayName"] if ms else create[2]["location"]
+    assert loc == "12 High Street, Leeds LS1 4AB"
     # overlapping slot is refused before any event is created
     n = len(fake.calls)
     with pytest.raises(ValueError, match="no longer available"):
