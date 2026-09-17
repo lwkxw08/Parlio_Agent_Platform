@@ -444,7 +444,7 @@ function Voice({ tenant, canManage, view, assistants, flash }: { tenant: string;
             <label className="check"><input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} /> I am the person in this recording (or have their written permission) and agree to the statement above.</label>
           </div>
           <button className="primary" type="submit" disabled={busy || !consent || !file || !name}>{busy ? "Uploading…" : "Create voice profile"}</button>
-          <p className="hint">The sample is passed to the voice provider and not kept by Parlio; only the consent record and the provider&apos;s voice reference are stored. Consent is written to the audit log.</p>
+          <p className="hint">The sample is passed to the voice provider and not kept by ParlioTec; only the consent record and the provider&apos;s voice reference are stored. Consent is written to the audit log.</p>
         </form>
       )}
     </>

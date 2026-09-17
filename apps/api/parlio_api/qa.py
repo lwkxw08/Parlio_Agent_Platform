@@ -1035,7 +1035,7 @@ class SimulationService:
 
 CONSENT_STATEMENT = (
     "I confirm I am the person whose voice is in this recording (or have their written "
-    "permission), and I consent to Parlio creating a synthetic voice from it for this "
+    "permission), and I consent to ParlioTec creating a synthetic voice from it for this "
     "organisation's assistant. I can withdraw consent and delete the voice at any time."
 )
 

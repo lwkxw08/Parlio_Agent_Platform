@@ -23,4 +23,4 @@ Connect a WhatsApp Business (Cloud API) number with its **Phone number ID**, **D
 
 ## SMS
 
-Texts to your Parlio SMS number arrive as threads automatically; no setup beyond having an SMS-capable number on *Billing*. Replies to appointment reminders (1, 2, STOP) are handled automatically and also shown here.
+Texts to your ParlioTec SMS number arrive as threads automatically; no setup beyond having an SMS-capable number on *Billing*. Replies to appointment reminders (1, 2, STOP) are handled automatically and also shown here.

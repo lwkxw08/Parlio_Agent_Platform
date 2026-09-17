@@ -446,7 +446,7 @@ async def setup_checklist(
         ChecklistItem(
             key="number",
             title="Phone number connected",
-            detail="Get a Parlio number, forward your line to it, or connect your PBX",
+            detail="Get a ParlioTec number, forward your line to it, or connect your PBX",
             done=has_route,
             href="/telephony",
         ),
@@ -703,7 +703,7 @@ def trust_centre(dashboard_url: str) -> TrustCentre:
             id="dpa",
             title="Data processing agreement",
             body=(
-                "Parlio acts as processor for our customers (controllers). Our DPA incorporates "
+                "ParlioTec acts as processor for our customers (controllers). Our DPA incorporates "
                 "the UK GDPR Article 28 terms and the UK Addendum to the EU SCCs for any "
                 "transfer to sub-processors outside the UK. Request a signed copy from support."
             ),
@@ -741,9 +741,10 @@ def trust_centre(dashboard_url: str) -> TrustCentre:
             id="telephony",
             title="Telephony demarcation",
             body=(
-                "Parlio is responsible for the SIP edge, media and AI platform. Customers remain "
+                "ParlioTec is responsible for the SIP edge, media and AI platform. Customers "
+                "remain "
                 "responsible for their own phone line, call forwarding and PBX configuration; "
-                "our Health page classifies faults as customer, carrier or Parlio with an "
+                "our Health page classifies faults as customer, carrier or ParlioTec with an "
                 "evidence pack to share with your provider."
             ),
         ),
@@ -779,7 +780,7 @@ def trust_centre(dashboard_url: str) -> TrustCentre:
 CHECKINS: dict[int, tuple[str, str]] = {
     7: (
         "Your first week with {name}",
-        "It's been a week since you set up your Parlio assistant. Setup is {completed}/{total} "
+        "It's been a week since you set up your ParlioTec assistant. Setup is {completed}/{total} "
         "complete{next_hint}. Reply to this email or open Support in the dashboard if you'd like "
         "a config review or help with forwarding / SIP.",
     ),

@@ -6,8 +6,8 @@ import { StatusBanner, ViewAsBanner } from "./banners";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Parlio",
-  description: "Parlio AI phone assistant dashboard",
+  title: "ParlioTec",
+  description: "ParlioTec AI phone assistant dashboard",
   icons: { icon: "/logo-icon.png" },
 };
 

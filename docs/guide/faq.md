@@ -67,4 +67,4 @@ Connect a calendar (*Integrations → Calendar → Connect*), then in the same t
 
 ## Why is there a test call I didn't make?
 
-Parlio places one automatic synthetic test call a day to check your assistant is working. It appears on *Health → Synthetic call history*, not on your Calls page.
+ParlioTec places one automatic synthetic test call a day to check your assistant is working. It appears on *Health → Synthetic call history*, not on your Calls page.

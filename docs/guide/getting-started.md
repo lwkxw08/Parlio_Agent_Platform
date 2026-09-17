@@ -15,19 +15,19 @@ Steps to a working assistant, ticked off automatically as you complete them: nam
 
 ## White-glove onboarding
 
-On Growth and above, request a specialist to configure the assistant with you over a call. The request goes to Parlio's onboarding queue and you'll be emailed a time.
+On Growth and above, request a specialist to configure the assistant with you over a call. The request goes to ParlioTec's onboarding queue and you'll be emailed a time.
 
 ## Launch guide
 
-1. **Test the assistant** – call your Parlio number directly.
-2. **Choose how calls reach Parlio** – forward your number, connect your PBX, or register a SIP handset (see *Telephony*).
+1. **Test the assistant** – call your ParlioTec number directly.
+2. **Choose how calls reach ParlioTec** – forward your number, connect your PBX, or register a SIP handset (see *Telephony*).
 3. **Forwarding codes** – the exact divert codes for BT, Virgin, Vodafone, EE, O2, Three and Microsoft Teams, including "divert when unanswered" if you only want overflow.
 4. **Verify** – ring your own number from a mobile; the call should appear on *Calls* within seconds.
 5. **Tell your customers** – suggested wording for your website and voicemail.
 
 ## Support
 
-*Support* in the sidebar has help articles, the **Ask Parlio** assistant (also available from the **?** button on every page), and **Open a ticket** to reach a person; your tickets and their status are listed there. Platform incidents are announced on the status page and at the top of the dashboard.
+*Support* in the sidebar has help articles, the **Ask ParlioTec** assistant (also available from the **?** button on every page), and **Open a ticket** to reach a person; your tickets and their status are listed there. Platform incidents are announced on the status page and at the top of the dashboard.
 
 ## What's new
 

@@ -79,7 +79,7 @@ export default function WhatsNew({ tenant, feed: initial, roadmap: initialRoadma
               </select>
             </label>
           </div>
-          <label>Message<textarea required rows={4} value={fb.text} onChange={(e) => setFb({ ...fb, text: e.target.value })} placeholder="What would make Parlio more useful for you?" /></label>
+          <label>Message<textarea required rows={4} value={fb.text} onChange={(e) => setFb({ ...fb, text: e.target.value })} placeholder="What would make ParlioTec more useful for you?" /></label>
           <div className="row">
             <button className="primary" disabled={fbState === "busy" || !fb.text.trim()}>{fbState === "busy" ? "Sending…" : "Send"}</button>
             {fbState === "sent" && <span className="small" style={{ color: "var(--ok-fg)" }}>Thanks — we read every message.</span>}

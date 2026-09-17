@@ -5,7 +5,7 @@ jobs, SIP trunk docs) plus two active probes: synthetic test calls (scripted cal
 assistant brain via the Phase 13 simulation engine) and SIP diagnostics. Findings become
 ``OpsAlert`` docs (opened/resolved automatically by the sweep, acknowledged by staff), roll up
 into a per-tenant ``TenantHealth`` score, and feed the public status page components. A
-``FaultReport`` attributes a telephony failure to Parlio / carrier / the customer's PBX provider
+``FaultReport`` attributes a telephony failure to ParlioTec / carrier / the customer's PBX provider
 with plain-English next steps and an evidence pack the support desk (Phase 18) can forward.
 """
 
@@ -354,7 +354,7 @@ def service_credit(
         monthly_fee_pence=monthly_fee_pence,
         credit_pence=round(monthly_fee_pence * pct / 100),
         note=(
-            f"Target {tier.voice_uptime_pct}%. Credits cover Parlio platform components; "
+            f"Target {tier.voice_uptime_pct}%. Credits cover ParlioTec platform components; "
             "customer forwarding and BYO SIP faults are excluded."
         ),
     )
@@ -696,7 +696,7 @@ class OpsService:
                 open_now=True,
                 detail=(
                     f"expected ~{expected:.0f} calls in the last {silent_open_hours} open hours, "
-                    "received 0 — call forwarding to Parlio may have been switched off"
+                    "received 0 — call forwarding to ParlioTec may have been switched off"
                 ),
             )
         if expected >= 3:
@@ -787,7 +787,7 @@ class OpsService:
                 issues.append(f"packet loss {aq.packet_loss_pct_avg}%")
             if aq.one_way_audio:
                 issues.append(f"{aq.one_way_audio} one-way-audio call(s)")
-                fix.append("NAT/firewall: allow RTP UDP 10000-20000 from Parlio's media IPs")
+                fix.append("NAT/firewall: allow RTP UDP 10000-20000 from ParlioTec's media IPs")
             if aq.codec_mismatch:
                 issues.append("codec mismatch")
                 fix.append("enable PCMA (G.711 A-law) on the PBX trunk")
@@ -1039,7 +1039,8 @@ class OpsService:
             attribution, conf = "customer_provider", 0.85
             headline = "SIP authentication was rejected by the customer's provider/PBX"
             why = (
-                "The INVITE was refused with an authentication error. Parlio's edge accepted the "
+                "The INVITE was refused with an authentication error. ParlioTec's edge accepted "
+                "the "
                 "call; the rejection came from the customer's SIP account or PBX."
             )
             steps = [
@@ -1054,10 +1055,10 @@ class OpsService:
             headline = "Media path problem (one-way audio / heavy packet loss)"
             why = (
                 "Signalling completed but RTP was lost or one-directional, which points at NAT/"
-                "firewall or link quality between the customer's PBX/provider and Parlio."
+                "firewall or link quality between the customer's PBX/provider and ParlioTec."
             )
             steps = [
-                "Allow UDP 10000-20000 from Parlio's media IPs on the customer firewall.",
+                "Allow UDP 10000-20000 from ParlioTec's media IPs on the customer firewall.",
                 "Ask the provider for a media trace for this call ID.",
                 "Prefer G.711 A-law and disable SIP ALG on the router.",
             ]
@@ -1073,7 +1074,7 @@ class OpsService:
             else:
                 attribution, conf = "carrier", 0.6
                 headline = "Carrier delivered the call but it failed before the assistant answered"
-                why = "The call arrived on Parlio's carrier number but no media session started."
+                why = "The call arrived on ParlioTec's carrier number but no media session started."
                 steps = [
                     "Check the carrier status page and raise a ticket with the call timestamps.",
                     "If repeated, trigger carrier failover from Ops.",
@@ -1132,7 +1133,7 @@ class OpsService:
                 "Registration/INVITE/audio metrics indicate a problem on the customer's provider "
                 "or PBX side."
                 if attribution == "customer_provider"
-                else "Trunk provisioning on Parlio's SIP edge failed."
+                else "Trunk provisioning on ParlioTec's SIP edge failed."
                 if attribution == "parlio"
                 else "No issues detected."
             ),
@@ -1151,13 +1152,14 @@ class OpsService:
             subject="forwarding",
             attribution="customer_provider" if off else "unknown",
             confidence=0.65 if off else 0.3,
-            headline="Call forwarding to Parlio appears to be off" if off else fwd.detail,
+            headline="Call forwarding to ParlioTec appears to be off" if off else fwd.detail,
             explanation=fwd.detail,
             next_steps=(
                 [
                     "Re-enable forwarding in the provider portal (see the per-carrier guide).",
                     "Dial the business number from a mobile to confirm the assistant answers.",
-                    "Consider porting the number or a Parlio SIP trunk to remove this dependency.",
+                    "Consider porting the number or a ParlioTec SIP trunk to remove this "
+                    "dependency.",
                 ]
                 if off
                 else ["No action needed."]
@@ -1377,7 +1379,7 @@ def _provider_report(rep: FaultReport) -> str:
     ev = rep.evidence
     lines = [
         f"Fault report — {rep.headline}",
-        f"Generated by Parlio Ops at {rep.created_at.isoformat(timespec='seconds')}",
+        f"Generated by ParlioTec Ops at {rep.created_at.isoformat(timespec='seconds')}",
         f"Suspected side: {rep.attribution.replace('_', ' ')} (confidence {rep.confidence:.0%})",
         "",
         rep.explanation,

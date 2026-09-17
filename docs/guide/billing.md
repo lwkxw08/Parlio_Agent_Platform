@@ -19,8 +19,8 @@ What your plan includes (multiple assistants, live monitoring, connectors, voice
 
 ## Your numbers
 
-Phone numbers Parlio hosts for you, with capabilities (voice, SMS) and what each is routed to. **Release** returns a number you no longer need at the end of the billing period.
+Phone numbers ParlioTec hosts for you, with capabilities (voice, SMS) and what each is routed to. **Release** returns a number you no longer need at the end of the billing period.
 
 ## Add a UK number
 
-Choose an area (Manchester 0161, London 020, national 03xx, freephone 0800…) and Parlio provisions a number immediately. Numbers count towards your plan's included numbers, then a small monthly fee each. SMS features (reminders, owner summaries, SMS scenarios) need at least one SMS-capable number.
+Choose an area (Manchester 0161, London 020, national 03xx, freephone 0800…) and ParlioTec provisions a number immediately. Numbers count towards your plan's included numbers, then a small monthly fee each. SMS features (reminders, owner summaries, SMS scenarios) need at least one SMS-capable number.

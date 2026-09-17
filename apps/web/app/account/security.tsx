@@ -74,7 +74,7 @@ export default function AccountSecurity({ status, sessions }: { status: TwoFacto
           <>
             <p className="small">1. Add this key to your authenticator app (choose &ldquo;enter a setup key&rdquo;), or <a href={enrol.otpauth_uri}>open in your authenticator</a> on this device:</p>
             <code style={{ wordBreak: "break-all", fontSize: "1.05rem", letterSpacing: 1 }}>{enrol.secret.replace(/(.{4})/g, "$1 ").trim()}</code>
-            <p className="small muted">Account: Parlio · Time-based (TOTP), 6 digits, 30 s.</p>
+            <p className="small muted">Account: ParlioTec · Time-based (TOTP), 6 digits, 30 s.</p>
             <p className="small">2. Enter the 6-digit code it shows:</p>
             <div style={{ display: "flex", gap: 8 }}>{codeInput}<button className="primary" onClick={confirm} disabled={code.length < 6}>Confirm</button><button onClick={() => setEnrol(null)}>Cancel</button></div>
           </>

@@ -9,7 +9,7 @@ export default async function Page() {
   return (
     <>
       <h1>Changelog</h1>
-      <p className="hint">What&apos;s changed in Parlio. See also the <Link href="/roadmap">public roadmap</Link>, <Link href="/status">service status</Link> and <Link href="/trust">trust centre</Link>.</p>
+      <p className="hint">What&apos;s changed in ParlioTec. See also the <Link href="/roadmap">public roadmap</Link>, <Link href="/status">service status</Link> and <Link href="/trust">trust centre</Link>.</p>
       {items.length === 0 && <p className="small muted">No entries yet.</p>}
       {items.map((a) => (
         <div className="section" key={a.id}>

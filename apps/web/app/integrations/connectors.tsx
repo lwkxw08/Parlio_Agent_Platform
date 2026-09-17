@@ -29,7 +29,7 @@ const CATEGORIES: [string, string][] = [
 ];
 const OPTION_LABELS: Record<string, [string, string]> = {
   spreadsheet_id: ["Spreadsheet ID", "from the sheet URL: /spreadsheets/d/<ID>/"],
-  sheet: ["Sheet tab", "Parlio"],
+  sheet: ["Sheet tab", "ParlioTec"],
   instance_url: ["Login / My Domain URL", "https://yourorg.my.salesforce.com"],
   client_id: ["Consumer key (client ID)", ""],
   client_secret: ["Client secret", ""],
@@ -249,11 +249,11 @@ function ConnectorForm({ tenant, providers, payloadFields, existing, onDone, onM
       </div>
       <label className="check"><input type="checkbox" checked={qualifiedOnly} onChange={(e) => setQualifiedOnly(e.target.checked)} /> Skip spam, wrong numbers and existing customers on “every completed call”</label>
 
-      <h3 style={{ marginTop: "1rem" }}>Field mapping <span className="muted small">(optional — rename Parlio fields to your app’s column/property names)</span></h3>
+      <h3 style={{ marginTop: "1rem" }}>Field mapping <span className="muted small">(optional — rename ParlioTec fields to your app’s column/property names)</span></h3>
       {map.map(([k, v], i) => (
         <div key={i} className="grid" style={{ alignItems: "end" }}>
           <label>Their field<input value={k} onChange={(e) => setMap((m) => m.map((x, j) => (j === i ? [e.target.value, x[1]] : x)))} placeholder="e.g. Phone Number" /></label>
-          <label>Parlio field
+          <label>ParlioTec field
             <select value={v} onChange={(e) => setMap((m) => m.map((x, j) => (j === i ? [x[0], e.target.value] : x)))}>
               <option value="">—</option>
               {payloadFields.map((f) => <option key={f} value={f}>{f}</option>)}
@@ -289,7 +289,7 @@ function ApiKeys({ tenant, canManage, initial }: { tenant: string; canManage: bo
   return (
     <div className="section">
       <h2>Inbound API keys</h2>
-      <p className="hint">Let your own systems (or a Zap) push data into Parlio: <code>POST {API_URL}/v1/inbound/contacts</code> to pre-load callers (VIP flags, names), <code>POST /v1/inbound/tickets</code> to raise a callback, <code>GET /v1/inbound/calls</code> to pull call history. Send the key as <code>Authorization: Bearer …</code> or <code>X-Api-Key</code>.</p>
+      <p className="hint">Let your own systems (or a Zap) push data into ParlioTec: <code>POST {API_URL}/v1/inbound/contacts</code> to pre-load callers (VIP flags, names), <code>POST /v1/inbound/tickets</code> to raise a callback, <code>GET /v1/inbound/calls</code> to pull call history. Send the key as <code>Authorization: Bearer …</code> or <code>X-Api-Key</code>.</p>
       {fresh?.key && (
         <p className="small" style={{ padding: "0.6rem 0.8rem", border: "1px solid var(--border)", borderRadius: 8 }}>
           Copy this key now — it is shown once:<br /><code style={{ userSelect: "all" }}>{fresh.key}</code>

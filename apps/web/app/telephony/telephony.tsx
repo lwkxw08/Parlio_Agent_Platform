@@ -18,9 +18,9 @@ import {
 import { humanize } from "@/app/breakdown";
 
 const MODES: { id: TrunkMode; title: string; blurb: string }[] = [
-  { id: "forward", title: "Forward to your Parlio number", blurb: "Keep your provider. Forward calls (always or on no-answer) to the number Parlio gives you. No SIP setup." },
-  { id: "pbx", title: "Connect your PBX", blurb: "Parlio issues SIP credentials for 3CX, FreePBX, Gamma Horizon, RingCentral, BT Cloud Voice… Your PBX sends calls to us and extension transfers stay internal." },
-  { id: "byo_register", title: "Use your SIP account", blurb: "Give us your provider login (Voipfone, Sipgate, Gamma…). Parlio registers as that account so your DDI rings straight into the assistant and transfers use your caller ID." },
+  { id: "forward", title: "Forward to your ParlioTec number", blurb: "Keep your provider. Forward calls (always or on no-answer) to the number ParlioTec gives you. No SIP setup." },
+  { id: "pbx", title: "Connect your PBX", blurb: "ParlioTec issues SIP credentials for 3CX, FreePBX, Gamma Horizon, RingCentral, BT Cloud Voice… Your PBX sends calls to us and extension transfers stay internal." },
+  { id: "byo_register", title: "Use your SIP account", blurb: "Give us your provider login (Voipfone, Sipgate, Gamma…). ParlioTec registers as that account so your DDI rings straight into the assistant and transfers use your caller ID." },
 ];
 const WHEN: [DdiRoute["when"], string][] = [["always", "Always"], ["out_of_hours", "Out of hours only"], ["no_answer", "On no-answer"]];
 const CODECS = ["PCMA", "PCMU", "opus"];

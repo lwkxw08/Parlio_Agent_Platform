@@ -50,12 +50,12 @@ Create the services callers can book, each with its own length: **Name** (e.g. B
 
 ## Connect
 
-- **Google Calendar** – press Connect and sign in with the Google account whose calendar you want used. The assistant reads free/busy and creates events on it. Each event is titled with the service and customer name, and its description carries everything the person attending needs: phone number, address (also set as the event location), what the caller asked for, the number they called from and a link to the call's recording and transcript in Parlio.
+- **Google Calendar** – press Connect and sign in with the Google account whose calendar you want used. The assistant reads free/busy and creates events on it. Each event is titled with the service and customer name, and its description carries everything the person attending needs: phone number, address (also set as the event location), what the caller asked for, the number they called from and a link to the call's recording and transcript in ParlioTec.
 - **Outlook / Microsoft 365** – the same flow with a Microsoft sign-in.
 - **Booking link** – if you use Cal.com, Square Appointments, GoHighLevel or another booking page, choose the **Vendor**, paste the **Booking URL** and set the **Slot length**. The assistant offers to text the link rather than booking directly.
 - **Demo calendar** – a built-in diary for trying bookings without connecting an account.
 
-Google and Microsoft connections are made once by Parlio at platform level; you only need to sign in with your own account.
+Google and Microsoft connections are made once by ParlioTec at platform level; you only need to sign in with your own account.
 
 ## Bookings
 
@@ -81,7 +81,7 @@ Each time a booking, ticket or call is pushed to a calendar or connected app, th
 
 CRMs, helpdesks and automation tools that receive your calls, tickets, bookings and leads:
 
-- **Outbound webhook** – for Zapier, Make, n8n or your own systems. Each event is signed (HMAC) so you can verify it came from Parlio.
+- **Outbound webhook** – for Zapier, Make, n8n or your own systems. Each event is signed (HMAC) so you can verify it came from ParlioTec.
 - **HubSpot, Salesforce, Pipedrive, Zoho** – contacts and activities are created or updated after each call.
 - **Google Sheets** – one row per call.
 - **Microsoft Teams** – a card in a channel for each call or ticket.
@@ -91,7 +91,7 @@ For each app: **Connect** (OAuth sign-in or API key), **Test** to send a sample 
 
 ## Inbound API keys
 
-Create a key to let your own systems create leads, look up calls or trigger outbound calls through the Parlio API. Keys are shown once — copy them when created. Revoke a key at any time.
+Create a key to let your own systems create leads, look up calls or trigger outbound calls through the ParlioTec API. Keys are shown once — copy them when created. Revoke a key at any time.
 
 ## CSV export
 

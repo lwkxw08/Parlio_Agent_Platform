@@ -19,7 +19,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
     return (
       <>
         <h1>Platform admin</h1>
-        <p className="muted">This area is for Parlio platform staff only.</p>
+        <p className="muted">This area is for ParlioTec platform staff only.</p>
       </>
     );
   }

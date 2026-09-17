@@ -499,7 +499,7 @@ class AssistantConfig(BaseModel):
     company_id: str
     assistant_id: str
     assistant_version: int = 1
-    name: str = "Parlio"
+    name: str = "ParlioTec"
     business_name: str = "the business"
     language: str = "en"
     languages: list[str] = Field(default_factory=lambda: ["en"])

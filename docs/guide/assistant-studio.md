@@ -20,7 +20,7 @@ If you have more than one assistant (Growth and Scale plans), switch between the
 
 ## Voice
 
-Pick a voice from the catalogue. Voices are grouped by accent (British first for UK businesses, American, Irish, Australian…) with a preview button on each. The voice engine itself (Cartesia, ElevenLabs) is chosen by Parlio, not per business, so you only ever choose the voice. Owner voice cloning is on the *Quality & simulate* page.
+Pick a voice from the catalogue. Voices are grouped by accent (British first for UK businesses, American, Irish, Australian…) with a preview button on each. The voice engine itself (Cartesia, ElevenLabs) is chosen by ParlioTec, not per business, so you only ever choose the voice. Owner voice cloning is on the *Quality & simulate* page.
 
 ## Speaking style
 
@@ -93,4 +93,4 @@ Every publish is kept. **Restore** puts an earlier version back as the live one 
 
 ## Publish checks
 
-Before publishing, Parlio replays your regression pack (saved test conversations from *Quality & simulate*). If the pass rate would drop you see "Not published — the regression pack found a problem" with the failing scenarios; you can **Keep editing** or **Publish anyway**.
+Before publishing, ParlioTec replays your regression pack (saved test conversations from *Quality & simulate*). If the pass rate would drop you see "Not published — the regression pack found a problem" with the failing scenarios; you can **Keep editing** or **Publish anyway**.

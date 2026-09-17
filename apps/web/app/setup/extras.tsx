@@ -88,7 +88,7 @@ export function WhiteGloveCard({ tenant, initial, areas, canManage }: {
         </div>
       ) : (
         <>
-          <p className="hint">Included in your plan: a Parlio specialist reviews your assistant, helps connect forwarding or your PBX, runs test calls with you and trains your team — over a video call.</p>
+          <p className="hint">Included in your plan: a ParlioTec specialist reviews your assistant, helps connect forwarding or your PBX, runs test calls with you and trains your team — over a video call.</p>
           {!open ? (
             <button className="primary" disabled={!canManage} onClick={() => setOpen(true)}>Book a session</button>
           ) : (

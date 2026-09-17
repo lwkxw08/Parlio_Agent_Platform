@@ -40,7 +40,7 @@ export default function Login() {
 
   return (
     <div className="section" style={{ maxWidth: 420, margin: "3rem auto" }}>
-      <h2>{mode === "in" ? "Sign in to Parlio" : "Create your Parlio account"}</h2>
+      <h2>{mode === "in" ? "Sign in to ParlioTec" : "Create your ParlioTec account"}</h2>
       <p className="hint">Use Google or your email address.</p>
       <button className="ghost" style={{ width: "100%", padding: "0.6rem" }} onClick={signInWithGoogle}>
         Continue with Google

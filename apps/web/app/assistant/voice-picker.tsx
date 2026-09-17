@@ -37,7 +37,7 @@ export default function VoicePicker({ value, businessName, onChange }: Props) {
     stop(); setError(null); setPlaying(v.id);
     const r = await previewVoice({
       provider: v.provider, voice_id: v.id, speed: value.speed,
-      text: `Good ${new Date().getHours() < 12 ? "morning" : "afternoon"}, thanks for calling ${businessName || "Parlio"}. You're through to ${v.name} - how can I help you today?`,
+      text: `Good ${new Date().getHours() < 12 ? "morning" : "afternoon"}, thanks for calling ${businessName || "ParlioTec"}. You're through to ${v.name} - how can I help you today?`,
     });
     if (!r.ok) { setPlaying(null); return setError(r.error); }
     const a = new Audio(`data:${r.data.mime};base64,${r.data.audio_b64}`);
@@ -101,7 +101,7 @@ export default function VoicePicker({ value, businessName, onChange }: Props) {
       {cat && !canPreview && <p className="small muted">Previews are not enabled on this server.</p>}
 
       <p className="small muted">
-        Voice engine: <b>{provider === "cartesia" ? "Cartesia Sonic" : "ElevenLabs Flash"}</b> — managed by Parlio for your region
+        Voice engine: <b>{provider === "cartesia" ? "Cartesia Sonic" : "ElevenLabs Flash"}</b> — managed by ParlioTec for your region
         {cat ? ` (${cat.market})` : ""}.
         {" "}
         <button type="button" className="ghost" onClick={() => setShowCustom((s) => !s)}>{showCustom ? "Hide" : "Advanced: use a custom voice ID"}</button>

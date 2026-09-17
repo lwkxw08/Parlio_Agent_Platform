@@ -7,7 +7,7 @@ keywords: settings, organisation, branding, logo, white label, custom domain, dn
 
 ## Branding
 
-**Brand name**, **Logo URL**, **Icon URL**, **Primary** and **Accent colour**, **Support email** and **Support URL** change how the dashboard, emails and chat widget look for your users. Agencies use this to present Parlio under their own name.
+**Brand name**, **Logo URL**, **Icon URL**, **Primary** and **Accent colour**, **Support email** and **Support URL** change how the dashboard, emails and chat widget look for your users. Agencies use this to present ParlioTec under their own name.
 
 ## Custom domain
 
@@ -19,11 +19,11 @@ For agencies and resellers: **Add a client** creates a separate organisation und
 
 ## Compliance pack
 
-Downloadable Data Processing Agreement, security overview and the **Sub-processors** list (the vendors Parlio uses to run the service, with region). Under **Assistants & region pinning** you can see where each assistant's data is processed; UK-only processing is available on the Sovereign tier.
+Downloadable Data Processing Agreement, security overview and the **Sub-processors** list (the vendors ParlioTec uses to run the service, with region). Under **Assistants & region pinning** you can see where each assistant's data is processed; UK-only processing is available on the Sovereign tier.
 
 ## Security
 
 - **Two-factor authentication** – enrol your own authenticator here, and **Require 2FA for** *nobody*, *owners & admins* or *everyone*.
 - **Sign-in session length** – hours before users must sign in again. **Sessions** lists active sign-ins with **Revoke**.
 - **Single sign-on** – connect your **Identity provider** (Google Workspace, Microsoft Entra, Okta, or any OIDC/SAML) with the **Email domains**, **Issuer / entity ID**, **Client ID** and **Metadata URL**. Users on those domains sign in through it.
-- **SCIM user provisioning** – lets your identity provider create and remove Parlio users automatically; generate the SCIM token here.
+- **SCIM user provisioning** – lets your identity provider create and remove ParlioTec users automatically; generate the SCIM token here.

@@ -45,7 +45,7 @@ export default function AskAi({ assistantId, field, current, onInsert, website, 
       <div className="row" style={{ gap: "0.5rem", alignItems: "flex-start" }}>
         <textarea
           value={brief}
-          placeholder={placeholder ?? "e.g. Help me write this for Parlio Demo Plumbing — use details from www.parliodemo.co.uk, mention 24/7 emergency call-outs"}
+          placeholder={placeholder ?? "e.g. Help me write this for ParlioTec Demo Plumbing — use details from www.parliodemo.co.uk, mention 24/7 emergency call-outs"}
           onChange={(e) => setBrief(e.target.value)}
           onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) run(); }}
           style={{ flex: 1, minHeight: "3.2rem" }}

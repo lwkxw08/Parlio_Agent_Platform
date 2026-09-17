@@ -318,7 +318,7 @@ async def first_week_report(
 
 
 def render_first_week(rep: FirstWeekReport, business: str) -> str:
-    lines = [f"Your first {rep.days_live or 7} days with Parlio at {business}:"]
+    lines = [f"Your first {rep.days_live or 7} days with ParlioTec at {business}:"]
     lines += [f"• {h}" for h in rep.highlights]
     if rep.next_steps:
         lines.append("")

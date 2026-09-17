@@ -77,7 +77,7 @@ def verify_totp(secret_b32: str, code: str, at: float | None = None, window: int
     )
 
 
-def otpauth_uri(secret_b32: str, email: str, issuer: str = "Parlio") -> str:
+def otpauth_uri(secret_b32: str, email: str, issuer: str = "ParlioTec") -> str:
     return (
         f"otpauth://totp/{quote(issuer)}:{quote(email)}?secret={secret_b32}"
         f"&issuer={quote(issuer)}&algorithm=SHA1&digits=6&period=30"

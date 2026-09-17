@@ -489,7 +489,7 @@ class StripeBilling:
                 "line_items[0][price_data][currency]": "gbp",
                 "line_items[0][price_data][unit_amount]": str(plan.monthly_pence),
                 "line_items[0][price_data][recurring][interval]": "month",
-                "line_items[0][price_data][product_data][name]": f"Parlio {plan.name}",
+                "line_items[0][price_data][product_data][name]": f"ParlioTec {plan.name}",
                 "line_items[0][quantity]": "1",
                 "allow_promotion_codes": "true",
                 "metadata[plan_id]": plan.id,
@@ -516,7 +516,7 @@ class StripeBilling:
                 "subscription": subscription_ref,
                 "currency": "gbp",
                 "amount": str(pence),
-                "description": f"Parlio overage: {overage_minutes:.0f} min",
+                "description": f"ParlioTec overage: {overage_minutes:.0f} min",
             },
         )
         r.raise_for_status()
@@ -796,7 +796,7 @@ class BillingService:
             raise ValueError(f"unknown plan {plan_id}")
         plan = PLAN_BY_ID[plan_id]
         if plan.enterprise and not by_staff:
-            raise ValueError("enterprise plans are set up by Parlio; contact sales")
+            raise ValueError("enterprise plans are set up by ParlioTec; contact sales")
         assistants = await self.store.list_assistants(tenant_id)
         if len(assistants) > plan.max_assistants:
             raise ValueError(

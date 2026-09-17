@@ -185,7 +185,7 @@ export default function HelpDrawer() {
   return (
     <>
       {!open && (
-        <button type="button" className="help-fab" onClick={() => setOpen(true)} aria-label="Help and Ask Parlio" title="Help (press ?)">
+        <button type="button" className="help-fab" onClick={() => setOpen(true)} aria-label="Help and Ask ParlioTec" title="Help (press ?)">
           <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><circle cx="12" cy="12" r="9" /><path d="M9.5 9.5a2.5 2.5 0 015 0c0 1.6-2.5 2-2.5 3.5M12 17h.01" /></svg>
         </button>
       )}
@@ -194,13 +194,13 @@ export default function HelpDrawer() {
         <header className="help-head">
           <div>
             <strong>Help</strong>
-            <span className="muted small" style={{ marginLeft: 8 }}>Guide &amp; Ask Parlio</span>
+            <span className="muted small" style={{ marginLeft: 8 }}>Guide &amp; Ask ParlioTec</span>
           </div>
           <button type="button" className="ghost" onClick={() => setOpen(false)} aria-label="Close help">Close</button>
         </header>
         <nav className="tabs help-tabs">
           <button type="button" className={tab === "page" ? "active" : ""} onClick={() => setTab("page")}>This page</button>
-          <button type="button" className={tab === "ask" ? "active" : ""} onClick={() => setTab("ask")}>Ask Parlio</button>
+          <button type="button" className={tab === "ask" ? "active" : ""} onClick={() => setTab("ask")}>Ask ParlioTec</button>
           <button type="button" className={tab === "all" ? "active" : ""} onClick={() => setTab("all")}>All guides</button>
         </nav>
 
@@ -211,7 +211,7 @@ export default function HelpDrawer() {
             ) : (
               <div className="help-empty">
                 <p className="muted">There's no guide page for this screen yet.</p>
-                <button type="button" className="btn" onClick={() => setTab("ask")}>Ask Parlio instead</button>
+                <button type="button" className="btn" onClick={() => setTab("ask")}>Ask ParlioTec instead</button>
               </div>
             )}
           </div>
@@ -252,7 +252,7 @@ export default function HelpDrawer() {
             <div className="help-body help-log" ref={logRef}>
               {turns.length === 0 && (
                 <div className="help-empty">
-                  <p className="muted small">Ask anything about setting up or using Parlio — answers come from the guide and point you to the exact setting.</p>
+                  <p className="muted small">Ask anything about setting up or using ParlioTec — answers come from the guide and point you to the exact setting.</p>
                   <div className="help-suggest">
                     {SUGGESTIONS.map((s) => (
                       <button key={s} type="button" onClick={() => void ask(s)}>{s}</button>
@@ -327,7 +327,7 @@ function PageGuide({ page, onAsk }: { page: GuidePage; onAsk: (q: string) => voi
       ))}
       <p className="small muted" style={{ marginTop: "0.8rem" }}>
         Not what you were after?{" "}
-        <button type="button" className="link" onClick={() => onAsk(`How do I use ${page.title}?`)}>Ask Parlio</button>
+        <button type="button" className="link" onClick={() => onAsk(`How do I use ${page.title}?`)}>Ask ParlioTec</button>
       </p>
     </div>
   );

@@ -91,7 +91,7 @@ export default function Support({ tenant, tickets: initial, kb: kbInitial }: { t
           <div className="section form">
             <h2>Help articles</h2>
             <p className="small muted" style={{ marginTop: 0 }}>
-              Need a how-to? <button type="button" className="link" onClick={() => openHelp()}>Ask Parlio</button> answers questions from the full user guide and takes you to the exact setting.
+              Need a how-to? <button type="button" className="link" onClick={() => openHelp()}>Ask ParlioTec</button> answers questions from the full user guide and takes you to the exact setting.
             </p>
             <input placeholder="Search e.g. forwarding, SIP, billing" value={q} onChange={(e) => search(e.target.value)} style={{ width: "100%", marginBottom: "0.6rem" }} />
             {kb.map((a) => (

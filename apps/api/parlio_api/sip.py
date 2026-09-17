@@ -1,19 +1,19 @@
 """BYO SIP trunking (Phase 5b): let a customer connect their PBX or SIP account to Parlio.
 
 Three connection modes, one `SipTrunk` record:
-- `forward`      : customer forwards their number to a Parlio (carrier) number. Nothing to
+- `forward`      : customer forwards their number to a ParlioTec (carrier) number. Nothing to
                    provision; the trunk just documents the numbers and routing.
-- `pbx`          : customer's PBX (3CX, FreePBX, RingCentral...) sends calls to Parlio with
-                   Parlio-issued digest credentials (+ optional IP allowlist). Provisioned as a
+- `pbx`          : customer's PBX (3CX, FreePBX, RingCentral...) sends calls to ParlioTec with
+                   ParlioTec-issued digest credentials (+ optional IP allowlist). Provisioned as a
                    LiveKit inbound trunk with auth; extension transfers go back over a LiveKit
                    outbound trunk to the PBX.
-- `byo_register` : Parlio registers to the customer's SIP provider (Voipfone, Sipgate...) with
-                   the customer's credentials, so their existing number rings Parlio. Needs a
+- `byo_register` : ParlioTec registers to the customer's SIP provider (Voipfone, Sipgate...) with
+                   the customer's credentials, so their existing number rings ParlioTec. Needs a
                    registering SIP edge (Kamailio/OpenSIPS) in front of LiveKit SIP, which is a
                    deployment concern reported through `Registrar`; the data model, credential
                    handling and routing are complete here.
 
-Passwords are sealed in the vault and never returned after creation (Parlio-issued ones are shown
+Passwords are sealed in the vault and never returned after creation (ParlioTec-issued ones are shown
 once, like API keys). `SipProvisioner` is the seam to LiveKit; `SimulatedProvisioner` keeps the
 whole flow testable without a live SIP edge or approved carrier number.
 """
@@ -580,10 +580,10 @@ PROVIDER_GUIDES: list[ProviderGuide] = [
         id="forward",
         name="Call forwarding (any provider)",
         mode=TrunkMode.FORWARD,
-        summary="Simplest: forward your existing number to your Parlio number. No SIP needed.",
+        summary="Simplest: forward your existing number to your ParlioTec number. No SIP needed.",
         steps=[
             "In your phone provider's portal enable call forwarding (always, or on no-answer /"
-            " busy for overflow) to your Parlio number.",
+            " busy for overflow) to your ParlioTec number.",
             "Add your forwarded number as a DDI here so the assistant greets callers correctly.",
             "Call your number to test; the assistant should answer within a ring.",
         ],
@@ -594,19 +594,19 @@ PROVIDER_GUIDES: list[ProviderGuide] = [
         name="Mobile phone (EE, O2, Vodafone, Three, giffgaff...)",
         mode=TrunkMode.FORWARD,
         summary=(
-            "No landline needed: divert your business mobile to your Parlio number, either"
+            "No landline needed: divert your business mobile to your ParlioTec number, either"
             " always or only when you can't answer."
         ),
         steps=[
-            "Decide how much Parlio should handle. Overflow only: dial **61*<Parlio number>**"
+            "Decide how much ParlioTec should handle. Overflow only: dial **61*<ParlioTec number>**"
             " to divert unanswered calls (add *11 before the final # to set the ring time to"
             " ~15s, e.g. **61*<number>*11*15#), **67*<number># when busy and"
             " **62*<number># when out of signal. Everything: dial **21*<number>#.",
-            "Enter your Parlio number in international format (+44... or 0044...) exactly as"
+            "Enter your ParlioTec number in international format (+44... or 0044...) exactly as"
             " shown on this page.",
             "Add your mobile number as a DDI here so the assistant knows which business the"
             " call is for and can text callers back from the right identity.",
-            "Test by calling your mobile from another phone and letting it ring out; Parlio"
+            "Test by calling your mobile from another phone and letting it ring out; ParlioTec"
             " should answer within a ring of the divert.",
             "To switch off later: ##61#, ##67#, ##62# or ##21# (or ##002# to clear all).",
         ],
@@ -624,7 +624,7 @@ PROVIDER_GUIDES: list[ProviderGuide] = [
         id="voipfone",
         name="Voipfone",
         mode=TrunkMode.BYO_REGISTER,
-        summary="Parlio registers as an extension on your Voipfone account.",
+        summary="ParlioTec registers as an extension on your Voipfone account.",
         steps=[
             "Voipfone control panel: Services > Extensions > Add extension; note the extension"
             " number and password.",
@@ -642,7 +642,7 @@ PROVIDER_GUIDES: list[ProviderGuide] = [
         id="sipgate",
         name="Sipgate",
         mode=TrunkMode.BYO_REGISTER,
-        summary="Parlio registers with a sipgate SIP credential (device).",
+        summary="ParlioTec registers with a sipgate SIP credential (device).",
         steps=[
             "sipgate: Phone settings > add a VoIP phone/device; copy its SIP ID and password.",
             "Registrar sipgate.co.uk (UK) or sipgate.de (DE); username = SIP ID.",
@@ -655,9 +655,9 @@ PROVIDER_GUIDES: list[ProviderGuide] = [
         id="gamma",
         name="Gamma SIP Trunk",
         mode=TrunkMode.PBX,
-        summary="Point a Gamma trunk (or your Gamma-connected PBX) at Parlio's SIP edge.",
+        summary="Point a Gamma trunk (or your Gamma-connected PBX) at ParlioTec's SIP edge.",
         steps=[
-            "Create a PBX trunk here; Parlio issues a SIP username/password and domain.",
+            "Create a PBX trunk here; ParlioTec issues a SIP username/password and domain.",
             "Ask Gamma (or configure your PBX) to deliver your DDIs to that address with digest"
             " auth, or add Gamma's media IPs to the allowlist for IP auth.",
             "Add each DDI and the assistant it should reach.",
@@ -669,17 +669,18 @@ PROVIDER_GUIDES: list[ProviderGuide] = [
         id="3cx",
         name="3CX",
         mode=TrunkMode.PBX,
-        summary="Add Parlio as a generic SIP trunk in 3CX and route out-of-hours/no-answer to it.",
+        summary="Add ParlioTec as a generic SIP trunk in 3CX and route out-of-hours/no-answer "
+        "to it.",
         steps=[
             "Create a PBX trunk here and copy the issued credentials.",
             "3CX admin: Voice & Chat > Add SIP trunk > Generic (registration based); paste the"
             " registrar/domain, username and password.",
             "Inbound rules: send the DDI to a Ring Group, with 'no answer'/out-of-office"
-            " destination = External number via the Parlio trunk (or route directly to it).",
+            " destination = External number via the ParlioTec trunk (or route directly to it).",
             "For AI-to-staff transfers, enter your 3CX public address as the PBX address.",
         ],
         quirks=[
-            "3CX blocks unknown trunks by default: add Parlio's edge IP to its allowlist.",
+            "3CX blocks unknown trunks by default: add ParlioTec's edge IP to its allowlist.",
             "Use 'Register' mode; 3CX needs an outbound caller ID on the trunk.",
         ],
         defaults={"transport": "udp", "codecs": ["PCMA", "opus"], "dtmf": "rfc2833"},
@@ -688,14 +689,14 @@ PROVIDER_GUIDES: list[ProviderGuide] = [
         id="freepbx",
         name="FreePBX / Asterisk",
         mode=TrunkMode.PBX,
-        summary="pjsip trunk from FreePBX to Parlio; extensions reachable for transfers.",
+        summary="pjsip trunk from FreePBX to ParlioTec; extensions reachable for transfers.",
         steps=[
             "Create a PBX trunk here and copy the issued credentials.",
-            "FreePBX: Connectivity > Trunks > Add pjsip trunk; SIP server = Parlio domain,"
+            "FreePBX: Connectivity > Trunks > Add pjsip trunk; SIP server = ParlioTec domain,"
             " username/secret as issued, registration Send.",
             "Inbound route or time condition: after-hours destination = trunk (custom"
             " destination dialling the DDI).",
-            "Set the PBX address so Parlio can dial extensions back.",
+            "Set the PBX address so ParlioTec can dial extensions back.",
         ],
         quirks=["Set DTMF mode rfc4733 (RFC 2833) on the trunk; disable inband."],
         defaults={"transport": "udp", "codecs": ["PCMA", "opus"], "dtmf": "rfc2833"},
@@ -707,7 +708,7 @@ PROVIDER_GUIDES: list[ProviderGuide] = [
         summary="RingCentral does not offer customer SIP trunks; use forwarding or overflow rules.",
         steps=[
             "Admin portal: Phone System > Numbers > forward the number (or an After Hours rule)"
-            " to your Parlio number.",
+            " to your ParlioTec number.",
             "Add the number as a DDI here.",
         ],
         quirks=["Call queues can overflow to an external number after N seconds."],

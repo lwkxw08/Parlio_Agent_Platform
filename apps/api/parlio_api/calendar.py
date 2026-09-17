@@ -1,7 +1,7 @@
 """Calendar & booking integration: mid-call availability checks and appointment booking.
 
 Two shapes of integration share one `CalendarConnection` model:
-- OAuth calendars (Google, Microsoft/Outlook): Parlio reads free/busy and creates events. The
+- OAuth calendars (Google, Microsoft/Outlook): ParlioTec reads free/busy and creates events. The
   refresh token is sealed in the vault; only `has_token` is ever exposed.
 - Booking links (Cal.com, Square, GoHighLevel, anything with a URL): no API access - the assistant
   texts the link (via the `booking_link` SMS scenario) instead of booking directly.
@@ -188,9 +188,9 @@ class Booking(BaseModel):
         lines = [f"{k}: {v}" for k, v in rows if v]
         lines.append("")
         lines.append(
-            f"Booked by Parlio from a call. Recording and transcript: {self.call_link}"
+            f"Booked by ParlioTec from a call. Recording and transcript: {self.call_link}"
             if self.call_link
-            else "Booked by Parlio."
+            else "Booked by ParlioTec."
         )
         return "\n".join(lines)
 
