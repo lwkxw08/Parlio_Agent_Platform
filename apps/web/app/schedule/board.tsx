@@ -43,6 +43,14 @@ const hm = (mins: number) => `${String(Math.floor(mins / 60)).padStart(2, "0")}:
 const fmtTime = (iso: string, tz: string) => new Date(iso).toLocaleTimeString("en-GB", { timeZone: tz, hour: "2-digit", minute: "2-digit" });
 const fmtDay = (ymd: string, long = false) => new Date(`${ymd}T12:00:00Z`).toLocaleDateString("en-GB", long ? { weekday: "long", day: "numeric", month: "long", year: "numeric" } : { weekday: "short", day: "numeric", month: "short" });
 const STATUS_CLASS: Record<string, string> = { confirmed: "ok", cancelled: "bad", reschedule_requested: "warn", booked: "" };
+const HUES = [222, 152, 28, 292, 190, 0, 64, 330];
+type HueFor = (resourceId: string | null) => number;
+// Colour is keyed by the engineer's position in the Team list so it stays the same across filters and days.
+const hueFor = (resources: Resource[]): HueFor => (resourceId) => {
+  const i = resources.findIndex((r) => r.id === resourceId);
+  return HUES[(i < 0 ? 0 : i) % HUES.length];
+};
+const laneColour = (hue: number) => ({ line: `hsl(${hue} 65% 48%)`, soft: `hsl(${hue} 80% 60% / 0.2)` });
 
 export default function ScheduleBoard({ tenant, initial, error: initialError, start, days, resources, services, sites, canManage }: Props) {
   const router = useRouter();
@@ -68,6 +76,7 @@ export default function ScheduleBoard({ tenant, initial, error: initialError, st
   const dayList = useMemo(() => Array.from({ length: days }, (_, i) => addDays(start, i)), [start, days]);
   const readOnly = view?.read_only ?? false;
   const actions = canManage && !readOnly;
+  const hue = useMemo(() => hueFor(resources), [resources]);
 
   return (
     <>
@@ -103,8 +112,13 @@ export default function ScheduleBoard({ tenant, initial, error: initialError, st
       </div>
       {error && <p className="hint warn">{error}</p>}
       {view && view.lanes.length === 0 && <p className="muted">Nothing to show — connect a calendar or add engineers under Team.</p>}
-      {view && days === 1 && <DayView view={view} day={start} onPick={setSelected} />}
-      {view && days === 7 && <WeekView view={view} dayList={dayList} onPick={setSelected} />}
+      {view && view.lanes.length > 1 && (
+        <div className="row small" style={{ gap: 12, flexWrap: "wrap", marginBottom: 6 }}>
+          {view.lanes.map((l) => <span key={l.resource_id ?? "single"}><Swatch hue={hue(l.resource_id)} /> {l.name}</span>)}
+        </div>
+      )}
+      {view && days === 1 && <DayView view={view} day={start} hue={hue} onPick={setSelected} />}
+      {view && days === 7 && <WeekView view={view} dayList={dayList} hue={hue} onPick={setSelected} />}
       {selected && (
         <BlockDetail
           tenant={tenant}
@@ -117,7 +131,7 @@ export default function ScheduleBoard({ tenant, initial, error: initialError, st
         />
       )}
       <p className="hint" style={{ marginTop: "1rem" }}>
-        Shaded areas are shifts; hatched blocks are other events already in the engineer&apos;s calendar; thin grey blocks are travel gaps.
+        Each engineer has their own colour. Shaded areas are shifts; hatched blocks are other events already in the engineer&apos;s calendar; thin grey blocks are travel gaps.
         Click a booking to see the details{actions ? " and reassign, move or cancel it" : ""}.
       </p>
     </>
@@ -135,7 +149,12 @@ function laneWindow(lanes: ScheduleLane[], day: string, tz: string): [number, nu
   return [lo, hi];
 }
 
-function DayView({ view, day, onPick }: { view: ScheduleView; day: string; onPick: (b: ScheduleBlock) => void }) {
+function Swatch({ hue }: { hue: number }) {
+  const c = laneColour(hue);
+  return <span aria-hidden style={{ display: "inline-block", width: 10, height: 10, borderRadius: 3, background: c.soft, border: `1px solid ${c.line}`, verticalAlign: "middle" }} />;
+}
+
+function DayView({ view, day, hue, onPick }: { view: ScheduleView; day: string; hue: HueFor; onPick: (b: ScheduleBlock) => void }) {
   const tz = view.timezone;
   const [lo, hi] = laneWindow(view.lanes, day, tz);
   const span = hi - lo;
@@ -155,9 +174,11 @@ function DayView({ view, day, onPick }: { view: ScheduleView; day: string; onPic
             {hours.map((h) => <span key={h} className="small muted" style={{ position: "absolute", left: pct(h), transform: "translateX(-50%)" }}>{hm(h)}</span>)}
           </div>
         </div>
-        {view.lanes.map((l) => (
+        {view.lanes.map((l) => {
+          const h = hue(l.resource_id);
+          return (
           <div key={l.resource_id ?? "single"} style={{ display: "grid", gridTemplateColumns: "160px 1fr", borderTop: "1px solid var(--line)", minHeight: 64 }}>
-            <div style={{ padding: "0.5rem 0.4rem 0.5rem 0" }}>
+            <div style={{ padding: "0.5rem 0.4rem 0.5rem 0", borderLeft: `4px solid ${laneColour(h).line}`, paddingLeft: 8 }}>
               <div><strong>{l.name}</strong>{l.on_call && <span className="pill warn" style={{ marginLeft: 6 }}>On call</span>}</div>
               <div className="small muted">{l.role}{l.shift_minutes > 0 && <> · {Math.round(l.utilisation * 100)}% booked</>}</div>
               {l.error && <div className="small warn" title={l.error}>Calendar error</div>}
@@ -170,17 +191,19 @@ function DayView({ view, day, onPick }: { view: ScheduleView; day: string; onPic
               })}
               {l.blocks.filter((b) => inDay(b.start) || inDay(b.end)).map((b) => {
                 const [a, e] = range(b.start, b.end);
-                return <BlockChip key={b.id} b={b} left={pct(a)} width={`calc(${pct(e)} - ${pct(a)})`} tz={tz} onPick={onPick} />;
+                return <BlockChip key={b.id} b={b} hue={h} left={pct(a)} width={`calc(${pct(e)} - ${pct(a)})`} tz={tz} onPick={onPick} />;
               })}
             </div>
           </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );
 }
 
-function BlockChip({ b, left, width, tz, onPick }: { b: ScheduleBlock; left: string; width: string; tz: string; onPick: (b: ScheduleBlock) => void }) {
+function BlockChip({ b, hue, left, width, tz, onPick }: { b: ScheduleBlock; hue: number; left: string; width: string; tz: string; onPick: (b: ScheduleBlock) => void }) {
+  const c = laneColour(hue);
   const base: React.CSSProperties = { position: "absolute", left, width, top: 6, bottom: 6, borderRadius: 6, overflow: "hidden", fontSize: "0.75rem", padding: "2px 6px", boxSizing: "border-box" };
   if (b.kind === "travel") return <div title="Travel gap" style={{ ...base, top: 22, bottom: 22, background: "var(--line)" }} />;
   if (b.kind === "busy") {
@@ -196,23 +219,25 @@ function BlockChip({ b, left, width, tz, onPick }: { b: ScheduleBlock; left: str
       className={`block ${cls}`}
       onClick={() => onPick(b)}
       title={`${b.customer ?? ""} · ${b.service ?? ""} · ${fmtTime(b.start, tz)}–${fmtTime(b.end, tz)}`}
-      style={{ ...base, textAlign: "left", cursor: "pointer", border: "1px solid var(--accent)", background: b.status === "cancelled" ? "transparent" : "var(--accent-soft, rgba(80,120,255,0.18))", color: "var(--fg)", textDecoration: b.status === "cancelled" ? "line-through" : undefined }}
+      style={{ ...base, textAlign: "left", cursor: "pointer", border: `1px solid ${c.line}`, background: b.status === "cancelled" ? "transparent" : c.soft, color: "var(--fg)", textDecoration: b.status === "cancelled" ? "line-through" : undefined }}
     >
       <strong>{fmtTime(b.start, tz)}</strong> {b.customer}{b.service && <span className="muted"> · {b.service}</span>}{b.area && <span className="muted"> · {b.area}</span>}
     </button>
   );
 }
 
-function WeekView({ view, dayList, onPick }: { view: ScheduleView; dayList: string[]; onPick: (b: ScheduleBlock) => void }) {
+function WeekView({ view, dayList, hue, onPick }: { view: ScheduleView; dayList: string[]; hue: HueFor; onPick: (b: ScheduleBlock) => void }) {
   const tz = view.timezone;
   return (
     <div style={{ overflowX: "auto" }}>
       <table className="schedule-week" style={{ minWidth: 900 }}>
         <thead><tr><th style={{ width: 150 }}></th>{dayList.map((d) => <th key={d}>{fmtDay(d)}</th>)}</tr></thead>
         <tbody>
-          {view.lanes.map((l) => (
+          {view.lanes.map((l) => {
+            const c = laneColour(hue(l.resource_id));
+            return (
             <tr key={l.resource_id ?? "single"}>
-              <td style={{ verticalAlign: "top" }}>
+              <td style={{ verticalAlign: "top", borderLeft: `4px solid ${c.line}` }}>
                 <strong>{l.name}</strong>{l.on_call && <span className="pill warn" style={{ marginLeft: 6 }}>On call</span>}
                 <div className="small muted">{l.role}{l.shift_minutes > 0 && <> · {Math.round(l.utilisation * 100)}%</>}</div>
               </td>
@@ -225,7 +250,7 @@ function WeekView({ view, dayList, onPick }: { view: ScheduleView; dayList: stri
                     {blocks.map((b) => b.kind === "busy" ? (
                       <div key={b.id} className="small muted" style={{ borderLeft: "3px solid var(--line)", paddingLeft: 4, margin: "2px 0" }}>{fmtTime(b.start, tz)} {b.title || "Busy"}</div>
                     ) : (
-                      <button key={b.id} className={`ghost small ${STATUS_CLASS[b.status ?? ""] ?? ""}`} onClick={() => onPick(b)} style={{ display: "block", textAlign: "left", width: "100%", margin: "2px 0", padding: "2px 4px", borderLeft: "3px solid var(--accent)", textDecoration: b.status === "cancelled" ? "line-through" : undefined }}>
+                      <button key={b.id} className={`ghost small ${STATUS_CLASS[b.status ?? ""] ?? ""}`} onClick={() => onPick(b)} style={{ display: "block", textAlign: "left", width: "100%", margin: "2px 0", padding: "2px 4px", borderLeft: `3px solid ${c.line}`, background: b.status === "cancelled" ? undefined : c.soft, textDecoration: b.status === "cancelled" ? "line-through" : undefined }}>
                         {fmtTime(b.start, tz)} {b.customer}{b.service && <span className="muted"> · {b.service}</span>}
                       </button>
                     ))}
@@ -233,7 +258,8 @@ function WeekView({ view, dayList, onPick }: { view: ScheduleView; dayList: stri
                 );
               })}
             </tr>
-          ))}
+            );
+          })}
         </tbody>
       </table>
     </div>
