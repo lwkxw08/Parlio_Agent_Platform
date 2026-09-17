@@ -15,7 +15,7 @@ from __future__ import annotations
 import logging
 import secrets
 from collections.abc import Awaitable, Callable
-from datetime import UTC, datetime, time, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from enum import StrEnum
 from typing import Any, Protocol
 from urllib.parse import urlencode
@@ -58,6 +58,46 @@ class Slot(BaseModel):
         return self.start < other.end and other.start < self.end
 
 
+class ServiceType(BaseModel):
+    """A bookable service the tenant offers, with its own appointment length."""
+
+    id: str = Field(default_factory=lambda: f"svc-{uuid4().hex[:6]}")
+    name: str = Field(min_length=1, max_length=80)
+    minutes: int = Field(default=60, ge=5, le=480)
+    description: str | None = Field(default=None, max_length=300)
+    emergency: bool = Field(
+        default=False,
+        description="Emergency service: may be booked outside booking hours and off the grid.",
+    )
+
+
+class BookingRules(BaseModel):
+    """Tenant-set rules the assistant follows when offering and booking slots."""
+
+    align_minutes: int = Field(
+        default=30,
+        ge=0,
+        le=120,
+        description="Start times fall on this grid (60 = on the hour, 30 = hour/half-past; "
+        "0 = back to back).",
+    )
+    use_business_hours: bool = Field(
+        default=True, description="Book within the assistant's business hours (else own hours)."
+    )
+    min_notice_minutes: int = Field(default=0, ge=0, le=7 * 24 * 60)
+    max_days_ahead: int = Field(default=30, ge=1, le=365)
+    emergency_any_time: bool = Field(
+        default=True, description="Emergency services ignore hours, grid and notice."
+    )
+    services: list[ServiceType] = Field(default_factory=list)
+
+    def service(self, service_id: str | None) -> ServiceType | None:
+        if not service_id:
+            return None
+        key = service_id.strip().lower()
+        return next((s for s in self.services if s.id == service_id or s.name.lower() == key), None)
+
+
 class CalendarConnection(BaseModel):
     id: str = Field(default_factory=lambda: f"cal-{uuid4().hex[:8]}")
     tenant_id: str
@@ -72,6 +112,7 @@ class CalendarConnection(BaseModel):
     slot_minutes: int = Field(default=30, ge=5, le=480)
     buffer_minutes: int = Field(default=0, ge=0, le=120)
     hours: Schedule = Field(default_factory=Schedule)
+    rules: BookingRules = Field(default_factory=BookingRules)
     token_sealed: str | None = Field(default=None, exclude=True)
     last_sync_at: datetime | None = None
     last_error: str | None = None
@@ -121,6 +162,8 @@ class Booking(BaseModel):
     name: str
     phone: str | None = None
     notes: str | None = None
+    service_id: str | None = None
+    service_name: str | None = None
     provider_ref: str | None = None
     status: str = "confirmed"
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
@@ -162,6 +205,7 @@ class BookingRequest(BaseModel):
     notes: str | None = None
     call_id: str | None = None
     duration_minutes: int | None = None
+    service_id: str | None = None
 
 
 class OAuthTokens(BaseModel):
@@ -170,6 +214,36 @@ class OAuthTokens(BaseModel):
 
 
 # -- free slot computation -------------------------------------------------------------------
+
+
+def _day_window(hours: Schedule, day: date, tz: ZoneInfo) -> tuple[datetime, datetime] | None:
+    """Open/close for `day` under `hours`, honouring holidays; None when closed."""
+    if hours.always:
+        return datetime.combine(day, time(0, 0), tz), datetime.combine(day, time(23, 59), tz)
+    dh = hours.hours.get(WEEKDAYS[day.weekday()])
+    hol = next((h for h in hours.holidays if h.day == day), None)
+    if hol is not None:
+        dh = None if hol.closed else (hol.hours or dh)
+    if dh is None or dh.open >= dh.close:
+        return None
+    return datetime.combine(day, dh.open, tz), datetime.combine(day, dh.close, tz)
+
+
+def _align(t: datetime, grid: timedelta) -> datetime:
+    """Round `t` up to the next point on the grid (measured from local midnight)."""
+    if not grid:
+        return t
+    midnight = t.replace(hour=0, minute=0, second=0, microsecond=0)
+    over = (t - midnight) % grid
+    return t if not over else t + (grid - over)
+
+
+def slot_length(
+    conn: CalendarConnection, duration_minutes: int | None, service: ServiceType | None
+) -> timedelta:
+    if service is not None:
+        return timedelta(minutes=service.minutes)
+    return timedelta(minutes=duration_minutes or conn.slot_minutes)
 
 
 def free_slots(
@@ -181,36 +255,78 @@ def free_slots(
     now: datetime | None = None,
     duration_minutes: int | None = None,
     limit: int = 20,
+    hours: Schedule | None = None,
+    service: ServiceType | None = None,
 ) -> list[Slot]:
-    """Slots within `conn.hours` between start/end not overlapping busy periods or the past."""
+    """Slots the booking rules allow between start/end: inside the booking hours (finishing by
+    close), on the start-time grid, after the notice period, clear of busy periods plus the gap
+    either side. Emergency services (when allowed) ignore hours, grid and notice."""
     now = now or datetime.now(UTC)
-    tz = ZoneInfo(conn.hours.timezone)
-    length = timedelta(minutes=duration_minutes or conn.slot_minutes)
-    step = timedelta(minutes=conn.slot_minutes)
+    rules = conn.rules
+    hours = hours or conn.hours
+    tz = ZoneInfo(hours.timezone)
+    length = slot_length(conn, duration_minutes, service)
+    any_time = bool(service and service.emergency and rules.emergency_any_time)
+    grid = timedelta(minutes=0 if any_time else rules.align_minutes)
+    step = grid or timedelta(minutes=15 if any_time else conn.slot_minutes)
     pad = timedelta(minutes=conn.buffer_minutes)
+    earliest = max(start, now if any_time else now + timedelta(minutes=rules.min_notice_minutes))
+    end = min(end, now + timedelta(days=rules.max_days_ahead))
     out: list[Slot] = []
     day = start.astimezone(tz).date()
     last = end.astimezone(tz).date()
     while day <= last and len(out) < limit:
-        if conn.hours.always:
-            open_t, close_t = time(0, 0), time(23, 59)
-        else:
-            dh = conn.hours.hours.get(WEEKDAYS[day.weekday()])
-            if dh is None:
-                day += timedelta(days=1)
-                continue
-            open_t, close_t = dh.open, dh.close
-        cursor = datetime.combine(day, open_t, tz)
-        close = datetime.combine(day, close_t, tz)
+        window = (
+            _day_window(Schedule(timezone=hours.timezone, always=True), day, tz)
+            if any_time
+            else _day_window(hours, day, tz)
+        )
+        if window is None:
+            day += timedelta(days=1)
+            continue
+        open_at, close = window
+        cursor = _align(max(open_at, earliest.astimezone(tz)), grid)
         while cursor + length <= close and len(out) < limit:
             cand = Slot(start=cursor, end=cursor + length)
             padded = Slot(start=cursor - pad, end=cursor + length + pad)
-            fits = cand.start >= max(now, start) and cand.end <= end
+            fits = cand.start >= earliest and cand.end <= end
             if fits and not any(padded.overlaps(b) for b in busy):
                 out.append(cand)
             cursor += step
         day += timedelta(days=1)
     return out
+
+
+def slot_allowed(
+    conn: CalendarConnection,
+    start: datetime,
+    *,
+    now: datetime,
+    hours: Schedule | None = None,
+    duration_minutes: int | None = None,
+    service: ServiceType | None = None,
+) -> str | None:
+    """Reason a booking at `start` breaks the rules (ignoring busy periods), else None."""
+    rules = conn.rules
+    hours = hours or conn.hours
+    if service is not None and service.emergency and rules.emergency_any_time:
+        return None if start >= now - timedelta(minutes=5) else "that time has passed"
+    tz = ZoneInfo(hours.timezone)
+    local = start.astimezone(tz)
+    length = slot_length(conn, duration_minutes, service)
+    if start < now + timedelta(minutes=rules.min_notice_minutes):
+        return f"bookings need at least {rules.min_notice_minutes} minutes' notice"
+    if start > now + timedelta(days=rules.max_days_ahead):
+        return f"bookings can be made up to {rules.max_days_ahead} days ahead"
+    window = _day_window(hours, local.date(), tz)
+    if window is None:
+        return "we are closed that day"
+    open_at, close = window
+    if local < open_at or local + length > close:
+        return "appointments must start and finish within booking hours"
+    if _align(local, timedelta(minutes=rules.align_minutes)) != local:
+        return f"start times must be on the {rules.align_minutes}-minute grid"
+    return None
 
 
 # -- provider backends -----------------------------------------------------------------------
@@ -480,6 +596,9 @@ class AvailabilityResult(BaseModel):
     slots: list[Slot] = Field(default_factory=list)
     booking_url: str | None = None
     error: str | None = None
+    services: list[ServiceType] = Field(default_factory=list)
+    service_id: str | None = None
+    slot_minutes: int | None = None
 
 
 class CalendarService:
@@ -509,6 +628,13 @@ class CalendarService:
         conns = await self.connections(tenant_id)
         bookable = [c for c in conns if c.bookable and c.status == ConnectionStatus.CONNECTED]
         return bookable[0] if bookable else (conns[0] if conns else None)
+
+    async def booking_hours(self, conn: CalendarConnection) -> Schedule:
+        """Hours bookings must sit inside: the tenant's assistant hours or the connection's own."""
+        if not conn.rules.use_business_hours:
+            return conn.hours
+        assistants = await self.store.list_assistants(conn.tenant_id)
+        return assistants[0].hours if assistants else conn.hours
 
     async def put(self, conn: CalendarConnection) -> CalendarConnection:
         if conn.provider == CalendarProvider.BOOKING_LINK:
@@ -604,6 +730,7 @@ class CalendarService:
         days: int = 7,
         duration_minutes: int | None = None,
         now: datetime | None = None,
+        service_id: str | None = None,
     ) -> AvailabilityResult:
         conn = (
             await self.get(tenant_id, connection_id)
@@ -623,6 +750,14 @@ class CalendarService:
             return AvailabilityResult(
                 connection_id=conn.id, provider=conn.provider, error="calendar not connected"
             )
+        service = conn.rules.service(service_id)
+        if service_id and service is None:
+            return AvailabilityResult(
+                connection_id=conn.id,
+                provider=conn.provider,
+                services=conn.rules.services,
+                error=f"unknown service '{service_id}'",
+            )
         now = now or datetime.now(UTC)
         start = start or now
         end = start + timedelta(days=days)
@@ -633,9 +768,25 @@ class CalendarService:
             return AvailabilityResult(
                 connection_id=conn.id, provider=conn.provider, error=str(e)[:300]
             )
-        slots = free_slots(conn, busy, start, end, now=now, duration_minutes=duration_minutes)
+        slots = free_slots(
+            conn,
+            busy,
+            start,
+            end,
+            now=now,
+            duration_minutes=duration_minutes,
+            hours=await self.booking_hours(conn),
+            service=service,
+        )
         await self._log(conn, "availability", True, f"{len(slots)} free slots")
-        return AvailabilityResult(connection_id=conn.id, provider=conn.provider, slots=slots)
+        return AvailabilityResult(
+            connection_id=conn.id,
+            provider=conn.provider,
+            slots=slots,
+            services=conn.rules.services,
+            service_id=service.id if service else None,
+            slot_minutes=int(slot_length(conn, duration_minutes, service).total_seconds() // 60),
+        )
 
     async def book(self, tenant_id: str, req: BookingRequest) -> Booking:
         conn = (
@@ -648,7 +799,22 @@ class CalendarService:
         be = self.backends.get(conn.provider)
         if be is None:
             raise ValueError(f"{conn.provider} backend not configured")
-        length = timedelta(minutes=req.duration_minutes or conn.slot_minutes)
+        service = conn.rules.service(req.service_id)
+        if req.service_id and service is None:
+            raise ValueError(f"unknown service '{req.service_id}'")
+        now = datetime.now(UTC)
+        why = slot_allowed(
+            conn,
+            req.start,
+            now=now,
+            hours=await self.booking_hours(conn),
+            duration_minutes=req.duration_minutes,
+            service=service,
+        )
+        if why is not None:
+            await self._log(conn, "book", False, why)
+            raise ValueError(why)
+        length = slot_length(conn, req.duration_minutes, service)
         booking = Booking(
             tenant_id=tenant_id,
             company_id=conn.company_id,
@@ -659,11 +825,13 @@ class CalendarService:
             name=req.name,
             phone=req.phone,
             notes=req.notes,
+            service_id=service.id if service else None,
+            service_name=service.name if service else None,
         )
-        busy = await be.busy(
-            conn, booking.start - timedelta(minutes=conn.buffer_minutes), booking.end
-        )
-        if any(Slot(start=booking.start, end=booking.end).overlaps(b) for b in busy):
+        pad = timedelta(minutes=conn.buffer_minutes)
+        busy = await be.busy(conn, booking.start - pad, booking.end + pad)
+        padded = Slot(start=booking.start - pad, end=booking.end + pad)
+        if any(padded.overlaps(b) for b in busy):
             await self._log(conn, "book", False, "slot no longer free")
             raise ValueError("that slot is no longer available")
         try:

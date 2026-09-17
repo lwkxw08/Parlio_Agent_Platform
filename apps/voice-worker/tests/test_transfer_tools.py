@@ -265,8 +265,18 @@ class FakeApi:
             return None
         return {"status": "sent"}
 
-    async def availability(self, cfg: AssistantConfig, days: int = 7) -> dict[str, Any]:
-        return {"slots": [{"start": "2026-09-14T09:00:00Z"}, {"start": "2026-09-14T09:30:00Z"}]}
+    services: list[dict[str, Any]] = []
+
+    async def availability(
+        self, cfg: AssistantConfig, days: int = 7, service_id: str | None = None
+    ) -> dict[str, Any]:
+        self.service_asked = service_id
+        return {
+            "slots": [{"start": "2026-09-14T09:00:00Z"}, {"start": "2026-09-14T09:30:00Z"}],
+            "services": self.services,
+            "service_id": service_id,
+            "slot_minutes": 60,
+        }
 
     async def book(self, cfg: AssistantConfig, req: dict[str, Any]) -> dict[str, Any]:
         if self.fail_booking:
@@ -342,3 +352,24 @@ async def test_calendar_tools_book_and_degrade_gracefully() -> None:
     assert (await broken.book_appointment("2026-09-14T09:00:00Z", "Sam"))["status"] == "failed"
     offline = ReceptionistTools(c, "call-3", None, engine, None, rec.emit, rec.say)
     assert (await offline.calendar_availability())["slots"] == []
+
+
+async def test_calendar_tools_ask_for_service_and_pass_it_through() -> None:
+    api = FakeApi()
+    api.services = [
+        {"id": "svc-1", "name": "Repair", "minutes": 60, "description": None, "emergency": False},
+        {"id": "svc-2", "name": "Service", "minutes": 90, "description": None, "emergency": False},
+    ]
+    rec = Recorder()
+    c = cfg([office()])
+    tools = ReceptionistTools(
+        c, "call-1", None, TransferEngine(c.transfer, SimulatedBridge({})), api, rec.emit, rec.say
+    )
+    avail = await tools.calendar_availability()
+    assert [s["name"] for s in avail["services"]] == ["Repair", "Service"]
+    assert "Ask the caller which one" in avail["hint"]
+    chosen = await tools.calendar_availability(service="svc-2")
+    assert api.service_asked == "svc-2" and chosen["service_id"] == "svc-2"
+    assert "hint" not in chosen
+    await tools.book_appointment("2026-09-14T09:00:00Z", "Sam", service="svc-2")
+    assert api.bookings[-1]["service_id"] == "svc-2"

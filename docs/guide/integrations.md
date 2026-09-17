@@ -27,6 +27,27 @@ Every SMS and WhatsApp message the platform has sent or received for your busine
 
 Calendars the assistant checks for availability and books into. Connect more than one if different people or locations have their own diary. **Disconnect** removes a calendar; existing bookings are kept.
 
+## Booking rules
+
+Shown under each bookable calendar. The assistant only offers and books appointments that follow these rules, so set them to match how you actually work (for example: 1-hour appointments, on the hour or half past, within working hours, finishing by close, 30 minutes travel time between jobs).
+
+- **Standard appointment length** – how long a booking is when no service type is chosen (e.g. 60 min).
+- **Gap between appointments** – time kept free before and after every booking for travel or set-up (e.g. 30 min). A slot is only offered if the gap fits around your existing events too.
+- **Start times** – *On the hour*, *On the hour or half past*, *Every 15 minutes*, or *Back to back* (no fixed grid).
+- **Earliest booking** – the notice a non-emergency booking needs (e.g. 2 hours, or next day onwards).
+- **Book up to** – how many days ahead callers can book.
+- **Book within the assistant's business hours** – ticked, bookings use the business hours set in Assistant Studio and must **finish by closing time**. Untick it to set separate booking hours per day for this calendar (untick a day to close it). Holidays set in Studio → After hours are respected.
+- **Emergency services can be booked any time** – when ticked, services marked *Emergency* may be booked outside hours, off the grid and without notice. Existing bookings and the gap still apply. Untick it to make emergency services follow the same rules as everything else.
+
+The line **In effect** summarises the rules as the assistant will apply them. Press **Save booking rules** to apply; changes take effect on the next call.
+
+## Service types
+
+Create the services callers can book, each with its own length: **Name** (e.g. Boiler service), **Length** in minutes, an optional **Description** that helps the assistant match what the caller asks for, and an **Emergency service** flag. Names must be unique. Use **Edit** and **Remove** to change them, then **Save booking rules**.
+
+- With one or more service types, the assistant asks which service the caller needs, offers slots of that length and records the service on the booking (shown in the **Bookings** table).
+- With none, every booking uses the standard appointment length.
+
 ## Connect
 
 - **Google Calendar** – press Connect and sign in with the Google account whose calendar you want used. The assistant reads free/busy and creates events on it.

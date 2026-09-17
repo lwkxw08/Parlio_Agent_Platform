@@ -19,6 +19,7 @@ from parlio_api.calendar import (
     AvailabilityResult,
     Booking,
     BookingRequest,
+    BookingRules,
     CalendarConnection,
     CalendarProvider,
     ConnectionStatus,
@@ -51,6 +52,7 @@ from parlio_api.sip import (
     TrunkInput,
 )
 from parlio_api.store import CallStore
+from parlio_voice.models import Schedule
 
 router = APIRouter(prefix="/v1", tags=["integrations"])
 public = APIRouter(prefix="/v1/public", tags=["public"])
@@ -225,6 +227,36 @@ async def create_connection(
     return (await cal.put(conn)).public()
 
 
+class BookingRulesInput(BaseModel):
+    """Editable booking rules for one connection (see BookingRules for field meanings)."""
+
+    slot_minutes: int = Field(ge=5, le=480, description="Standard appointment length")
+    buffer_minutes: int = Field(ge=0, le=120, description="Gap either side, e.g. travel")
+    hours: Schedule | None = Field(
+        default=None, description="Own hours when not using business hours"
+    )
+    rules: BookingRules
+
+
+@router.put("/calendar/connections/{conn_id}/rules")
+async def update_booking_rules(
+    user: UserDep, cal: CalendarDep, tenant_id: str, conn_id: str, body: BookingRulesInput
+) -> dict[str, Any]:
+    user.require_admin(tenant_id)
+    conn = await cal.get(tenant_id, conn_id)
+    if conn is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "connection not found")
+    names = [s.name.strip().lower() for s in body.rules.services]
+    if len(set(names)) != len(names):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "service names must be unique")
+    conn.slot_minutes = body.slot_minutes
+    conn.buffer_minutes = body.buffer_minutes
+    if body.hours is not None:
+        conn.hours = body.hours
+    conn.rules = body.rules
+    return (await cal.put(conn)).public()
+
+
 @router.delete("/calendar/connections/{conn_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_connection(user: UserDep, cal: CalendarDep, tenant_id: str, conn_id: str) -> None:
     user.require_admin(tenant_id)
@@ -277,6 +309,7 @@ async def availability(
     start: datetime | None = None,
     days: int = Query(default=7, ge=1, le=60),
     duration_minutes: int | None = None,
+    service_id: str | None = None,
 ) -> AvailabilityResult:
     user.require_tenant(tenant_id)
     return await cal.availability(
@@ -285,6 +318,7 @@ async def availability(
         start=start,
         days=days,
         duration_minutes=duration_minutes,
+        service_id=service_id,
     )
 
 
@@ -326,8 +360,16 @@ async def worker_availability(
     tenant_id: str,
     days: int = Query(default=7, ge=1, le=30),
     duration_minutes: int | None = None,
+    service_id: str | None = None,
+    connection_id: str | None = None,
 ) -> AvailabilityResult:
-    return await cal.availability(tenant_id, days=days, duration_minutes=duration_minutes)
+    return await cal.availability(
+        tenant_id,
+        connection_id=connection_id,
+        days=days,
+        duration_minutes=duration_minutes,
+        service_id=service_id,
+    )
 
 
 @worker.post("/calendar/bookings", response_model=Booking, status_code=status.HTTP_201_CREATED)
@@ -343,7 +385,11 @@ async def worker_book(
             tenant_id=tenant_id,
             company_id=booking.company_id,
             event=NotifyEvent.BOOKING_CREATED,
-            title=f"Booking: {booking.name} at {booking.start:%a %d %b %H:%M}",
+            title=(
+                f"Booking: {booking.name}"
+                f"{f' - {booking.service_name}' if booking.service_name else ''}"
+                f" at {booking.start:%a %d %b %H:%M}"
+            ),
             body=booking.notes or "Booked by the AI assistant during a call.",
             call_id=booking.call_id,
         )

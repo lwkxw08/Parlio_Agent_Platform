@@ -15,11 +15,14 @@ from httpx import AsyncClient
 
 from parlio_api.calendar import (
     Booking,
+    BookingRules,
     CalendarConnection,
     CalendarProvider,
     ConnectionStatus,
+    ServiceType,
     Slot,
     free_slots,
+    slot_allowed,
 )
 from parlio_api.messaging import (
     LogSmsProvider,
@@ -266,6 +269,192 @@ def test_free_slots_respects_hours_busy_and_buffer() -> None:
     # 9:30-10:00 collides with buffer around 10:00 booking; 10:00 and 10:30 are blocked too
     assert 9 * 60 + 30 not in starts and 10 * 60 not in starts and 10 * 60 + 30 not in starts
     assert all(s.end <= monday.replace(hour=12) for s in slots)
+
+
+def _rules_conn(**rules: Any) -> CalendarConnection:
+    return CalendarConnection(
+        tenant_id="t",
+        company_id="c",
+        provider=CalendarProvider.SIMULATED,
+        slot_minutes=60,
+        buffer_minutes=30,
+        hours=Schedule(
+            hours={"mon": DayHours(open=time(8, 45), close=time(17, 0))}, timezone="UTC"
+        ),
+        rules=BookingRules(**rules),
+    )
+
+
+def test_booking_rules_grid_hours_close_and_travel_gap() -> None:
+    """1 h slots on the hour/half-hour, inside hours, finishing by close, 30 min travel gap."""
+    conn = _rules_conn(align_minutes=30)
+    monday = datetime(2026, 9, 14, 6, 0, tzinfo=UTC)
+    busy = [Slot(start=monday.replace(hour=11), end=monday.replace(hour=12))]
+    slots = free_slots(conn, busy, monday, monday + timedelta(days=1), now=monday)
+    starts = [(s.start.hour, s.start.minute) for s in slots]
+    assert starts[0] == (9, 0)  # 08:45 open rounds up to the grid
+    assert all(m in (0, 30) for _, m in starts)
+    assert (9, 30) in starts and (10, 0) not in starts  # 10:00-11:00 + 30 min gap hits 11:00
+    assert (12, 0) not in starts and (12, 30) in starts  # needs 30 min after the 12:00 finish
+    assert (16, 0) in starts and (16, 30) not in starts  # 16:30 would finish after 17:00 close
+    assert all(s.end <= monday.replace(hour=17) for s in slots)
+
+
+def test_booking_rules_notice_window_and_hourly_grid() -> None:
+    conn = _rules_conn(align_minutes=60, min_notice_minutes=120, max_days_ahead=1)
+    monday = datetime(2026, 9, 14, 8, 10, tzinfo=UTC)
+    slots = free_slots(conn, [], monday, monday + timedelta(days=14), now=monday)
+    assert slots and slots[0].start == monday.replace(hour=11, minute=0)  # 10:10 + grid -> 11:00
+    assert all(s.start.minute == 0 for s in slots)
+    assert all(s.start < monday + timedelta(days=1) for s in slots)
+    at = lambda h, m=0: monday.replace(hour=h, minute=m)  # noqa: E731
+    assert slot_allowed(conn, at(9), now=monday) is not None  # within notice
+    assert slot_allowed(conn, at(11, 30), now=monday) is not None  # off the hourly grid
+    assert slot_allowed(conn, at(16, 30), now=monday) is not None  # would finish after close
+    assert slot_allowed(conn, at(11), now=monday) is None
+    tuesday = at(11) + timedelta(days=1)
+    assert "days ahead" in (slot_allowed(conn, tuesday, now=monday) or "")
+    conn.rules.max_days_ahead = 30
+    assert slot_allowed(conn, tuesday, now=monday) == "we are closed that day"
+
+
+def test_booking_rules_service_types_and_emergency_exception() -> None:
+    service = ServiceType(name="Boiler service", minutes=90)
+    emergency = ServiceType(name="Emergency call-out", minutes=60, emergency=True)
+    conn = _rules_conn(align_minutes=30, services=[service, emergency])
+    assert conn.rules.service("boiler service") is service
+    assert conn.rules.service(emergency.id) is emergency
+    assert conn.rules.service("nope") is None
+    sunday = datetime(2026, 9, 13, 20, 0, tzinfo=UTC)  # closed day, evening
+    slots = free_slots(conn, [], sunday, sunday + timedelta(days=2), now=sunday, service=service)
+    assert slots and all((s.end - s.start) == timedelta(minutes=90) for s in slots)
+    assert slots[0].start.weekday() == 0 and all(s.end.hour <= 17 for s in slots)
+    urgent = free_slots(
+        conn, [], sunday, sunday + timedelta(days=2), now=sunday, service=emergency, limit=3
+    )
+    assert urgent and urgent[0].start == sunday  # tonight, outside hours
+    assert slot_allowed(conn, sunday, now=sunday, service=emergency) is None
+    assert slot_allowed(conn, sunday, now=sunday, service=service) == "we are closed that day"
+    conn.rules.emergency_any_time = False
+    assert slot_allowed(conn, sunday, now=sunday, service=emergency) == "we are closed that day"
+
+
+async def test_booking_rules_api_and_service_aware_booking(client: AsyncClient) -> None:
+    r = await client.post(
+        "/v1/calendar/connections",
+        params={"tenant_id": "demo"},
+        json={"provider": "simulated", "name": "Rules diary"},
+    )
+    assert r.status_code == 201, r.text
+    conn_id = r.json()["id"]
+    rules = {
+        "slot_minutes": 60,
+        "buffer_minutes": 30,
+        "rules": {
+            "align_minutes": 30,
+            "use_business_hours": False,
+            "min_notice_minutes": 60,
+            "max_days_ahead": 14,
+            "services": [
+                {"name": "Repair", "minutes": 60},
+                {"name": "Boiler service", "minutes": 90},
+            ],
+        },
+    }
+    r = await client.put(
+        f"/v1/calendar/connections/{conn_id}/rules", params={"tenant_id": "demo"}, json=rules
+    )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["slot_minutes"] == 60 and body["rules"]["align_minutes"] == 30
+    services = body["rules"]["services"]
+    assert [s["name"] for s in services] == ["Repair", "Boiler service"]
+    dup = {**rules, "rules": {**rules["rules"], "services": [services[0], services[0]]}}
+    r = await client.put(
+        f"/v1/calendar/connections/{conn_id}/rules", params={"tenant_id": "demo"}, json=dup
+    )
+    assert r.status_code == 400
+    # other tenants cannot see or edit it
+    r = await client.put(
+        f"/v1/calendar/connections/{conn_id}/rules", params={"tenant_id": "other"}, json=rules
+    )
+    assert r.status_code in (403, 404)
+
+    boiler = services[1]["id"]
+    r = await client.get(
+        "/v1/worker/calendar/availability",
+        params={"tenant_id": "demo", "connection_id": conn_id, "service_id": boiler},
+        headers=HEADERS,
+    )
+    assert r.status_code == 200, r.text
+    avail = r.json()
+    assert avail["service_id"] == boiler and avail["slot_minutes"] == 90
+    assert [s["name"] for s in avail["services"]] == ["Repair", "Boiler service"]
+    slots = avail["slots"]
+    assert slots and all(datetime.fromisoformat(s["start"]).minute in (0, 30) for s in slots)
+    start = datetime.fromisoformat(slots[0]["start"])
+    assert datetime.fromisoformat(slots[0]["end"]) - start == timedelta(minutes=90)
+
+    r = await client.get(
+        "/v1/worker/calendar/availability",
+        params={"tenant_id": "demo", "service_id": "massage"},
+        headers=HEADERS,
+    )
+    assert r.status_code == 200 and "unknown service" in r.json()["error"]
+
+    # off-grid or too-short-notice bookings are refused before touching the calendar
+    r = await client.post(
+        "/v1/worker/calendar/bookings",
+        params={"tenant_id": "demo"},
+        json={
+            "connection_id": conn_id,
+            "start": (start + timedelta(minutes=10)).isoformat(),
+            "name": "Sam",
+            "service_id": boiler,
+        },
+        headers=HEADERS,
+    )
+    assert r.status_code == 409, r.text
+    assert "grid" in r.json()["detail"]
+    r = await client.post(
+        "/v1/worker/calendar/bookings",
+        params={"tenant_id": "demo"},
+        json={
+            "connection_id": conn_id,
+            "start": slots[0]["start"],
+            "name": "Sam",
+            "service_id": "nope",
+        },
+        headers=HEADERS,
+    )
+    assert r.status_code == 409 and "unknown service" in r.json()["detail"]
+    r = await client.post(
+        "/v1/worker/calendar/bookings",
+        params={"tenant_id": "demo"},
+        json={
+            "connection_id": conn_id,
+            "start": slots[0]["start"],
+            "name": "Sam",
+            "phone": "+447700900123",
+            "service_id": "boiler service",
+            "duration_minutes": 5,  # ignored: the service decides the length
+        },
+        headers=HEADERS,
+    )
+    assert r.status_code == 201, r.text
+    booking = Booking.model_validate(r.json())
+    assert booking.service_name == "Boiler service" and booking.end - booking.start == timedelta(
+        minutes=90
+    )
+    # the 30 min travel gap now blocks the slot straight after the booking
+    r = await client.get(
+        "/v1/worker/calendar/availability",
+        params={"tenant_id": "demo", "connection_id": conn_id, "service_id": boiler},
+        headers=HEADERS,
+    )
+    later = [datetime.fromisoformat(s["start"]) for s in r.json()["slots"]]
+    assert booking.start not in later and booking.end not in later
+    assert all(t >= booking.end + timedelta(minutes=30) or t < booking.start for t in later)
 
 
 async def test_calendar_connection_availability_and_booking(client: AsyncClient) -> None:
