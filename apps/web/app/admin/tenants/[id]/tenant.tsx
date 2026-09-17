@@ -252,7 +252,7 @@ function LimitsTab({ d, catalogue, base, canEdit, flash }: { d: TenantDetail; ca
   const numOrNull = (v: string) => (v === "" ? null : Number(v));
   const saveLimits = async (e: React.FormEvent) => {
     e.preventDefault();
-    const r = await request<TenantLimits>(`${base}/limits`, { method: "PUT", body: JSON.stringify({ max_concurrent_calls: lim.max_concurrent_calls, minutes_cap: lim.minutes_cap, rate_limit_per_minute: lim.rate_limit_per_minute, note: lim.note }) });
+    const r = await request<TenantLimits>(`${base}/limits`, { method: "PUT", body: JSON.stringify({ max_concurrent_calls: lim.max_concurrent_calls, minutes_cap: lim.minutes_cap, rate_limit_per_minute: lim.rate_limit_per_minute, max_resources: lim.max_resources, max_sites: lim.max_sites, max_members: lim.max_members, note: lim.note }) });
     if (!r.ok) return flash(r.error);
     setLim(r.data);
     flash("Limits saved");
@@ -272,6 +272,9 @@ function LimitsTab({ d, catalogue, base, canEdit, flash }: { d: TenantDetail; ca
           <label>Max concurrent calls <input type="number" min={1} max={500} value={lim.max_concurrent_calls ?? ""} onChange={(e) => setLim({ ...lim, max_concurrent_calls: numOrNull(e.target.value) })} placeholder={`plan: ${d.usage.plan.max_concurrent_calls}`} /></label>
           <label>Minutes cap per period <input type="number" min={0} value={lim.minutes_cap ?? ""} onChange={(e) => setLim({ ...lim, minutes_cap: numOrNull(e.target.value) })} placeholder="no hard cap (overage billed)" /></label>
           <label>API rate limit (requests / minute) <input type="number" min={10} max={100000} value={lim.rate_limit_per_minute ?? ""} onChange={(e) => setLim({ ...lim, rate_limit_per_minute: numOrNull(e.target.value) })} placeholder="platform default" /></label>
+          <label>Max engineers / bookable calendars <input type="number" min={0} value={lim.max_resources ?? ""} onChange={(e) => setLim({ ...lim, max_resources: numOrNull(e.target.value) })} placeholder="plan default (0 = unlimited)" /></label>
+          <label>Max locations <input type="number" min={0} value={lim.max_sites ?? ""} onChange={(e) => setLim({ ...lim, max_sites: numOrNull(e.target.value) })} placeholder="plan default (0 = unlimited)" /></label>
+          <label>Max dashboard users <input type="number" min={0} value={lim.max_members ?? ""} onChange={(e) => setLim({ ...lim, max_members: numOrNull(e.target.value) })} placeholder="plan default (0 = unlimited)" /></label>
           <label>Note <input value={lim.note ?? ""} onChange={(e) => setLim({ ...lim, note: e.target.value || null })} maxLength={300} /></label>
           {canEdit && <button type="submit" className="primary">Save limits</button>}
         </fieldset>

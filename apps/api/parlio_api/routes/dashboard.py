@@ -35,6 +35,8 @@ from parlio_api.deps import (
     TicketsDep,
     ValueDep,
     VoicePreviewDep,
+    ensure_cap,
+    ensure_feature,
 )
 from parlio_api.drafting import Draft, DraftRequest
 from parlio_api.insights import InsightsReport, build_insights, load_inputs
@@ -198,10 +200,12 @@ async def _apply_platform_voice(cfg: AssistantConfig, admin: AdminDep) -> Assist
 
 @router.put("/assistants/{assistant_id}", response_model=AssistantConfig)
 async def upsert_assistant(
-    assistant_id: str, body: AssistantUpsert, store: StoreDep, admin: AdminDep
+    assistant_id: str, body: AssistantUpsert, store: StoreDep, admin: AdminDep, billing: BillingDep
 ) -> AssistantConfig:
     if body.config.assistant_id != assistant_id:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "assistant_id mismatch")
+    if body.config.after_hours.enabled:
+        await ensure_feature(billing, body.config.tenant_id, "after_hours_personas")
     cfg = await _apply_platform_voice(body.config, admin)
     await store.upsert_assistant(cfg, body.numbers)
     return cfg
@@ -353,6 +357,7 @@ async def _site_numbers(
 async def search_calls(
     store: StoreDep,
     user: UserDep,
+    billing: BillingDep,
     q: Annotated[str, Query(min_length=2, max_length=200)],
     tenant_id: str | None = None,
     since: datetime | None = None,
@@ -365,6 +370,7 @@ async def search_calls(
     if tid is None:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "no organisation")
     user.require_tenant(tid)
+    await ensure_feature(billing, tid, "transcript_search")
     sites = await sites_for_tenant(store, tid)
     calls = await store.search_calls(tid, q, since=since, until=until, limit=limit * 2)
     if site:
@@ -389,13 +395,24 @@ async def list_sites(store: StoreDep, user: UserDep, tenant_id: str | None = Non
 
 @router.put("/assistants/{assistant_id}/sites", response_model=AssistantConfig)
 async def put_sites(
-    assistant_id: str, body: list[SiteRef], store: StoreDep, user: UserDep
+    assistant_id: str, body: list[SiteRef], store: StoreDep, user: UserDep, billing: BillingDep
 ) -> AssistantConfig:
     """Replace the assistant's sites (new config version). Numbers must be unique across sites."""
     cfg = await store.get_assistant(assistant_id)
     if cfg is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "assistant not found")
     user.require_tenant(cfg.tenant_id)
+    if len(body) > len(cfg.sites):
+        others = [
+            s
+            for s in await sites_for_tenant(store, cfg.tenant_id)
+            if s.assistant_id != assistant_id
+        ]
+        total = len(others) + len(body)
+        if total > 1:
+            await ensure_feature(billing, cfg.tenant_id, "multi_location")
+        # Cap counts sites across every assistant; the new total must fit under it.
+        await ensure_cap(billing, cfg.tenant_id, "max_sites", total - 1)
     seen: dict[str, str] = {}
     for s in body:
         if not s.id.strip() or not s.name.strip():

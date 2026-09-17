@@ -12,7 +12,15 @@ from pydantic import BaseModel
 
 from parlio_api.auth import UserDep
 from parlio_api.calendar import Booking
-from parlio_api.deps import CalendarDep, ScheduleDep, SchedulingDep, StoreDep
+from parlio_api.deps import (
+    BillingDep,
+    CalendarDep,
+    ScheduleDep,
+    SchedulingDep,
+    StoreDep,
+    ensure_cap,
+    ensure_feature,
+)
 from parlio_api.resources import (
     Resource,
     ResourceInput,
@@ -44,21 +52,33 @@ async def list_resources(
 
 @router.post("/resources", response_model=Resource, status_code=status.HTTP_201_CREATED)
 async def create_resource(
-    cal: CalendarDep, user: UserDep, tenant_id: str, body: ResourceInput
+    cal: CalendarDep, billing: BillingDep, user: UserDep, tenant_id: str, body: ResourceInput
 ) -> Resource:
     user.require_tenant(tenant_id)
+    await ensure_feature(billing, tenant_id, "team_scheduling")
+    existing = await _resources(cal).all(tenant_id, include_inactive=False)
+    if body.active:
+        await ensure_cap(billing, tenant_id, "max_resources", len(existing))
     return await _resources(cal).put(Resource(tenant_id=tenant_id, **body.model_dump()))
 
 
 @router.put("/resources/{rid}", response_model=Resource)
 async def update_resource(
-    rid: str, cal: CalendarDep, user: UserDep, tenant_id: str, body: ResourceInput
+    rid: str,
+    cal: CalendarDep,
+    billing: BillingDep,
+    user: UserDep,
+    tenant_id: str,
+    body: ResourceInput,
 ) -> Resource:
     user.require_tenant(tenant_id)
     svc = _resources(cal)
     cur = await svc.get(tenant_id, rid)
     if cur is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "resource not found")
+    if body.active and not cur.active:
+        active = await svc.all(tenant_id, include_inactive=False)
+        await ensure_cap(billing, tenant_id, "max_resources", len(active))
     return await svc.put(cur.model_copy(update=body.model_dump()))
 
 
@@ -99,9 +119,10 @@ async def get_scheduler(
 
 @router.put("/scheduler")
 async def put_scheduler(
-    sched: SchedulingDep, user: UserDep, tenant_id: str, body: SchedulerInput
+    sched: SchedulingDep, billing: BillingDep, user: UserDep, tenant_id: str, body: SchedulerInput
 ) -> dict[str, Any]:
     user.require_tenant(tenant_id)
+    await ensure_feature(billing, tenant_id, "scheduling_tool")
     return (await sched.put(tenant_id, body)).public()
 
 

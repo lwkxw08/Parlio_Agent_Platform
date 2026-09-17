@@ -559,6 +559,9 @@ class LimitsIn(BaseModel):
     max_concurrent_calls: int | None = Field(default=None, ge=1, le=500)
     minutes_cap: int | None = Field(default=None, ge=0)
     rate_limit_per_minute: int | None = Field(default=None, ge=10, le=100_000)
+    max_resources: int | None = Field(default=None, ge=0, le=10_000)
+    max_sites: int | None = Field(default=None, ge=0, le=10_000)
+    max_members: int | None = Field(default=None, ge=0, le=10_000)
     note: str | None = Field(default=None, max_length=300)
 
 

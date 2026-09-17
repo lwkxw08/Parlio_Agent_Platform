@@ -793,8 +793,10 @@ export type Plan = {
   id: string; name: string; monthly_pence: number; included_minutes: number; overage_pence_per_minute: number;
   included_numbers: number; included_sms: number; sms_overage_pence: number; max_assistants: number; max_concurrent_calls: number;
   features: string[]; entitlements: string[]; enterprise: boolean; trial_days?: number | null;
+  max_resources?: number; max_sites?: number; max_members?: number;
 };
-export type Entitlements = { catalogue: Record<string, string>; enabled: Record<string, boolean> };
+export type PlanCap = { label: string; limit: number; used: number };
+export type Entitlements = { catalogue: Record<string, string>; enabled: Record<string, boolean>; caps?: Record<string, PlanCap> };
 export type SubscriptionStatus = "trialing" | "active" | "past_due" | "paused" | "suspended" | "cancelled";
 export type Subscription = {
   tenant_id: string; plan_id: string; status: SubscriptionStatus; period_start: string; period_end: string; trial_ends_at?: string | null;
@@ -809,7 +811,8 @@ export type Refund = {
   id: string; tenant_id: string; pence: number; reason: string; invoice_id: string | null; provider: string; provider_ref: string | null; issued_by: string; created_at: string;
 };
 export type TenantLimits = {
-  tenant_id: string; max_concurrent_calls: number | null; minutes_cap: number | null; rate_limit_per_minute: number | null; note: string | null;
+  tenant_id: string; max_concurrent_calls: number | null; minutes_cap: number | null; rate_limit_per_minute: number | null;
+  max_resources: number | null; max_sites: number | null; max_members: number | null; note: string | null;
 };
 export type Coupon = { code: string; percent_off: number | null; amount_off_pence: number | null; months: number | null; plans: string[] };
 export type CallCost = { call_id: string; minutes: number; vendor_pence: number; billable_pence: number };
