@@ -253,6 +253,7 @@ class ReminderService:
             business=await self.business(r.tenant_id),
             when=_when(r.start, pol.timezone),
             name=r.name,
+            engineer=(booking.resource_name if booking and booking.resource_name else ""),
         )
         m = await self.sms.send(
             r.tenant_id, r.company_id, r.phone, body, trigger=SmsTrigger.APPOINTMENT_REMINDER

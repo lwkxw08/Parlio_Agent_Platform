@@ -419,11 +419,13 @@ def payload_from_booking(b: Booking, business_name: str) -> Payload:
         business_name=business_name,
         caller_name=b.name,
         caller_phone=b.phone,
-        summary=b.notes or f"Appointment booked for {b.name}",
+        summary=(b.notes or f"Appointment booked for {b.name}")
+        + (f" (assigned to {b.resource_name})" if b.resource_name else ""),
         call_id=b.call_id,
         booking_start=b.start,
         booking_end=b.end,
         qualified=True,
+        extracted={"assignee": b.resource_name} if b.resource_name else {},
     )
 
 

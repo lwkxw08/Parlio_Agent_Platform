@@ -617,6 +617,106 @@ export type Booking = {
   service_name: string | null;
   status: string;
   created_at: string;
+  resource_id?: string | null;
+  resource_name?: string | null;
+  source?: string;
+  updated_at?: string | null;
+};
+
+// -- Phase 22: team resources, scheduling tool, schedule view --------------------------------
+
+export type AssignmentPolicy = "least_loaded" | "round_robin" | "nearest" | "preferred";
+export type BookingMode = "calendar" | "scheduler";
+export type Resource = {
+  id: string;
+  tenant_id: string;
+  name: string;
+  role: string;
+  skills: string[];
+  site_id: string | null;
+  areas: string[];
+  hours: Schedule | null;
+  active: boolean;
+  on_call: boolean;
+  connection_id: string | null;
+  calendar_id: string;
+  external_ref: string | null;
+  phone: string | null;
+  created_at: string;
+};
+export type ResourceInput = Omit<Resource, "id" | "tenant_id" | "created_at">;
+export type TeamSettings = {
+  tenant_id: string;
+  policy: AssignmentPolicy;
+  mode: BookingMode;
+  emergency_to_on_call: boolean;
+  round_robin_cursor: number;
+};
+export type SchedulerProvider = "webhook" | "servicem8" | "simulated";
+export type SchedulerConfig = {
+  id: string;
+  tenant_id: string;
+  provider: SchedulerProvider;
+  name: string;
+  base_url: string | null;
+  enabled: boolean;
+  read_only_schedule: boolean;
+  default_minutes: number;
+  last_sync_at: string | null;
+  last_error: string | null;
+  has_secret: boolean;
+};
+export type SchedulerInput = {
+  provider: SchedulerProvider;
+  name: string;
+  base_url: string | null;
+  secret?: string | null;
+  enabled: boolean;
+  read_only_schedule: boolean;
+  default_minutes: number;
+};
+export type SchedulerTestResult = {
+  ok: boolean;
+  staff: { id: string; name: string; active: boolean; skills: string[]; areas: string[] }[];
+  imported: number;
+  error: string | null;
+};
+export type ScheduleBlock = {
+  id: string;
+  kind: "booking" | "busy" | "travel";
+  start: string;
+  end: string;
+  title: string;
+  customer: string | null;
+  service: string | null;
+  area: string | null;
+  status: string | null;
+  booking_id: string | null;
+  assignee: string | null;
+};
+export type ScheduleShift = { start: string; end: string };
+export type ScheduleLane = {
+  resource_id: string | null;
+  name: string;
+  role: string;
+  site_id: string | null;
+  on_call: boolean;
+  shifts: ScheduleShift[];
+  blocks: ScheduleBlock[];
+  booked_minutes: number;
+  shift_minutes: number;
+  utilisation: number;
+  error: string | null;
+};
+export type ScheduleView = {
+  start: string;
+  days: number;
+  timezone: string;
+  source: string;
+  read_only: boolean;
+  lanes: ScheduleLane[];
+  generated_at: string;
+  cached: boolean;
 };
 export type SyncLogEntry = { id: string; connection_id: string; action: string; ok: boolean; detail: string | null; at: string };
 export type ReminderPolicy = {
@@ -930,6 +1030,26 @@ export const fetchConnections = (tenant_id: string) => get<CalendarConnection[]>
 export const saveBookingRules = (tenant_id: string, conn_id: string, body: BookingRulesInput) =>
   put<CalendarConnection>(`/v1/calendar/connections/${conn_id}/rules${qs({ tenant_id })}`, body);
 export const fetchBookings = (tenant_id: string) => get<Booking[]>(`/v1/calendar/bookings${qs({ tenant_id })}`);
+export const fetchResources = (tenant_id: string) => get<Resource[]>(`/v1/team/resources${qs({ tenant_id })}`);
+export const createResource = (tenant_id: string, body: ResourceInput) => request<Resource>(`/v1/team/resources${qs({ tenant_id })}`, { method: "POST", body: JSON.stringify(body) });
+export const updateResource = (tenant_id: string, id: string, body: ResourceInput) => put<Resource>(`/v1/team/resources/${id}${qs({ tenant_id })}`, body);
+export const deleteResource = (tenant_id: string, id: string) => del(`/v1/team/resources/${id}${qs({ tenant_id })}`);
+export const fetchTeamSettings = (tenant_id: string) => get<TeamSettings>(`/v1/team/settings${qs({ tenant_id })}`);
+export const saveTeamSettings = (tenant_id: string, body: Pick<TeamSettings, "policy" | "mode" | "emergency_to_on_call">) =>
+  put<TeamSettings>(`/v1/team/settings${qs({ tenant_id })}`, body);
+export const fetchScheduler = (tenant_id: string) => request<SchedulerConfig | null>(`/v1/team/scheduler${qs({ tenant_id })}`);
+export const saveScheduler = (tenant_id: string, body: SchedulerInput) => put<SchedulerConfig>(`/v1/team/scheduler${qs({ tenant_id })}`, body);
+export const deleteScheduler = (tenant_id: string) => del(`/v1/team/scheduler${qs({ tenant_id })}`);
+export const testScheduler = (tenant_id: string, import_staff = false) =>
+  request<SchedulerTestResult>(`/v1/team/scheduler/test${qs({ tenant_id, import_staff: import_staff ? "true" : undefined })}`, { method: "POST" });
+export const fetchSchedule = (tenant_id: string, p: { start: string; days: number; site_id?: string; service_id?: string; resource_id?: string; refresh?: boolean }) =>
+  request<ScheduleView>(`/v1/team/schedule${qs({ tenant_id, start: p.start, days: p.days, site_id: p.site_id, service_id: p.service_id, resource_id: p.resource_id, refresh: p.refresh ? "true" : undefined })}`);
+export const fetchBooking = (tenant_id: string, id: string) => request<Booking>(`/v1/team/bookings/${id}${qs({ tenant_id })}`);
+export const reassignBooking = (tenant_id: string, id: string, resource_id: string) =>
+  request<Booking>(`/v1/team/bookings/${id}/reassign${qs({ tenant_id })}`, { method: "POST", body: JSON.stringify({ resource_id }) });
+export const rescheduleBooking = (tenant_id: string, id: string, start: string) =>
+  request<Booking>(`/v1/team/bookings/${id}/reschedule${qs({ tenant_id })}`, { method: "POST", body: JSON.stringify({ start }) });
+export const cancelBooking = (tenant_id: string, id: string) => request<Booking>(`/v1/team/bookings/${id}/cancel${qs({ tenant_id })}`, { method: "POST" });
 export const fetchReminderPolicy = (tenant_id: string) => get<ReminderPolicy>(`/v1/reminders/policy${qs({ tenant_id })}`);
 export const fetchReminders = (tenant_id: string) => get<Reminder[]>(`/v1/reminders${qs({ tenant_id })}`);
 export const fetchSyncLog = (tenant_id: string) => get<SyncLogEntry[]>(`/v1/calendar/sync-log${qs({ tenant_id })}`);

@@ -390,7 +390,8 @@ async def worker_book(
                 f"{f' - {booking.service_name}' if booking.service_name else ''}"
                 f" at {booking.start:%a %d %b %H:%M}"
             ),
-            body=booking.notes or "Booked by the AI assistant during a call.",
+            body=(booking.notes or "Booked by the AI assistant during a call.")
+            + (f" Assigned to {booking.resource_name}." if booking.resource_name else ""),
             call_id=booking.call_id,
         )
     )
