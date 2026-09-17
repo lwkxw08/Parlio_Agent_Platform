@@ -8,9 +8,9 @@ an automated pass is **not** evidence for these.
 Before you start (Parlio Demo Plumbing on the droplet):
 - Studio → Recording: "Record calls" on; "Record transferred calls" on for step 5.
 - Integrations → Notifications: "Text me after every call" on, owner mobile set.
-- Studio → Reminders: policy enabled with offsets that will fire during the test (e.g. 1h and 15 min),
+- Integrations → Calendar tab → "Appointment reminders" (below Bookings): policy enabled with offsets that will fire during the test (e.g. 1h and 15 min),
   or book a slot ~1h15 ahead.
-- Studio → Screening: mode "Unknown callers", block withheld on.
+- Studio (Assistant) → "Call screening" section: Screen = "Unknown callers only", tick "Reject withheld".
 - Transfers: a department whose destination is a colleague's real mobile who is ready to answer.
 
 Demo number: **020 4620 6823** (+442046206823). Say a fake but consistent postcode/address so the
