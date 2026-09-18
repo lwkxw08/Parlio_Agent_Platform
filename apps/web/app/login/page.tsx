@@ -3,6 +3,12 @@
 import { useEffect, useState } from "react";
 import { captureOAuthRedirect, sendPasswordReset, signInWithGoogle, signInWithPassword, signUp, supabaseConfigured } from "@/lib/auth";
 
+/** Same-origin path to return to after sign-in (from ?next=), defaulting to the overview. */
+function nextPath(): string {
+  const n = new URLSearchParams(window.location.search).get("next");
+  return n && n.startsWith("/") && !n.startsWith("//") ? n : "/";
+}
+
 export default function Login() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -11,7 +17,7 @@ export default function Login() {
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    if (captureOAuthRedirect()) window.location.href = "/";
+    if (captureOAuthRedirect()) window.location.href = nextPath();
   }, []);
 
   if (!supabaseConfigured()) {
@@ -35,7 +41,7 @@ export default function Login() {
     setBusy(false);
     if (err) return setMsg(err);
     if (mode === "up") return setMsg("Check your inbox to confirm your email, then sign in.");
-    window.location.href = "/";
+    window.location.href = nextPath();
   };
 
   return (

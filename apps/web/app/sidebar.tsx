@@ -180,8 +180,8 @@ export default function Sidebar({ account }: { account: Account }) {
         <Image src="/logo-icon.png" alt="ParlioTec" width={40} height={40} priority />
       </Link>
       <nav>
-        {NAV.map(link)}
-        {GROUPS.map((g) => {
+        {account.kind === "user" && NAV.map(link)}
+        {account.kind === "user" && GROUPS.map((g) => {
           const isOpen = !!open[g.key];
           const current = activeGroup === g.key;
           const total = g.items.reduce((s, it) => s + countFor(it.href), 0);
