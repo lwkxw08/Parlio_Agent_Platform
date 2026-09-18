@@ -2,6 +2,11 @@
 # Render config/ from templates using infra/vps/.env, generating any missing secrets, then
 # (re)build and start the stack. Idempotent; run from infra/vps on the server.
 #
+# IMAGE_TAG=<git sha> (exported by CI) pulls the api/voice-worker images built in CI from GHCR
+# instead of building on the box; unset it for a local build.
+# DATABASE_URL in .env points the API at a managed Postgres; the local postgres container is
+# then left out of the stack.
+#
 # The voice worker is rolled, not restarted: a new container is started and must register with
 # LiveKit before the old one is told to drain (finish its calls, take no new ones) and exit.
 # Callers never hit a "no worker available" window and live calls are not cut off.
@@ -20,9 +25,16 @@ for t in *.tmpl; do envsubst < "$t" > "config/${t%.tmpl}"; done
 
 dc() { docker compose --env-file .env "$@"; }
 
-dc build
+if [ -n "${IMAGE_TAG:-}" ]; then
+  export IMAGE_TAG
+  dc pull api voice-worker || { echo "pull of $IMAGE_TAG failed; building locally" >&2; dc build; }
+else
+  dc build
+fi
 # Everything except the worker can restart in place (short blip, no live-call impact).
-dc up -d --remove-orphans --no-deps $(dc config --services | grep -v '^voice-worker$')
+SKIP='^voice-worker$'
+[ -n "${DATABASE_URL:-}" ] && SKIP="$SKIP|^postgres$"
+dc up -d --remove-orphans --no-deps $(dc config --services | grep -Ev "$SKIP")
 
 roll_worker() {
   local old new deadline
