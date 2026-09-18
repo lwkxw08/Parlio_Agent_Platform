@@ -97,6 +97,8 @@ services:
       PARLIO_REDIS_URL: redis://redis:6379/0
       # LiveKit server API (host network): live listen/whisper, browser voice and the outbound dialer.
       PARLIO_LIVEKIT_URL: http://host.docker.internal:7880
+      # Browser-facing signalling URL (Caddy → LiveKit) for dashboard listen/whisper and web voice.
+      PARLIO_LIVEKIT_PUBLIC_URL: wss://lk.${PUBLIC_HOST}
       PARLIO_LIVEKIT_API_KEY: ${LIVEKIT_API_KEY}
       PARLIO_LIVEKIT_API_SECRET: ${LIVEKIT_API_SECRET}
       # Outbound AI calls: livekit dials through the platform Telnyx trunk; simulated just logs.

@@ -20,8 +20,8 @@ export function Header() {
     <header className="site-header">
       <div className="wrap">
         <Link href="/" className="brand" aria-label="ParlioTec home">
-          <Image src="/brand/icon.png" alt="" width={52} height={38} className="icon" priority />
-          <Image src="/brand/wordmark.png" alt="ParlioTec" width={156} height={20} className="word" priority />
+          <Image src="/brand/icon-nav.png" alt="" width={155} height={114} className="icon" priority />
+          <Image src="/brand/wordmark-nav.png" alt="ParlioTec" width={515} height={66} className="word" priority />
         </Link>
         <nav className="nav" aria-label="Main">
           {NAV.map((n) => (
