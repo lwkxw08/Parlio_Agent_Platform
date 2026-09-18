@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { fetchMe, fetchPublicStatus } from "@/lib/api";
 import Sidebar, { type Account } from "./sidebar";
 import HelpDrawer from "./help";
+import AuthGate from "./auth-gate";
 import { StatusBanner, ViewAsBanner } from "./banners";
 import "./globals.css";
 
@@ -41,7 +42,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         <main>
           {status?.active && <StatusBanner status={status} />}
           {account.kind === "user" && account.viewAs && <ViewAsBanner tenant={account.viewAs} />}
-          {children}
+          <AuthGate signedOut={account.kind === "signin"}>{children}</AuthGate>
         </main>
         {account.kind === "user" && <HelpDrawer />}
       </body>
