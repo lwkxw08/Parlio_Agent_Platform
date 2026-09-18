@@ -7,11 +7,11 @@ export const metadata: Metadata = {
   description: "Everything ParlioTec does: AI phone answering, rules-based booking, team scheduling, scheduling-tool integration, warm transfers, omnichannel inbox, analytics, QA and UK-first compliance.",
 };
 
-const GROUPS: { title: string; blurb: string; idx: number[] }[] = [
-  { title: "Answer & resolve", blurb: "The conversation itself — voice, understanding, transfers and follow-through.", idx: [0, 4, 5, 6] },
-  { title: "Book & schedule", blurb: "Where ParlioTec goes far beyond message-taking: your rules, your team, your tools.", idx: [1, 2, 3] },
-  { title: "Measure & improve", blurb: "Know what callers want, prove the value and make the assistant better every week.", idx: [7, 8] },
-  { title: "Run at scale", blurb: "Several sites or brands, your CRM stack, and the controls a regulated business needs.", idx: [9, 10, 11] },
+const GROUPS: { id: string; title: string; blurb: string; idx: number[] }[] = [
+  { id: "answer", title: "Answer & resolve", blurb: "The conversation itself — voice, understanding, transfers and follow-through.", idx: [0, 4, 5, 6] },
+  { id: "book", title: "Book & schedule", blurb: "Where ParlioTec goes far beyond message-taking: your rules, your team, your tools.", idx: [1, 2, 3] },
+  { id: "measure", title: "Measure & improve", blurb: "Know what callers want, see what's coming, prove the value — and let the assistant get better with every call.", idx: [7, 12, 8] },
+  { id: "scale", title: "Run at scale", blurb: "Several sites or brands, your CRM stack, and the controls a regulated business needs.", idx: [9, 10, 11] },
 ];
 
 export default function FeaturesPage() {
@@ -20,10 +20,10 @@ export default function FeaturesPage() {
       <PageHero
         eyebrow="Platform"
         title="One assistant. The whole front office."
-        lead="ParlioTec is not a chatbot bolted onto a phone line. It is a complete receptionist, booking desk, dispatcher and analyst — configured in plain English from one dashboard."
+        lead="ParlioTec is not a chatbot bolted onto a phone line. It is an intelligent AI-powered business phone system: front desk, booking desk, dispatcher and analyst in one — configured in plain English from one dashboard."
       />
       {GROUPS.map((g, i) => (
-        <section key={g.title} className={`section ${i % 2 ? "alt" : ""}`}>
+        <section key={g.title} id={g.id} className={`section ${i % 2 ? "alt" : ""}`}>
           <div className="wrap">
             <div className="section-head">
               <div className="eyebrow">{g.title}</div>

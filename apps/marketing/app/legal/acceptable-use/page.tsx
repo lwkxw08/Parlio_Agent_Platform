@@ -40,7 +40,7 @@ export default function AupPage() {
       <ul>
         <li>No attempts to probe, scan, overload or bypass security or rate limits, including on the public demo.</li>
         <li>No reselling or sharing of your account, numbers or API keys except under a written reseller agreement.</li>
-        <li>No use of the Service to build or train a competing AI receptionist product.</li>
+        <li>No use of the Service to build or train a competing AI phone-answering product.</li>
         <li>Prompt-injection or jailbreak attempts against the assistant, or instructing it to exfiltrate other tenants&rsquo; data, are prohibited.</li>
       </ul>
 

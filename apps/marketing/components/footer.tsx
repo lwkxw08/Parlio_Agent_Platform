@@ -8,9 +8,9 @@ export function Footer() {
       <div className="wrap">
         <div className="cols">
           <div>
-            <Image src="/brand/full-logo.jpg" alt="ParlioTec" width={150} height={88} style={{ borderRadius: 12 }} />
+            <Image src="/brand/full-logo.png" alt="ParlioTec" width={180} height={144} />
             <p className="brand-blurb">
-              The UK-first AI phone assistant that answers every call, books real appointments across your team and keeps
+              The UK-first intelligent AI-powered business phone system that answers every call, books real appointments across your team and keeps
               your customers&apos; data in the UK.
             </p>
           </div>

@@ -29,7 +29,7 @@ export default function DpaPage() {
 
       <h2>3. Categories of data subjects and data</h2>
       <ul>
-        <li><b>Data subjects:</b> callers, message senders and website visitors of the Controller; the Controller&rsquo;s customers, prospects, staff and engineers.</li>
+        <li><b>Data subjects:</b> callers, message senders and website visitors of the Controller; the Controller&rsquo;s customers, prospects, staff and team members.</li>
         <li><b>Data:</b> voice recordings and transcripts; phone numbers and caller ID; names, addresses, email; appointment details; free-text descriptions of the caller&rsquo;s request; message content; dashboard user details. Special-category data may be incidentally captured in speech (e.g. health details given by a caller); the Controller must set redaction and retention accordingly.</li>
       </ul>
 

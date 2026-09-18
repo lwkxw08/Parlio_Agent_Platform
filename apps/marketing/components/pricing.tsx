@@ -6,7 +6,7 @@ import { cap, fetchSiteInfo, gbp, type PublicPlan, signupUrl } from "@/lib/api";
 
 const HIGHLIGHTS: { key: string; label: string }[] = [
   { key: "calendar_booking", label: "Calendar booking (Google / Outlook) with booking rules" },
-  { key: "team_scheduling", label: "Team scheduling: pooled engineers + Schedule board" },
+  { key: "team_scheduling", label: "Team scheduling: pooled team members + Schedule board" },
   { key: "scheduling_tool", label: "Book into ServiceM8 / your scheduling tool" },
   { key: "warm_transfers", label: "Warm (announced) transfers" },
   { key: "whatsapp", label: "WhatsApp channel" },
@@ -20,7 +20,7 @@ const HIGHLIGHTS: { key: string; label: string }[] = [
 ];
 
 /* API feature strings that duplicate the cap line or an entitlement row above. */
-const DUPLICATE = /assistant|engineer|location|dashboard user|calendar booking|team scheduling|scheduling tool|servicem8|warm transfer|whatsapp|ask ai|advisor|search|\bsms\b|number/i;
+const DUPLICATE = /assistant|engineer|team member|location|dashboard user|calendar booking|team scheduling|scheduling tool|servicem8|warm transfer|whatsapp|ask ai|advisor|search|\bsms\b|number/i;
 
 function PlanCard({ p, featured, trialDays }: { p: PublicPlan; featured: boolean; trialDays: number }) {
   const ents = new Set(p.entitlements);
@@ -44,7 +44,7 @@ function PlanCard({ p, featured, trialDays }: { p: PublicPlan; featured: boolean
         <li>{p.enterprise ? "Custom minute bundle" : `${p.included_minutes.toLocaleString("en-GB")} AI minutes included`}{!p.enterprise && <span className="muted"> · then {p.overage_pence_per_minute}p/min</span>}</li>
         <li>{cap(p.included_sms, "SMS")} · {cap(p.included_numbers, "UK number" + (p.included_numbers === 1 ? "" : "s"))}</li>
         <li>{cap(p.max_assistants, "assistant" + (p.max_assistants === 1 ? "" : "s"))} · {cap(p.max_concurrent_calls, "simultaneous calls")}</li>
-        <li>{cap(p.max_resources, "bookable engineer" + (p.max_resources === 1 ? "" : "s"))} · {cap(p.max_sites, "location" + (p.max_sites === 1 ? "" : "s"))} · {cap(p.max_members, "dashboard user" + (p.max_members === 1 ? "" : "s"))}</li>
+        <li>{cap(p.max_resources, "bookable team member" + (p.max_resources === 1 ? "" : "s"))} · {cap(p.max_sites, "location" + (p.max_sites === 1 ? "" : "s"))} · {cap(p.max_members, "dashboard user" + (p.max_members === 1 ? "" : "s"))}</li>
         {p.features.filter((f) => !DUPLICATE.test(f)).map((f) => <li key={f}>{f}</li>)}
         {HIGHLIGHTS.map((h) => (
           <li key={h.key} className={ents.has(h.key) ? "" : "off"}>{h.label}</li>
