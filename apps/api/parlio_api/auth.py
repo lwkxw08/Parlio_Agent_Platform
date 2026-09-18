@@ -5,8 +5,9 @@ Two modes, selected by `PARLIO_AUTH_MODE`:
 * ``dev`` (default) - no credentials required. The principal is the seeded demo owner, or the
   email given in ``X-Parlio-User`` (handy for multi-user testing). Never enable in production.
 * ``supabase`` - ``Authorization: Bearer <access_token>`` issued by Supabase Auth (email/password
-  or Google OAuth in the dashboard). Tokens are HS256 JWTs signed with the project's JWT secret,
-  verified locally so no round-trip to Supabase is needed per request.
+  or Google OAuth in the dashboard). Tokens are verified locally: legacy HS256 tokens with
+  ``PARLIO_SUPABASE_JWT_SECRET``, and ES256/RS256 tokens (the default for new Supabase projects)
+  against the project's JWKS at ``<PARLIO_SUPABASE_URL>/auth/v1/.well-known/jwks.json`` (cached).
 
 Tenant membership always comes from our own store (`memberships`), never from the token, so an
 org admin can invite/remove users without touching the identity provider.
@@ -22,6 +23,11 @@ import time
 from contextlib import suppress
 from typing import Annotated, Any
 
+import httpx
+from cryptography.exceptions import InvalidSignature
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.asymmetric import ec, padding, rsa
+from cryptography.hazmat.primitives.asymmetric.utils import encode_dss_signature
 from fastapi import Depends, Header, HTTPException, Request, status
 from pydantic import BaseModel, Field
 
@@ -111,8 +117,7 @@ def _b64url_decode(s: str) -> bytes:
     return base64.urlsafe_b64decode(s + "=" * (-len(s) % 4))
 
 
-def decode_supabase_jwt(token: str, secret: str, now: float | None = None) -> dict[str, Any]:
-    """Verify an HS256 JWT (Supabase access token) and return its claims."""
+def _split_jwt(token: str) -> tuple[dict[str, Any], Any, bytes, bytes]:
     try:
         head_b64, body_b64, sig_b64 = token.split(".")
         header = json.loads(_b64url_decode(head_b64))
@@ -120,11 +125,13 @@ def decode_supabase_jwt(token: str, secret: str, now: float | None = None) -> di
         sig = _b64url_decode(sig_b64)
     except (ValueError, UnicodeDecodeError) as e:  # includes json/base64 errors
         raise TokenError("malformed token") from e
-    if header.get("alg") != "HS256":
-        raise TokenError(f"unsupported alg {header.get('alg')}")
-    signed = f"{head_b64}.{body_b64}".encode()
-    expected = hmac.new(secret.encode(), signed, hashlib.sha256).digest()
-    if not isinstance(payload, dict) or not hmac.compare_digest(expected, sig):
+    if not isinstance(header, dict):
+        raise TokenError("malformed token")
+    return header, payload, f"{head_b64}.{body_b64}".encode(), sig
+
+
+def _check_claims(payload: Any, now: float | None) -> dict[str, Any]:
+    if not isinstance(payload, dict):
         raise TokenError("bad signature")
     claims: dict[str, Any] = payload
     exp = claims.get("exp")
@@ -133,6 +140,86 @@ def decode_supabase_jwt(token: str, secret: str, now: float | None = None) -> di
     if not claims.get("sub") or not claims.get("email"):
         raise TokenError("token missing sub/email")
     return claims
+
+
+def _verify_jwk(jwk: dict[str, Any], alg: str, signed: bytes, sig: bytes) -> bool:
+    try:
+        if jwk.get("kty") == "EC" and alg == "ES256":
+            x = int.from_bytes(_b64url_decode(jwk["x"]), "big")
+            y = int.from_bytes(_b64url_decode(jwk["y"]), "big")
+            pub = ec.EllipticCurvePublicNumbers(x, y, ec.SECP256R1()).public_key()
+            if len(sig) != 64:
+                return False
+            r, s_ = int.from_bytes(sig[:32], "big"), int.from_bytes(sig[32:], "big")
+            der = encode_dss_signature(r, s_)
+            pub.verify(der, signed, ec.ECDSA(hashes.SHA256()))
+            return True
+        if jwk.get("kty") == "RSA" and alg == "RS256":
+            n = int.from_bytes(_b64url_decode(jwk["n"]), "big")
+            e = int.from_bytes(_b64url_decode(jwk["e"]), "big")
+            pub_rsa = rsa.RSAPublicNumbers(e, n).public_key()
+            pub_rsa.verify(sig, signed, padding.PKCS1v15(), hashes.SHA256())
+            return True
+    except (InvalidSignature, KeyError, ValueError):
+        return False
+    return False
+
+
+class JwksCache:
+    """Fetches and caches a project's JWKS; refreshes on unknown ``kid`` (key rotation)."""
+
+    def __init__(self, url: str, ttl_s: float = 3600) -> None:
+        self.url = url
+        self.ttl_s = ttl_s
+        self._keys: list[dict[str, Any]] = []
+        self._fetched = 0.0
+
+    async def keys(self, *, force: bool = False) -> list[dict[str, Any]]:
+        if force or not self._keys or time.time() - self._fetched > self.ttl_s:
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                r = await client.get(self.url)
+                r.raise_for_status()
+                body = r.json()
+            self._keys = list(body.get("keys", [])) if isinstance(body, dict) else []
+            self._fetched = time.time()
+        return self._keys
+
+
+_jwks: dict[str, JwksCache] = {}
+
+
+async def decode_supabase_jwt_jwks(
+    token: str, jwks_url: str, now: float | None = None
+) -> dict[str, Any]:
+    """Verify an ES256/RS256 JWT against the project's published signing keys."""
+    header, payload, signed, sig = _split_jwt(token)
+    alg = str(header.get("alg"))
+    if alg not in ("ES256", "RS256"):
+        raise TokenError(f"unsupported alg {alg}")
+    cache = _jwks.setdefault(jwks_url, JwksCache(jwks_url))
+    kid = header.get("kid")
+    try:
+        keys = await cache.keys()
+        match = [k for k in keys if kid is None or k.get("kid") == kid]
+        if not match:
+            keys = await cache.keys(force=True)
+            match = [k for k in keys if kid is None or k.get("kid") == kid]
+    except httpx.HTTPError as e:
+        raise TokenError("signing keys unavailable") from e
+    if not any(_verify_jwk(k, alg, signed, sig) for k in match):
+        raise TokenError("bad signature")
+    return _check_claims(payload, now)
+
+
+def decode_supabase_jwt(token: str, secret: str, now: float | None = None) -> dict[str, Any]:
+    """Verify an HS256 JWT (Supabase legacy JWT secret) and return its claims."""
+    header, payload, signed, sig = _split_jwt(token)
+    if header.get("alg") != "HS256":
+        raise TokenError(f"unsupported alg {header.get('alg')}")
+    expected = hmac.new(secret.encode(), signed, hashlib.sha256).digest()
+    if not hmac.compare_digest(expected, sig):
+        raise TokenError("bad signature")
+    return _check_claims(payload, now)
 
 
 def encode_supabase_jwt(claims: dict[str, Any], secret: str) -> str:
@@ -231,12 +318,22 @@ async def resolve_user(
         uid = members[0].user_id if members else f"dev-{digest}"
         return Principal(user_id=uid, email=email, memberships=members, mode="dev")
 
-    if not settings.supabase_jwt_secret:
+    if not settings.supabase_jwt_secret and not settings.supabase_url:
         raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, "auth not configured")
     if not authorization or not authorization.lower().startswith("bearer "):
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "missing bearer token")
+    token = authorization[7:].strip()
     try:
-        claims = decode_supabase_jwt(authorization[7:].strip(), settings.supabase_jwt_secret)
+        header, _, _, _ = _split_jwt(token)
+        if header.get("alg") == "HS256":
+            if not settings.supabase_jwt_secret:
+                raise TokenError("HS256 token but PARLIO_SUPABASE_JWT_SECRET not set")
+            claims = decode_supabase_jwt(token, settings.supabase_jwt_secret)
+        else:
+            if not settings.supabase_url:
+                raise TokenError("asymmetric token but PARLIO_SUPABASE_URL not set")
+            jwks_url = settings.supabase_url.rstrip("/") + "/auth/v1/.well-known/jwks.json"
+            claims = await decode_supabase_jwt_jwks(token, jwks_url)
     except TokenError as e:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, str(e)) from e
     email = str(claims["email"]).lower()
