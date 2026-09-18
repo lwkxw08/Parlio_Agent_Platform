@@ -22,7 +22,7 @@ export default function CallRecordingPage() {
       <p>
         Calls are recorded and transcribed where the business has enabled this; you will hear an announcement at the start of
         the call. Recordings are used by the business to fulfil your request (for example, to book an appointment and pass the
-        details to an engineer), for quality and training, and to keep an accurate record. They are stored in the UK and kept
+        details to a team member), for quality and training, and to keep an accurate record. They are stored in the UK and kept
         for the period set by the business.
       </p>
       <h3>Your rights</h3>

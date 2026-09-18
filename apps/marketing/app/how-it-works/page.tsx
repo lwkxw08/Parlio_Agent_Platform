@@ -29,7 +29,7 @@ export default function HowItWorksPage() {
               ["Greet & consent", "Your greeting, in your chosen voice, with the recording announcement your policy requires. After-hours and holiday personas switch automatically."],
               ["Understand", "The assistant listens continuously — callers can interrupt — and works out intent: book, ask, report a fault, reach a person."],
               ["Act", "It checks live availability against your booking rules and team, books the slot, opens a ticket, sends an SMS, or warm-transfers with a spoken briefing."],
-              ["Escalate safely", "Emergencies follow your rules: on-call engineer, out-of-hours booking, or a choice offered to the caller. Sensitive actions can pause for a human approval."],
+              ["Escalate safely", "Emergencies follow your rules: on-call team member, out-of-hours booking, or a choice offered to the caller. Sensitive actions can pause for a human approval."],
               ["Wrap up", "Summary, extracted details, QA score, contact record and CRM sync happen automatically. The owner can get a text summary within seconds."],
             ].map(([t, b]) => <div key={t} className="feature"><h3>{t}</h3><p>{b}</p></div>)}
           </div>

@@ -32,7 +32,7 @@ export default function DemoPage() {
           <div className="grid c3">
             <div className="feature"><h3>Booking rules</h3><p>60-minute slots on the hour or half-past within business hours, a travel gap between jobs, and a genuine-emergency exception.</p></div>
             <div className="feature"><h3>Service types</h3><p>Boiler service, repair and quote — each with its own length. Ask for one and listen for the assistant offering the right duration.</p></div>
-            <div className="feature"><h3>Emergency handling</h3><p>Say you can smell gas and it will follow the safety script and offer the on-call engineer; say “no hot water” and it books the earliest slot instead.</p></div>
+            <div className="feature"><h3>Emergency handling</h3><p>Say you can smell gas and it will follow the safety script and offer the on-call team member; say “no hot water” and it books the earliest slot instead.</p></div>
           </div>
           <p className="muted small" style={{ marginTop: "1.4rem" }}>
             Demo calls are limited to three minutes and a monthly allowance, and are recorded so we can keep the demo assistant

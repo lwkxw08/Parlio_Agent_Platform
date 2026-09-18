@@ -8,19 +8,19 @@ import "./globals.css";
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
   title: {
-    default: "ParlioTec — the AI phone assistant that books the job, not just the message",
+    default: "ParlioTec — the intelligent AI-powered business phone system that books the job, not just the message",
     template: "%s · ParlioTec",
   },
   description:
-    "UK-first AI receptionist for businesses: answers every call in a natural voice, books real appointments across your team's calendars or scheduling tool, transfers warm to a human, and handles SMS, WhatsApp and web chat too.",
+    "UK-first intelligent AI-powered business phone system: answers every call in a natural voice, books real appointments across your team, transfers warm to a human, handles SMS, WhatsApp and web chat, and turns every conversation into analytics, forecasts and AI recommendations.",
   icons: { icon: "/brand/icon-32.png", apple: "/brand/icon-180.png" },
   openGraph: {
     type: "website",
     siteName: "ParlioTec",
-    title: "ParlioTec — AI phone assistant for UK businesses",
+    title: "ParlioTec — intelligent AI-powered business phone system for UK businesses",
     description:
       "Answers every call, books real appointments across your team, transfers warm to a human and keeps data in the UK.",
-    images: [{ url: "/brand/full-logo.jpg", width: 1280, height: 746 }],
+    images: [{ url: "/brand/full-logo.png", width: 1280, height: 1024 }],
   },
   twitter: { card: "summary_large_image" },
 };
