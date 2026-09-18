@@ -217,9 +217,9 @@ async def contact(
             body.message,
         ]
     )
-    for owner in settings.platform_owner_emails:
+    for recipient in settings.site_contact_emails or settings.platform_owner_emails:
         try:
-            await notifications.email.send(owner, subject, text)
+            await notifications.email.send(recipient, subject, text)
         except Exception as e:  # never fail the visitor because of email delivery
-            log.warning("site contact email to %s failed: %s", owner, e)
+            log.warning("site contact email to %s failed: %s", recipient, e)
     return ContactOut(id=doc_id, received=True)

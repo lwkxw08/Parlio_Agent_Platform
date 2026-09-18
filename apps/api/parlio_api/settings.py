@@ -110,6 +110,8 @@ class Settings(BaseSettings):
     # Phase 16b: emails granted the platform "owner" staff role on sign-in (bootstraps /admin).
     # Dev mode defaults to the demo owner so the console is reachable locally.
     platform_owner_emails: list[str] = ["owner@demo.parlio.local"]
+    # Where marketing-site contact/sales enquiries are emailed; empty = platform owners.
+    site_contact_emails: list[str] = []
 
     # Phase 9 outbound: "simulated" records dials; "livekit" dispatches the worker to dial via
     # the platform SIP outbound trunk.
