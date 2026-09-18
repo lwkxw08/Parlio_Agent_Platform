@@ -2,6 +2,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { CompareTable, CtaBand, FeatureGrid, Industries, Steps } from "@/components/blocks";
 import { HearItLive } from "@/components/demo";
+import { LiveCall } from "@/components/live-call";
 import { Reveal } from "@/components/reveal";
 import { signupUrl } from "@/lib/api";
 import { COMPARE, PILLARS } from "@/lib/content";
@@ -22,7 +23,7 @@ export default function Home() {
             <p className="lead">
               ParlioTec answers every call in a natural British voice, books real appointments across your whole team&apos;s
               calendars or scheduling tool, transfers warm to a person when it matters, handles SMS, WhatsApp and web
-              chat with the same brain — and learns from every conversation to run your business better.
+              chat with the same brain — and your people can listen in, whisper or step into any call, live.
             </p>
             <div className="actions">
               <a className="btn primary lg" href={signupUrl}>Start free trial</a>
@@ -36,24 +37,7 @@ export default function Home() {
             </div>
           </div>
           <div className="mock">
-            <div className="card">
-              <div className="call-head">
-                <div className="avatar">G</div>
-                <div>
-                  <b>Gemma · ParlioTec assistant</b>
-                  <div className="muted small">Incoming call · 07700 900123</div>
-                </div>
-                <span className="pill" style={{ marginLeft: "auto" }}><span className="dot" />Live</span>
-              </div>
-              <div className="bubbles">
-                <div className="bubble ai">Good morning, Northside Heating, Gemma speaking. How can I help?</div>
-                <div className="bubble caller">Hi — my boiler&apos;s stopped working, can someone come out this week?</div>
-                <div className="bubble ai">Sorry to hear that. I can book a repair visit — that&apos;s an hour. Tom&apos;s free Thursday at 10 or Friday at 2. Which suits?</div>
-                <div className="bubble caller">Thursday at 10 please.</div>
-                <div className="bubble ai">Booked with Tom, Thursday 10 to 11. I&apos;ll text you a confirmation now — what&apos;s the postcode?</div>
-              </div>
-              <div className="booked">✓ Booked · Tom · Thu 10:00 · Boiler repair (60 min) · SMS sent</div>
-            </div>
+            <LiveCall />
             <div className="float a"><span>⚡</span><div><b>Barge-in</b>callers can interrupt</div></div>
             <div className="float b"><span>📅</span><div><b>4 team members</b>pooled availability</div></div>
           </div>
@@ -118,6 +102,45 @@ export default function Home() {
                 <div className="t">15:00</div><div className="cell b1" /><div className="cell" /><div className="cell" />
               </div>
               <p className="muted small" style={{ marginTop: "0.8rem" }}>Schedule board · day view · a colour per team member, hatched = busy from their own calendar</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section className="section supervise-section">
+        <div className="wrap">
+          <div className="split rev">
+            <div>
+              <div className="eyebrow">Humans in the loop</div>
+              <h2>The AI takes the call. Your people are never locked out of it.</h2>
+              <p className="lead" style={{ marginTop: "0.8rem" }}>
+                Every live call streams to the dashboard as it happens. Anyone on your team can listen, whisper a steer
+                to the assistant that the caller never hears, or step in and take the conversation over — at any moment,
+                not just when something has gone wrong.
+              </p>
+              <ul className="checks">
+                <li><span><b>Listen</b> — live audio and transcript for every active call, from the office or a phone</span></li>
+                <li><span><b>Whisper</b> — “offer them Friday instead” or “we do cover that postcode”; the AI adjusts mid-sentence</span></li>
+                <li><span><b>Take over</b> — you speak to the caller directly; hand back to the AI when you&apos;re done</span></li>
+                <li><span><b>Approve</b> — the assistant can pause for a yes/no from you via a tap-link, e.g. before a discount or out-of-hours booking</span></li>
+              </ul>
+            </div>
+            <div className="panel-art live-art">
+              <div className="live-row head"><span className="dot" />Live calls · 2 active</div>
+              <div className="live-row">
+                <div className="who"><b>07700 900123</b><span className="muted small">Gemma · booking · 1:42</span></div>
+                <div className="ctl"><span className="on">Listening</span><span>Whisper</span><span>Take over</span></div>
+              </div>
+              <div className="whisper-box">
+                <span className="tag">Whisper to Gemma</span>
+                <div className="typed">Offer the 8am slot on Friday as well</div>
+                <div className="muted small">Only the assistant hears this — the caller carries on uninterrupted.</div>
+              </div>
+              <div className="live-row">
+                <div className="who"><b>0161 496 0000</b><span className="muted small">Gemma · quote request · 0:38</span></div>
+                <div className="ctl"><span>Listen</span><span>Whisper</span><span>Take over</span></div>
+              </div>
+              <p className="muted small" style={{ marginTop: "0.8rem" }}>Live page · every active AI call, with listen / whisper / take over and approvals</p>
             </div>
           </div>
         </div>

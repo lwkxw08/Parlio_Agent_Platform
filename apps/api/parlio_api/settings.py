@@ -137,6 +137,9 @@ class Settings(BaseSettings):
     sip_provisioner: Literal["simulated", "livekit"] = "simulated"
     sip_domain: str = "sip.parlio.local"
     livekit_url: str | None = None
+    # Browser-facing signalling URL (wss://) handed to dashboard/web-chat/site visitors; defaults to
+    # livekit_url, which is wrong whenever the API reaches LiveKit over a private/Docker address.
+    livekit_public_url: str | None = None
     livekit_api_key: str | None = None
     livekit_api_secret: str | None = None
 

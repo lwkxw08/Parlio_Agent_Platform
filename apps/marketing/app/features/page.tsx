@@ -8,10 +8,10 @@ export const metadata: Metadata = {
 };
 
 const GROUPS: { id: string; title: string; blurb: string; idx: number[] }[] = [
-  { id: "answer", title: "Answer & resolve", blurb: "The conversation itself — voice, understanding, transfers and follow-through.", idx: [0, 4, 5, 6] },
+  { id: "answer", title: "Answer & resolve", blurb: "The conversation itself — voice, understanding, transfers and follow-through.", idx: [0, 4, 5, 6, 7] },
   { id: "book", title: "Book & schedule", blurb: "Where ParlioTec goes far beyond message-taking: your rules, your team, your tools.", idx: [1, 2, 3] },
-  { id: "measure", title: "Measure & improve", blurb: "Know what callers want, see what's coming, prove the value — and let the assistant get better with every call.", idx: [7, 12, 8] },
-  { id: "scale", title: "Run at scale", blurb: "Several sites or brands, your CRM stack, and the controls a regulated business needs.", idx: [9, 10, 11] },
+  { id: "measure", title: "Measure & improve", blurb: "Know what callers want, see what's coming, prove the value — and let the assistant get better with every call.", idx: [8, 13, 9] },
+  { id: "scale", title: "Run at scale", blurb: "Several sites or brands, your CRM stack, and the controls a regulated business needs.", idx: [10, 11, 12] },
 ];
 
 export default function FeaturesPage() {
@@ -29,7 +29,7 @@ export default function FeaturesPage() {
               <div className="eyebrow">{g.title}</div>
               <h2>{g.blurb}</h2>
             </div>
-            <FeatureGrid items={g.idx.map((n) => PILLARS[n])} cols={g.idx.length >= 4 ? 4 : 3} />
+            <FeatureGrid items={g.idx.map((n) => PILLARS[n])} cols={g.idx.length === 4 ? 4 : 3} />
           </div>
         </section>
       ))}

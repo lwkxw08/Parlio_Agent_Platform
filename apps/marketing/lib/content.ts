@@ -35,6 +35,12 @@ export const PILLARS: Feature[] = [
     points: ["Departments with descriptions that steer routing", "Urgent-keyword escalation to the on-call team member", "Record the human leg too, with human talk-time analytics"],
   },
   {
+    icon: "🎚️",
+    title: "Humans in the loop, live",
+    body: "Every AI call streams to the Live page. Your team can listen in, whisper guidance the caller never hears, or take over the conversation at any moment — then hand it back to the AI.",
+    points: ["Live transcript and audio for every active call", "Whisper: steer the AI mid-call without interrupting the caller", "Take over, hand back, or approve a decision from a tap-link on your phone"],
+  },
+  {
     icon: "🎫",
     title: "Tickets, callbacks and follow-through",
     body: "Anything not resolved on the call becomes a ticket with SLA timers. Your team claims it, or lets the AI call the customer back with the answer in hand.",

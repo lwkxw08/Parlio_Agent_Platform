@@ -446,7 +446,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     control: RoomControl
     if settings.livekit_url and settings.livekit_api_key and settings.livekit_api_secret:
         control = LiveKitRoomControl(
-            settings.livekit_url, settings.livekit_api_key, settings.livekit_api_secret
+            settings.livekit_url,
+            settings.livekit_api_key,
+            settings.livekit_api_secret,
+            ws_url=settings.livekit_public_url,
         )
     else:
         control = SimulatedRoomControl()
