@@ -10,12 +10,12 @@ export default function PrivacyPage() {
       <p>
         This policy explains how <P>Legal entity name</P> (&ldquo;ParlioTec&rdquo;, &ldquo;we&rdquo;) collects and uses personal
         data. We are registered with the Information Commissioner&rsquo;s Office (ICO) under reference <P>ICO reference</P>.
-        Contact: <P>privacy@parliotec.co.uk</P>, <P>registered office address</P>.
+        Contact: <P>privacy@parliotec.com</P>, <P>registered office address</P>.
       </p>
 
       <h2>1. Who this policy covers</h2>
       <ul>
-        <li><b>Website visitors</b> &mdash; people using parliotec.co.uk, including the &ldquo;Hear it live&rdquo; demo and the contact form.</li>
+        <li><b>Website visitors</b> &mdash; people using parliotec.com, including the &ldquo;Hear it live&rdquo; demo and the contact form.</li>
         <li><b>Customers and their team members</b> &mdash; people who create or use a ParlioTec account.</li>
         <li><b>Callers and contacts of our customers</b> &mdash; people who phone, message or chat with a business that uses ParlioTec. For this data <b>the business is the controller and we are the processor</b>; their privacy notice applies, and section 7 explains how we handle it on their behalf.</li>
       </ul>
@@ -58,7 +58,7 @@ export default function PrivacyPage() {
       <h2>6. Your rights</h2>
       <p>
         You can ask for access to, correction or erasure of your data, object to or restrict processing, request portability,
-        and withdraw consent at any time by emailing <P>privacy@parliotec.co.uk</P>. You can complain to the ICO
+        and withdraw consent at any time by emailing <P>privacy@parliotec.com</P>. You can complain to the ICO
         (ico.org.uk, 0303 123 1113), but we would appreciate the chance to resolve concerns first.
       </p>
 

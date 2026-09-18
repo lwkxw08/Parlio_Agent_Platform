@@ -54,7 +54,7 @@ export default function AupPage() {
       <p>
         We may warn, suspend or terminate accounts that breach this policy, and remove content or configuration causing harm,
         without refund. We cooperate with carriers, regulators and law enforcement where required. Report abuse to{" "}
-        <P>abuse@parliotec.co.uk</P>.
+        <P>abuse@parliotec.com</P>.
       </p>
     </LegalPage>
   );

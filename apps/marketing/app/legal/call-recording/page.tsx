@@ -50,7 +50,7 @@ export default function CallRecordingPage() {
         Suggested announcement: &ldquo;Thanks for calling <P>Business</P>. Calls are recorded for quality and to help us with your
         request. You&rsquo;re speaking with our virtual assistant &mdash; ask for a person at any time.&rdquo;
       </p>
-      <p>Questions: <P>privacy@parliotec.co.uk</P>.</p>
+      <p>Questions: <P>privacy@parliotec.com</P>.</p>
     </LegalPage>
   );
 }

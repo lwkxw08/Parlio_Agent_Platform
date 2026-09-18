@@ -36,7 +36,7 @@ export default function SecurityPage() {
           <div className="notice" style={{ marginTop: "2rem" }}>
             Formal certifications (e.g. Cyber Essentials, ISO 27001) and penetration-test summaries will be listed here as they
             are completed. For security questionnaires or to report a vulnerability, email{" "}
-            <a href="mailto:security@parliotec.co.uk">security@parliotec.co.uk</a>.
+            <a href="mailto:security@parliotec.com">security@parliotec.com</a>.
           </div>
           <p className="muted" style={{ marginTop: "1.2rem" }}>
             Related documents: <Link href="/legal/privacy/">Privacy policy</Link> · <Link href="/legal/dpa/">Data processing agreement</Link> ·{" "}

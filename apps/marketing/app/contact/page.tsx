@@ -27,8 +27,8 @@ export default function ContactPage() {
               <ul className="demo-list" style={{ marginTop: "0.8rem" }}>
                 <li>Try it without talking to us: <Link href="/demo/">hear the assistant live</Link>.</li>
                 <li>Existing customer? Press <b>?</b> on any dashboard screen for guided help, or open a ticket from Support.</li>
-                <li>Service status: <a href="https://app.parliotec.co.uk/status">status page</a>.</li>
-                <li>Email: <a href="mailto:hello@parliotec.co.uk">hello@parliotec.co.uk</a></li>
+                <li>Service status: <a href="https://app.parliotec.com/status">status page</a>.</li>
+                <li>Email: <a href="mailto:hello@parliotec.com">hello@parliotec.com</a></li>
               </ul>
               <div className="notice" style={{ marginTop: "1.6rem" }}>
                 <b>Company details</b><br />
