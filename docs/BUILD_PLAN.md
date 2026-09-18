@@ -292,6 +292,10 @@ Today booking is one calendar per tenant (the primary `CalendarConnection`, with
 - Reference capacity: 1,000 concurrent calls ~ 60-100 vCPU workers + 2-3 LiveKit nodes + SIP edge pair ~ GBP 1.5-3k/mo infra; ~1.5M minutes/mo; ~3,000 SME tenants.
 
 ## Part H — Go-live checklist (after Part F; mostly configuration and business setup, ~1 session of engineering)
+**Marketing site (`apps/marketing`) — built**
+- Static Next.js export on Cloudflare Pages project `parliotec-marketing` (CI job `marketing`: main → production, branches → preview). Pages: home, platform, compare, industries, how-it-works, pricing (live from `GET /v1/public/site`, platform-owner costs excluded), demo ("Hear it live" browser call to the demo tenant, IP + monthly-minute caps, 3-min client cap), contact (`POST /v1/public/site/contact`), trust; legal drafts (terms, privacy, cookies, AUP, DPA, call-recording notice) with `[placeholders]` for company details.
+- To launch: point `parliotec.co.uk` at the Pages project (custom domain), set repo vars `NEXT_PUBLIC_API_URL` / `NEXT_PUBLIC_DASHBOARD_URL` / `NEXT_PUBLIC_SITE_URL`, set `PARLIO_SITE_URL` on the API for CORS, fill legal placeholders after solicitor review, confirm `hello@`/`privacy@`/`legal@` mailboxes, check `PARLIO_PLATFORM_OWNER_EMAILS` (contact-form notifications go there) and optionally `PARLIO_SITE_DEMO_PHONE`; consider enforcing the demo duration cap server-side and moving the per-IP limiter to Redis before multi-instance API.
+
 **Accounts & credentials (owner creates, engineering wires in)**
 - Supabase project → `PARLIO_AUTH_MODE=supabase`, `PARLIO_PLATFORM_OWNER_EMAIL` set, owner 2FA enrolled; invite-only until happy.
 - Stripe live keys + webhook secret, live prices per plan, VAT settings; one real low-value checkout end to end.

@@ -227,7 +227,9 @@ class SimulatedScheduler:
         self._check()
         out: list[ExternalSlot] = []
         for sh in await self.shifts(cfg, secret, start, end):
-            cursor = max(sh.start, start)
+            cursor = sh.start
+            while cursor < start:
+                cursor += timedelta(minutes=minutes)
             while cursor + timedelta(minutes=minutes) <= sh.end and len(out) < 40:
                 slot_end = cursor + timedelta(minutes=minutes)
                 taken = any(
