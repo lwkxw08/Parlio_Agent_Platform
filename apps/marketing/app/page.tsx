@@ -18,22 +18,22 @@ export default function Home() {
           <div>
             <span className="pill"><span className="dot" />Intelligent AI-powered business phone system · built in the UK</span>
             <h1>
-              The business phone system that <span className="grad-text">books the job</span>, not just the message
+              Every call you miss, <span className="grad-text">someone else answers.</span>
             </h1>
             <p className="lead">
-              ParlioTec answers every call in a natural British voice, books real appointments across your whole team&apos;s
-              calendars or scheduling tool, transfers warm to a person when it matters, handles SMS, WhatsApp and web
-              chat with the same brain — and your people can listen in, whisper or step into any call, live.
+              You did the hard work to make the phone ring. ParlioTec makes sure it never rings out: every call answered
+              in a natural British voice, the job booked straight into your team&apos;s diary, urgent callers put through
+              warm to a person — 24 hours a day, on the phone, SMS, WhatsApp and web chat.
             </p>
             <div className="actions">
               <a className="btn primary lg" href={signupUrl}>Start free trial</a>
               <Link className="btn secondary lg" href="/demo/">Hear it live — talk to it now</Link>
             </div>
             <div className="proof">
-              <span>No card for the trial</span>
+              <span>Answers on the first ring, 24/7</span>
+              <span>Books the job, not a message</span>
               <span>Keep your number</span>
-              <span>Set up in an afternoon</span>
-              <span>UK data handling</span>
+              <span>No card for the trial</span>
             </div>
           </div>
           <div className="mock">
@@ -46,12 +46,45 @@ export default function Home() {
 
       <div className="wrap">
         <div className="stats">
-          <div className="stat"><b>24/7</b><span>Every call answered, including evenings, weekends and bank holidays</span></div>
-          <div className="stat"><b>0 holds</b><span>No queues or menus — callers speak, and can interrupt, like talking to a person</span></div>
-          <div className="stat"><b>1 → 25+</b><span>Bookable team members per account with pooled availability</span></div>
-          <div className="stat"><b>3 channels</b><span>Phone, SMS/WhatsApp and web chat handled by the same assistant</span></div>
+          <div className="stat"><b>First ring</b><span>Answered instantly — while you&apos;re on a job, on another call, or closed for the night</span></div>
+          <div className="stat"><b>No voicemail</b><span>Callers who hit voicemail ring the next name on the list. Yours never will</span></div>
+          <div className="stat"><b>Booked</b><span>Not a message to chase — a confirmed slot in your team&apos;s diary and a text to the caller</span></div>
+          <div className="stat"><b>In pounds</b><span>The Value dashboard shows what every answered call was worth to you</span></div>
         </div>
       </div>
+
+      <section className="section alt">
+        <div className="wrap">
+          <div className="split">
+            <div>
+              <div className="eyebrow">The cost of the unanswered phone</div>
+              <h2>You paid for that call. Marketing, reputation, years of graft — then it went to voicemail.</h2>
+              <p className="lead" style={{ marginTop: "0.8rem" }}>
+                A missed call isn&apos;t a missed message. It&apos;s business taken by a competitor — a customer who was
+                ready to buy, book or ask, and rang the next name on the list instead. ParlioTec answers every one — and
+                shows you, in pounds, what it caught.
+              </p>
+              <ul className="checks">
+                <li>Answers instantly while you&apos;re on a job, on another call, or closed for the night</li>
+                <li>Turns the call into a booked appointment or a ticket with everything you need — no ring-backs</li>
+                <li>Sends the caller a text confirmation so they stop shopping around</li>
+                <li>Value dashboard puts a figure on bookings won, urgent calls caught and revenue recovered</li>
+              </ul>
+            </div>
+            <div className="panel-art">
+              <div className="ledger">
+                <div className="ledger-head"><b>While you were busy</b><span>This week</span></div>
+                <div className="row"><span>Calls answered you&apos;d have missed</span><b>38</b></div>
+                <div className="row"><span>Appointments booked straight into the diary</span><b>21</b></div>
+                <div className="row"><span>Urgent callers put through to a person</span><b>4</b></div>
+                <div className="row"><span>Callbacks queued with full details</span><b>9</b></div>
+                <div className="row total"><span>Revenue kept</span><b className="grad-text">£4,860</b></div>
+              </div>
+              <p className="muted small" style={{ marginTop: "0.8rem" }}>Illustrative week for a small business · your own figures live on the Value dashboard</p>
+            </div>
+          </div>
+        </div>
+      </section>
 
       <section className="section">
         <div className="wrap">

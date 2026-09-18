@@ -8,11 +8,11 @@ import "./globals.css";
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
   title: {
-    default: "ParlioTec — the intelligent AI-powered business phone system that books the job, not just the message",
+    default: "ParlioTec — every call you miss, someone else answers. The intelligent AI-powered business phone system",
     template: "%s · ParlioTec",
   },
   description:
-    "UK-first intelligent AI-powered business phone system: answers every call in a natural voice, books real appointments across your team, transfers warm to a human, handles SMS, WhatsApp and web chat, and turns every conversation into analytics, forecasts and AI recommendations.",
+    "UK-first intelligent AI-powered business phone system that stops missed calls costing you work: answers every call in a natural voice, books real appointments across your team, transfers warm to a human, handles SMS, WhatsApp and web chat, and turns every conversation into analytics, forecasts and AI recommendations.",
   icons: { icon: "/brand/icon-32.png", apple: "/brand/icon-180.png" },
   openGraph: {
     type: "website",
