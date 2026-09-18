@@ -294,14 +294,14 @@ Today booking is one calendar per tenant (the primary `CalendarConnection`, with
 ## Part H — Go-live checklist (after Part F; mostly configuration and business setup, ~1 session of engineering)
 **Marketing site (`apps/marketing`) — built**
 - Static Next.js export on Cloudflare Pages project `parliotec-marketing` (CI job `marketing`: main → production, branches → preview). Pages: home, platform, compare, industries, how-it-works, pricing (live from `GET /v1/public/site`, platform-owner costs excluded), demo ("Hear it live" browser call to the demo tenant, IP + monthly-minute caps, 3-min client cap), contact (`POST /v1/public/site/contact`), trust; legal drafts (terms, privacy, cookies, AUP, DPA, call-recording notice) with `[placeholders]` for company details.
-- To launch: point `parliotec.co.uk` at the Pages project (custom domain), set repo vars `NEXT_PUBLIC_API_URL` / `NEXT_PUBLIC_DASHBOARD_URL` / `NEXT_PUBLIC_SITE_URL`, set `PARLIO_SITE_URL` on the API for CORS, fill legal placeholders after solicitor review, confirm `hello@`/`privacy@`/`legal@` mailboxes, check `PARLIO_PLATFORM_OWNER_EMAILS` (contact-form notifications go there) and optionally `PARLIO_SITE_DEMO_PHONE`; consider enforcing the demo duration cap server-side and moving the per-IP limiter to Redis before multi-instance API.
+- To launch: attach `parliotec.com` + `www` to the Pages project (done; `parliotec.co.uk` redirects to it), set repo vars `NEXT_PUBLIC_API_URL` / `NEXT_PUBLIC_DASHBOARD_URL` / `NEXT_PUBLIC_SITE_URL`, set `PARLIO_SITE_URL` on the API for CORS, fill legal placeholders after solicitor review, confirm `hello@`/`privacy@`/`legal@` mailboxes, check `PARLIO_PLATFORM_OWNER_EMAILS` (contact-form notifications go there) and optionally `PARLIO_SITE_DEMO_PHONE`; consider enforcing the demo duration cap server-side and moving the per-IP limiter to Redis before multi-instance API.
 
 **Accounts & credentials (owner creates, engineering wires in)**
 - Supabase project → `PARLIO_AUTH_MODE=supabase`, `PARLIO_PLATFORM_OWNER_EMAIL` set, owner 2FA enrolled; invite-only until happy.
 - Stripe live keys + webhook secret, live prices per plan, VAT settings; one real low-value checkout end to end.
 - Telnyx: approved number(s), number pool for per-tenant provisioning, SMS messaging profile + sender registration; `PARLIO_OUTBOUND_DIALER=livekit`.
 - Resend domain verified (DKIM/SPF), Meta WhatsApp Business number, Google/Microsoft OAuth apps verified for calendar scopes, PagerDuty/Opsgenie for on-call.
-- Custom domains (app./api./lk.parlio.co.uk) replacing the sslip.io URLs — Cloudflare for the dashboard, Caddy on the droplet.
+- Custom domains: parliotec.com/www → marketing (Pages), app.parliotec.com → dashboard (Worker custom domain), api./lk.parliotec.com → droplet (Caddy TLS); parliotec.co.uk redirects to .com (Cloudflare redirect rule).
 
 **Infrastructure hardening (engineering)**
 - Managed Postgres (DO London) with daily backups + PITR; object storage for recordings; secrets moved to a vault/env manager; staging environment; `alembic upgrade head` in CD; uptime monitoring feeding the status page; load test at target concurrency (Phase 6 script).

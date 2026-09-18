@@ -40,7 +40,7 @@ export function ContactForm() {
     });
     setBusy(false);
     if (ok) setDone(true);
-    else setError("Sorry — we couldn't send that. Please try again in a moment or email hello@parliotec.co.uk.");
+    else setError("Sorry — we couldn't send that. Please try again in a moment or email hello@parliotec.com.");
   }
 
   if (done) {

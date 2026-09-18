@@ -146,7 +146,7 @@ export default function TermsPage() {
       <p>
         These Terms are governed by the laws of England and Wales and the courts of England and Wales have exclusive
         jurisdiction. They form the entire agreement between us regarding the Service. Neither party may assign without
-        consent, except to an affiliate or successor. Notices to us: <P>legal@parliotec.co.uk</P>.
+        consent, except to an affiliate or successor. Notices to us: <P>legal@parliotec.com</P>.
       </p>
     </LegalPage>
   );

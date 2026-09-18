@@ -108,7 +108,9 @@ services:
       PARLIO_STORE_BACKEND: postgres
       PARLIO_DATABASE_URL: postgresql+asyncpg://parlio_app:${POSTGRES_APP_PASSWORD}@postgres:5432/parlio
       PARLIO_DASHBOARD_URL: ${DASHBOARD_URL}
-      PARLIO_CORS_ORIGINS: '["${DASHBOARD_URL}"]'
+      PARLIO_SITE_URL: ${SITE_URL:-https://parliotec.com}
+      # Browser origins allowed to call the API: dashboard + marketing site (www + .co.uk alias).
+      PARLIO_CORS_ORIGINS: '["${DASHBOARD_URL}", "${SITE_URL:-https://parliotec.com}", "${SITE_WWW_URL:-https://www.parliotec.com}", "https://parliotec.co.uk", "https://www.parliotec.co.uk"]'
       PARLIO_OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       PARLIO_CARTESIA_API_KEY: ${CARTESIA_API_KEY:-}
       PARLIO_ELEVENLABS_API_KEY: ${ELEVENLABS_API_KEY:-}

@@ -1,6 +1,6 @@
 export const API_URL = (process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000").replace(/\/$/, "");
-export const DASHBOARD_URL = (process.env.NEXT_PUBLIC_DASHBOARD_URL ?? "https://app.parliotec.co.uk").replace(/\/$/, "");
-export const SITE_URL = (process.env.NEXT_PUBLIC_SITE_URL ?? "https://parliotec.co.uk").replace(/\/$/, "");
+export const DASHBOARD_URL = (process.env.NEXT_PUBLIC_DASHBOARD_URL ?? "https://app.parliotec.com").replace(/\/$/, "");
+export const SITE_URL = (process.env.NEXT_PUBLIC_SITE_URL ?? "https://parliotec.com").replace(/\/$/, "");
 
 export type PublicPlan = {
   id: string;

@@ -23,7 +23,7 @@ class Settings(BaseSettings):
     site_demo_phone: str | None = None
     site_demo_monthly_minutes: int = 300
     site_demo_starts_per_ip_per_hour: int = 5
-    site_url: str = "https://parliotec.co.uk"
+    site_url: str = "https://parliotec.com"
     # Cloudflare Pages production + preview hosts of the marketing site
     site_preview_origin_regex: str | None = (
         r"^https://([a-z0-9-]+\.)?parliotec-marketing\.pages\.dev$"

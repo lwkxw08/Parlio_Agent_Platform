@@ -7,7 +7,7 @@ export default function CookiesPage() {
   return (
     <LegalPage title="Cookie policy" updated="September 2026 (draft)" current="/legal/cookies/">
       <p>
-        This policy explains how parliotec.co.uk and the ParlioTec dashboard use cookies and similar technologies (including
+        This policy explains how parliotec.com and the ParlioTec dashboard use cookies and similar technologies (including
         local storage), in line with the Privacy and Electronic Communications Regulations (PECR) and UK GDPR.
       </p>
 
@@ -16,9 +16,9 @@ export default function CookiesPage() {
       <table>
         <thead><tr><th>Name</th><th>Set by</th><th>Purpose</th><th>Duration</th></tr></thead>
         <tbody>
-          <tr><td>parliotec-demo-visitor</td><td>parliotec.co.uk (local storage)</td><td>Anonymous identifier so the &ldquo;Hear it live&rdquo; demo can apply fair-use limits and reconnect a dropped call</td><td>Until cleared</td></tr>
-          <tr><td>Session / auth cookies</td><td>app.parliotec.co.uk</td><td>Keep you signed in to the dashboard and protect against cross-site request forgery</td><td>Session / up to <P>30 days</P></td></tr>
-          <tr><td>parlio-theme, sidebar state</td><td>app.parliotec.co.uk (local storage)</td><td>Remember display preferences</td><td>Until cleared</td></tr>
+          <tr><td>parliotec-demo-visitor</td><td>parliotec.com (local storage)</td><td>Anonymous identifier so the &ldquo;Hear it live&rdquo; demo can apply fair-use limits and reconnect a dropped call</td><td>Until cleared</td></tr>
+          <tr><td>Session / auth cookies</td><td>app.parliotec.com</td><td>Keep you signed in to the dashboard and protect against cross-site request forgery</td><td>Session / up to <P>30 days</P></td></tr>
+          <tr><td>parlio-theme, sidebar state</td><td>app.parliotec.com (local storage)</td><td>Remember display preferences</td><td>Until cleared</td></tr>
           <tr><td>__cf_bm and similar</td><td>Cloudflare</td><td>Bot protection and security for the hosting network</td><td>Up to 30 minutes</td></tr>
         </tbody>
       </table>
@@ -43,7 +43,7 @@ export default function CookiesPage() {
       </p>
 
       <h2>5. Contact</h2>
-      <p>Questions: <P>privacy@parliotec.co.uk</P>.</p>
+      <p>Questions: <P>privacy@parliotec.com</P>.</p>
     </LegalPage>
   );
 }
