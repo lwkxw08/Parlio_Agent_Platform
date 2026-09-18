@@ -104,7 +104,7 @@ export function CtaBand({ title, body }: { title?: string; body?: string }) {
       <div className="wrap">
         <div className="cta-band">
           <div>
-            <h2>{title ?? "Stop losing the calls you paid to get."}</h2>
+            <h2>{title ?? "You made the phone ring. Make sure it never rings out."}</h2>
             <p>{body ?? "Set up in an afternoon. Free trial on every plan, no card needed. Keep your number, your calendar and your team's way of working."}</p>
           </div>
           <div className="actions">
