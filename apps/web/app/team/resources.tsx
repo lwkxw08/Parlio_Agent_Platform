@@ -29,8 +29,8 @@ const DAYS: [string, string][] = [["mon", "Mon"], ["tue", "Tue"], ["wed", "Wed"]
 const POLICIES: { value: AssignmentPolicy; label: string; help: string }[] = [
   { value: "least_loaded", label: "Least loaded that day", help: "Whoever has the fewest jobs on the day gets the booking" },
   { value: "round_robin", label: "Round robin", help: "Takes turns in order" },
-  { value: "nearest", label: "Nearest area", help: "Prefers the engineer whose postcode areas match the caller's" },
-  { value: "preferred", label: "Preferred engineer", help: "Returning customers get whoever they had last time when free" },
+  { value: "nearest", label: "Nearest area", help: "Prefers the team member whose postcode areas match the caller's" },
+  { value: "preferred", label: "Preferred team member", help: "Returning customers get whoever they had last time when free" },
 ];
 const PROVIDERS: { value: SchedulerProvider; label: string; help: string }[] = [
   { value: "servicem8", label: "ServiceM8", help: "API key from ServiceM8 → Settings → API. Jobs and job activities are created there." },
@@ -45,7 +45,7 @@ const defaultHours = (): Schedule => ({
   hours: Object.fromEntries(["mon", "tue", "wed", "thu", "fri"].map((d) => [d, { open: "08:00", close: "17:00" }])),
 });
 const blank = (): ResourceInput => ({
-  name: "", role: "Engineer", skills: [], site_id: null, areas: [], hours: null, active: true, on_call: false,
+  name: "", role: "Team member", skills: [], site_id: null, areas: [], hours: null, active: true, on_call: false,
   connection_id: null, calendar_id: "primary", external_ref: null, phone: null,
 });
 const csv = (v: string[]) => v.join(", ");
@@ -80,7 +80,7 @@ export default function Resources({ tenant, initial, settings: initialSettings, 
   const save = async () => {
     if (!editing) return;
     const body = { ...editing.body, name: editing.body.name.trim() };
-    if (!body.name) return setMsg("Give the engineer a name");
+    if (!body.name) return setMsg("Give the team member a name");
     const r = editing.id ? await updateResource(tenant, editing.id, body) : await createResource(tenant, body);
     if (!r.ok) return setMsg(`Save failed: ${r.error}`);
     setRows((rs) => (editing.id ? rs.map((x) => (x.id === r.data.id ? r.data : x)) : [...rs, r.data]));
@@ -115,11 +115,11 @@ export default function Resources({ tenant, initial, settings: initialSettings, 
   return (
     <>
       <div className="section" id="engineers">
-        <h2>Engineers &amp; resources</h2>
+        <h2>Team members &amp; resources</h2>
         <p className="hint">
           Add everyone who can be booked. Availability offered to callers is pooled across the team — a slot is offered when anyone who can do that
-          service is free — and each booking is assigned to one engineer and written to their calendar. With no engineers listed, bookings go to the
-          primary calendar as before. Once anyone is listed, only engineers are booked — add yourself with Calendar ID left as &quot;primary&quot; to keep
+          service is free — and each booking is assigned to one team member and written to their calendar. With no team members listed, bookings go to the
+          primary calendar as before. Once anyone is listed, only team members are booked — add yourself with Calendar ID left as &quot;primary&quot; to keep
           taking jobs on the Integrations calendar.
         </p>
         {msg && <p className="hint warn">{msg}</p>}
@@ -155,13 +155,13 @@ export default function Resources({ tenant, initial, settings: initialSettings, 
             </tbody>
           </table>
         )}
-        {canManage && !editing && <button onClick={() => setEditing({ id: null, body: blank() })} style={{ marginTop: "0.6rem" }}>Add engineer</button>}
+        {canManage && !editing && <button onClick={() => setEditing({ id: null, body: blank() })} style={{ marginTop: "0.6rem" }}>Add team member</button>}
         {editing && (
           <form className="form" style={{ marginTop: "0.8rem" }} onSubmit={(e) => { e.preventDefault(); save(); }}>
-            <h3>{editing.id ? `Edit ${editing.body.name}` : "New engineer"}</h3>
+            <h3>{editing.id ? `Edit ${editing.body.name}` : "New team member"}</h3>
             <div className="two">
               <label>Name <input required value={editing.body.name} onChange={(e) => set("name", e.target.value)} /></label>
-              <label>Role <input value={editing.body.role} onChange={(e) => set("role", e.target.value)} placeholder="Engineer, Plumber, Electrician…" /></label>
+              <label>Role <input value={editing.body.role} onChange={(e) => set("role", e.target.value)} placeholder="Team member, Plumber, Electrician, Agent…" /></label>
             </div>
             <div className="two">
               <label>Skills / services <span className="muted small">(leave empty for any)</span>
@@ -211,7 +211,7 @@ export default function Resources({ tenant, initial, settings: initialSettings, 
                 );
               })}
             </div>
-            <label className="small check"><input type="checkbox" checked={editing.body.on_call} onChange={(e) => set("on_call", e.target.checked)} /> On call — emergency bookings go to this engineer first</label>
+            <label className="small check"><input type="checkbox" checked={editing.body.on_call} onChange={(e) => set("on_call", e.target.checked)} /> On call — emergency bookings go to this team member first</label>
             <label className="small check"><input type="checkbox" checked={editing.body.active} onChange={(e) => set("active", e.target.checked)} /> Active (bookable)</label>
             <div className="actions">
               <button type="submit">{editing.id ? "Save" : "Add"}</button>
@@ -232,12 +232,12 @@ export default function Resources({ tenant, initial, settings: initialSettings, 
           </label>
           <label>Bookings are made in
             <select disabled={!canManage} value={settings.mode} onChange={(e) => saveSettings({ mode: e.target.value as BookingMode })}>
-              <option value="calendar">Calendars (Google / Outlook per engineer)</option>
+              <option value="calendar">Calendars (Google / Outlook per team member)</option>
               <option value="scheduler">Our scheduling tool (below)</option>
             </select>
           </label>
         </div>
-        <label className="small check"><input type="checkbox" disabled={!canManage} checked={settings.emergency_to_on_call} onChange={(e) => saveSettings({ emergency_to_on_call: e.target.checked })} /> Emergency services go to the on-call engineer when one is free</label>
+        <label className="small check"><input type="checkbox" disabled={!canManage} checked={settings.emergency_to_on_call} onChange={(e) => saveSettings({ emergency_to_on_call: e.target.checked })} /> Emergency services go to the on-call team member when one is free</label>
       </div>
 
       <SchedulerPanel tenant={tenant} initial={initialScheduler} canManage={canManage} active={schedulerMode} onImported={(rs) => setRows(rs)} />
@@ -316,7 +316,7 @@ function SchedulerPanel({ tenant, initial, canManage, active, onImported }: { te
           <div className="actions">
             <button type="submit">Save</button>
             {cfg && <button type="button" className="ghost" onClick={() => test(false)}>Test connection</button>}
-            {cfg && <button type="button" className="ghost" onClick={() => test(true)}>Import staff as engineers</button>}
+            {cfg && <button type="button" className="ghost" onClick={() => test(true)}>Import staff as team members</button>}
             {cfg && <button type="button" className="danger" onClick={remove}>Remove</button>}
           </div>
           {msg && <p className="hint">{msg}</p>}

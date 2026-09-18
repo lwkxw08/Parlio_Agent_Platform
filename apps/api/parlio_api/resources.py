@@ -1,4 +1,4 @@
-"""Phase 22a/22b: bookable resources (engineers, technicians, rooms) and assignment policy.
+"""Phase 22a/22b: bookable resources (team members, technicians, rooms) and assignment policy.
 
 A tenant with no resources keeps the single-calendar behaviour. Once resources exist, availability
 is pooled across every active resource that can do the requested service and the booking is
@@ -62,7 +62,7 @@ class Resource(BaseModel):
     id: str = Field(default_factory=lambda: f"res-{uuid4().hex[:8]}")
     tenant_id: str
     name: str = Field(min_length=1, max_length=80)
-    role: str = Field(default="Engineer", max_length=40)
+    role: str = Field(default="Team member", max_length=40)
     skills: list[str] = Field(
         default_factory=list, description="Service type ids/names this resource can do; empty = all"
     )
@@ -125,7 +125,7 @@ class TeamSettings(BaseModel):
 
 class ResourceInput(BaseModel):
     name: str = Field(min_length=1, max_length=80)
-    role: str = Field(default="Engineer", max_length=40)
+    role: str = Field(default="Team member", max_length=40)
     skills: list[str] = Field(default_factory=list)
     site_id: str | None = None
     areas: list[str] = Field(default_factory=list)

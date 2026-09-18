@@ -35,7 +35,7 @@ export default async function Team({ searchParams }: { searchParams: Promise<{ t
       )}
       <div className="tabs" style={{ marginBottom: "1rem" }}>
         <Link href={q("members")} className={tab === "members" ? "active" : ""}>Dashboard users</Link>
-        <Link href={q("engineers")} className={tab === "engineers" ? "active" : ""}>Engineers &amp; scheduling</Link>
+        <Link href={q("engineers")} className={tab === "engineers" ? "active" : ""}>Team members &amp; scheduling</Link>
         <Link href={`/schedule?tenant=${tenant}`}>Open schedule →</Link>
       </div>
       {tab === "members" ? (

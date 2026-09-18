@@ -57,9 +57,9 @@ Create the services callers can book, each with its own length: **Name** (e.g. B
 
 Google and Microsoft connections are made once by ParlioTec at platform level; you only need to sign in with your own account.
 
-## More than one engineer?
+## More than one team member?
 
-The calendar here is the tenant's **primary** calendar; the booking rules and service types above apply to every booking. With no engineers listed under *Team → Engineers & scheduling*, every appointment goes into this calendar. Once you add engineers, callers are offered any free engineer and each booking is written to **that engineer's** calendar — this primary calendar only receives bookings if an engineer is set to use it (leave their *Calendar ID* blank or `primary`). Add yourself as an engineer if you take jobs too. Engineers can share this one Google/Microsoft login by giving each their own calendar ID inside it.
+The calendar here is the tenant's **primary** calendar; the booking rules and service types above apply to every booking. With no team members listed under *Team → Team members & scheduling*, every appointment goes into this calendar. Once you add team members, callers are offered any free team member and each booking is written to **that team member's** calendar — this primary calendar only receives bookings if a team member is set to use it (leave their *Calendar ID* blank or `primary`). Add yourself as a team member if you take jobs too. Team members can share this one Google/Microsoft login by giving each their own calendar ID inside it.
 
 ## Bookings
 

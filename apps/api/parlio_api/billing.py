@@ -66,7 +66,7 @@ ENTITLEMENTS: dict[str, str] = {
     "simulation": "Simulation sandbox & prompt A/B",
     "value_reports": "Lead scoring & value attribution",
     "advisor": "AI business advisor & weekly recommendations",
-    "team_scheduling": "Team scheduling (engineers, pooled availability, Schedule page)",
+    "team_scheduling": "Team scheduling (team members, pooled availability, Schedule page)",
     "scheduling_tool": "Scheduling-tool booking backend (ServiceM8 / webhook)",
     "multi_location": "Multiple locations / sites",
     "after_hours_personas": "After-hours & holiday personas",
@@ -118,7 +118,7 @@ class Plan(BaseModel):
     sms_overage_pence: int
     max_assistants: int
     max_concurrent_calls: int
-    # Phase 20-22 caps (0 = unlimited): bookable engineers/calendars, locations, dashboard users.
+    # Phase 20-22 caps (0 = unlimited): bookable team members/calendars, locations, dashboard users.
     max_resources: int = Field(default=1, ge=0)
     max_sites: int = Field(default=1, ge=0)
     max_members: int = Field(default=2, ge=0)
@@ -174,7 +174,7 @@ PLANS: list[Plan] = [
         features=[
             "3 assistants",
             "Calendar booking",
-            "Team scheduling (5 engineers)",
+            "Team scheduling (5 team members)",
             "3 locations",
             "Warm transfers",
             "Analytics Ask AI",
@@ -199,7 +199,7 @@ PLANS: list[Plan] = [
         max_members=15,
         features=[
             "10 assistants",
-            "25 engineers, 10 locations",
+            "25 team members, 10 locations",
             "Scheduling-tool integration",
             "BYO SIP / PBX",
             "Slack & webhooks",
@@ -320,7 +320,7 @@ class TenantLimits(BaseModel):
 
 
 CAP_LABELS: dict[str, str] = {
-    "max_resources": "engineers / bookable calendars",
+    "max_resources": "team members / bookable calendars",
     "max_sites": "locations",
     "max_members": "dashboard users",
 }

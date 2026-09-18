@@ -179,8 +179,8 @@ class SimulatedScheduler:
 
     def __init__(self) -> None:
         self.staff = [
-            ExternalResource(id="ext-1", name="Sim Engineer 1"),
-            ExternalResource(id="ext-2", name="Sim Engineer 2"),
+            ExternalResource(id="ext-1", name="Sim Team member 1"),
+            ExternalResource(id="ext-2", name="Sim Team member 2"),
         ]
         self.jobs: dict[str, ExternalJob] = {}
         self.cancelled: list[str] = []
