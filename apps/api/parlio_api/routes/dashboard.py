@@ -25,7 +25,7 @@ from parlio_api.analytics_query import (
     compare,
     parse_question,
 )
-from parlio_api.auth import UserDep, current_user
+from parlio_api.auth import Principal, UserDep, current_user
 from parlio_api.deps import (
     AdminDep,
     BillingDep,
@@ -128,9 +128,35 @@ class WorkerKeyCreated(BaseModel):
     key: str = Field(description="Shown once; only a hash is stored")
 
 
+async def _owned_assistant(store: CallStore, user: Principal, assistant_id: str) -> AssistantConfig:
+    cfg = await store.get_assistant(assistant_id)
+    if cfg is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "assistant not found")
+    user.require_tenant(cfg.tenant_id)
+    return cfg
+
+
+async def _owned_call(store: CallStore, user: Principal, call_id: str) -> CallRecord:
+    call = await store.get_call(call_id)
+    if call is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "call not found")
+    user.require_tenant(call.tenant_id)
+    return call
+
+
+async def _owned_ticket(store: CallStore, user: Principal, ticket_id: str) -> Ticket:
+    t = await store.get_ticket(ticket_id)
+    if t is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "ticket not found")
+    user.require_tenant(t.tenant_id)
+    return t
+
+
 @router.get("/assistants", response_model=list[AssistantConfig])
-async def list_assistants(store: StoreDep, tenant_id: str | None = None) -> list[AssistantConfig]:
-    return await store.list_assistants(tenant_id)
+async def list_assistants(
+    store: StoreDep, user: UserDep, tenant_id: str | None = None
+) -> list[AssistantConfig]:
+    return await store.list_assistants(user.scope(tenant_id))
 
 
 class AssistantCreate(BaseModel):
@@ -200,10 +226,19 @@ async def _apply_platform_voice(cfg: AssistantConfig, admin: AdminDep) -> Assist
 
 @router.put("/assistants/{assistant_id}", response_model=AssistantConfig)
 async def upsert_assistant(
-    assistant_id: str, body: AssistantUpsert, store: StoreDep, admin: AdminDep, billing: BillingDep
+    assistant_id: str,
+    body: AssistantUpsert,
+    store: StoreDep,
+    admin: AdminDep,
+    billing: BillingDep,
+    user: UserDep,
 ) -> AssistantConfig:
     if body.config.assistant_id != assistant_id:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "assistant_id mismatch")
+    user.require_admin(body.config.tenant_id)
+    existing = await store.get_assistant(assistant_id)
+    if existing is not None and existing.tenant_id != body.config.tenant_id:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "assistant belongs to another organisation")
     if body.config.after_hours.enabled:
         await ensure_feature(billing, body.config.tenant_id, "after_hours_personas")
     cfg = await _apply_platform_voice(body.config, admin)
@@ -212,12 +247,16 @@ async def upsert_assistant(
 
 
 @router.get("/assistants/{assistant_id}/versions", response_model=list[VersionSummary])
-async def list_versions(assistant_id: str, store: StoreDep) -> list[VersionSummary]:
+async def list_versions(assistant_id: str, store: StoreDep, user: UserDep) -> list[VersionSummary]:
+    await _owned_assistant(store, user, assistant_id)
     return [VersionSummary.of(v) for v in await store.list_assistant_versions(assistant_id)]
 
 
 @router.get("/assistants/{assistant_id}/versions/{version}", response_model=AssistantConfig)
-async def get_version(assistant_id: str, version: int, store: StoreDep) -> AssistantConfig:
+async def get_version(
+    assistant_id: str, version: int, store: StoreDep, user: UserDep
+) -> AssistantConfig:
+    await _owned_assistant(store, user, assistant_id)
     cfg = await store.get_assistant_version(assistant_id, version)
     if cfg is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "version not found")
@@ -225,8 +264,11 @@ async def get_version(assistant_id: str, version: int, store: StoreDep) -> Assis
 
 
 @router.post("/assistants/{assistant_id}/rollback/{version}", response_model=AssistantConfig)
-async def rollback_version(assistant_id: str, version: int, store: StoreDep) -> AssistantConfig:
+async def rollback_version(
+    assistant_id: str, version: int, store: StoreDep, user: UserDep
+) -> AssistantConfig:
     """Re-publish an earlier version as a new version (history is never rewritten)."""
+    user.require_admin((await _owned_assistant(store, user, assistant_id)).tenant_id)
     cfg = await store.get_assistant_version(assistant_id, version)
     if cfg is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "version not found")
@@ -235,22 +277,18 @@ async def rollback_version(assistant_id: str, version: int, store: StoreDep) -> 
 
 
 @router.get("/assistants/{assistant_id}/faqs/suggest", response_model=list[Faq])
-async def suggest_assistant_faqs(assistant_id: str, store: StoreDep) -> list[Faq]:
-    cfg = await store.get_assistant(assistant_id)
-    if cfg is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "assistant not found")
+async def suggest_assistant_faqs(assistant_id: str, store: StoreDep, user: UserDep) -> list[Faq]:
+    cfg = await _owned_assistant(store, user, assistant_id)
     calls = await store.list_calls(cfg.tenant_id, limit=200)
     return suggest_faqs(calls, cfg.faqs)
 
 
 @router.post("/assistants/{assistant_id}/draft", response_model=Draft)
 async def draft_field(
-    assistant_id: str, body: DraftRequest, store: StoreDep, drafter: DrafterDep
+    assistant_id: str, body: DraftRequest, store: StoreDep, drafter: DrafterDep, user: UserDep
 ) -> Draft:
     """Ask AI to draft: brief (+ optional website) -> optimised wording for a Studio field."""
-    cfg = await store.get_assistant(assistant_id)
-    if cfg is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "assistant not found")
+    cfg = await _owned_assistant(store, user, assistant_id)
     return await drafter.draft(body, cfg)
 
 
@@ -294,16 +332,18 @@ async def preview_voice(body: PreviewRequest, previewer: VoicePreviewDep) -> Pre
 
 
 @router.get("/assistants/{assistant_id}/required-fields", response_model=list[RequiredField])
-async def get_required_fields(assistant_id: str, store: StoreDep) -> list[RequiredField]:
+async def get_required_fields(
+    assistant_id: str, store: StoreDep, user: UserDep
+) -> list[RequiredField]:
+    await _owned_assistant(store, user, assistant_id)
     return await store.required_fields(assistant_id)
 
 
 @router.put("/assistants/{assistant_id}/required-fields", response_model=list[RequiredField])
 async def put_required_fields(
-    assistant_id: str, fields: list[RequiredField], store: StoreDep
+    assistant_id: str, fields: list[RequiredField], store: StoreDep, user: UserDep
 ) -> list[RequiredField]:
-    if await store.get_assistant(assistant_id) is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "assistant not found")
+    await _owned_assistant(store, user, assistant_id)
     await store.set_required_fields(assistant_id, fields)
     return fields
 
@@ -311,6 +351,7 @@ async def put_required_fields(
 @router.get("/calls", response_model=list[CallRecord])
 async def list_calls(
     store: StoreDep,
+    user: UserDep,
     tenant_id: str | None = None,
     limit: int = 50,
     kind: str | None = None,
@@ -320,6 +361,7 @@ async def list_calls(
     q: str | None = None,
     site: str | None = None,
 ) -> list[CallRecord]:
+    tenant_id = user.scope(tenant_id)
     site_numbers = await _site_numbers(store, tenant_id, site)
     if (
         kind is None
@@ -451,15 +493,13 @@ async def sites_rollup(
 
 
 @router.get("/calls/{call_id}", response_model=CallRecord)
-async def get_call(call_id: str, store: StoreDep) -> CallRecord:
-    call = await store.get_call(call_id)
-    if call is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "call not found")
-    return call
+async def get_call(call_id: str, store: StoreDep, user: UserDep) -> CallRecord:
+    return await _owned_call(store, user, call_id)
 
 
 @router.post("/calls/{call_id}/read", response_model=CallRecord)
-async def mark_read(call_id: str, store: StoreDep, read: bool = True) -> CallRecord:
+async def mark_read(call_id: str, store: StoreDep, user: UserDep, read: bool = True) -> CallRecord:
+    await _owned_call(store, user, call_id)
     call = await store.mark_call_read(call_id, read)
     if call is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "call not found")
@@ -470,6 +510,7 @@ async def mark_read(call_id: str, store: StoreDep, read: bool = True) -> CallRec
 async def call_feedback(
     call_id: str, body: CallFeedback, store: StoreDep, user: UserDep
 ) -> CallRecord:
+    await _owned_call(store, user, call_id)
     body.actor = body.actor or user.email
     call = await store.add_call_feedback(call_id, body)
     if call is None:
@@ -487,10 +528,7 @@ async def call_recording(
     range_header: Annotated[str | None, Header(alias="range")] = None,
 ) -> Response:
     """Stream one leg of the call recording (index into `CallRecord.recordings`)."""
-    call = await store.get_call(call_id)
-    if call is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "call not found")
-    user.require_tenant(call.tenant_id)
+    call = await _owned_call(store, user, call_id)
     if not 0 <= index < len(call.recordings):
         raise HTTPException(status.HTTP_404_NOT_FOUND, "no such recording")
     storage: RecordingStorage | None = request.app.state.recordings
@@ -517,7 +555,10 @@ async def call_recording(
 
 
 @router.post("/calls/{call_id}/share", response_model=ShareLink)
-async def share_call(call_id: str, store: StoreDep, settings: SettingsDep) -> ShareLink:
+async def share_call(
+    call_id: str, store: StoreDep, settings: SettingsDep, user: UserDep
+) -> ShareLink:
+    await _owned_call(store, user, call_id)
     token = await store.ensure_share_token(call_id)
     if token is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "call not found")
@@ -537,21 +578,20 @@ async def insights_analytics(
     timezone: str = "Europe/London",
 ) -> InsightsReport:
     """Phase 21a deep analytics read model (demand, resolution, SLA, transfers, revenue, CX…)."""
-    tid = tenant_id or (user.tenant_ids[0] if user.tenant_ids else None)
-    if tid is None:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "no organisation")
-    inp = await load_inputs(store, value, tid)
+    inp = await load_inputs(store, value, user.scope(tenant_id))
     return build_insights(inp, days=days, timezone=timezone, now=datetime.now(UTC))
 
 
 @router.get("/analytics/overview", response_model=OverviewAnalytics)
 async def overview_analytics(
     store: StoreDep,
+    user: UserDep,
     tenant_id: str | None = None,
     days: Annotated[int, Query(ge=1, le=365)] = 30,
     timezone: str = "Europe/London",
     site: str | None = None,
 ) -> OverviewAnalytics:
+    tenant_id = user.scope(tenant_id)
     calls = await store.filter_calls(
         CallFilter(
             tenant_id=tenant_id,
@@ -623,21 +663,17 @@ async def query_analytics(
 
 
 @router.get("/assistants/{assistant_id}/transfer", response_model=TransferConfig)
-async def get_transfer_config(assistant_id: str, store: StoreDep) -> TransferConfig:
-    cfg = await store.get_assistant(assistant_id)
-    if cfg is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "assistant not found")
-    return cfg.transfer
+async def get_transfer_config(assistant_id: str, store: StoreDep, user: UserDep) -> TransferConfig:
+    return (await _owned_assistant(store, user, assistant_id)).transfer
 
 
 @router.put("/assistants/{assistant_id}/transfer", response_model=TransferConfig)
 async def put_transfer_config(
-    assistant_id: str, body: TransferConfig, store: StoreDep, billing: BillingDep
+    assistant_id: str, body: TransferConfig, store: StoreDep, billing: BillingDep, user: UserDep
 ) -> TransferConfig:
     """Destinations, departments, schedules, urgent keywords, after-hours behaviour, SLAs."""
-    cfg = await store.get_assistant(assistant_id)
-    if cfg is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "assistant not found")
+    cfg = await _owned_assistant(store, user, assistant_id)
+    user.require_admin(cfg.tenant_id)
     ent = await billing.entitlements(cfg.tenant_id)
     if body.mode == TransferMode.WARM and not ent["warm_transfers"]:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Warm transfers are not in your plan")
@@ -654,11 +690,8 @@ async def put_transfer_config(
 
 
 @router.get("/assistants/{assistant_id}/destinations", response_model=list[Destination])
-async def list_destinations(assistant_id: str, store: StoreDep) -> list[Destination]:
-    cfg = await store.get_assistant(assistant_id)
-    if cfg is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "assistant not found")
-    return cfg.transfer.destinations
+async def list_destinations(assistant_id: str, store: StoreDep, user: UserDep) -> list[Destination]:
+    return (await _owned_assistant(store, user, assistant_id)).transfer.destinations
 
 
 class DestinationAvailability(BaseModel):
@@ -668,11 +701,9 @@ class DestinationAvailability(BaseModel):
 
 @router.get("/assistants/{assistant_id}/availability", response_model=list[DestinationAvailability])
 async def destination_availability(
-    assistant_id: str, store: StoreDep
+    assistant_id: str, store: StoreDep, user: UserDep
 ) -> list[DestinationAvailability]:
-    cfg = await store.get_assistant(assistant_id)
-    if cfg is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "assistant not found")
+    cfg = await _owned_assistant(store, user, assistant_id)
     return [
         DestinationAvailability(destination=d, available_now=d.is_available())
         for d in cfg.transfer.destinations
@@ -681,9 +712,9 @@ async def destination_availability(
 
 @router.get("/transfers", response_model=list[TransferRecord])
 async def list_transfers(
-    store: StoreDep, tenant_id: str | None = None, limit: int = 100
+    store: StoreDep, user: UserDep, tenant_id: str | None = None, limit: int = 100
 ) -> list[TransferRecord]:
-    return await store.list_transfers(tenant_id, limit)
+    return await store.list_transfers(user.scope(tenant_id), limit)
 
 
 # -- tickets -----------------------------------------------------------------------------------
@@ -704,31 +735,34 @@ class TicketDetail(BaseModel):
 @router.get("/tickets", response_model=list[Ticket])
 async def list_tickets(
     store: StoreDep,
+    user: UserDep,
     tenant_id: str | None = None,
     status_: Annotated[TicketStatus | None, Query(alias="status")] = None,
     limit: int = 100,
 ) -> list[Ticket]:
-    return await store.list_tickets(tenant_id, status_, limit)
+    return await store.list_tickets(user.scope(tenant_id), status_, limit)
 
 
 @router.post("/tickets", response_model=Ticket, status_code=status.HTTP_201_CREATED)
-async def create_ticket_manual(body: TicketCreate, tickets: TicketsDep) -> Ticket:
+async def create_ticket_manual(body: TicketCreate, tickets: TicketsDep, user: UserDep) -> Ticket:
+    user.require_tenant(body.tenant_id)
     intake = body.intake.model_copy(update={"source": "manual"})
     return await tickets.create_from_intake(body.tenant_id, body.company_id, intake)
 
 
 @router.get("/tickets/{ticket_id}", response_model=TicketDetail)
-async def get_ticket(ticket_id: str, store: StoreDep) -> TicketDetail:
-    t = await store.get_ticket(ticket_id)
-    if t is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "ticket not found")
+async def get_ticket(ticket_id: str, store: StoreDep, user: UserDep) -> TicketDetail:
+    t = await _owned_ticket(store, user, ticket_id)
     return TicketDetail(
         ticket=t, events=await store.ticket_events(ticket_id), sla_remaining_s=t.sla_remaining_s
     )
 
 
 @router.patch("/tickets/{ticket_id}", response_model=Ticket)
-async def update_ticket(ticket_id: str, upd: TicketUpdate, tickets: TicketsDep) -> Ticket:
+async def update_ticket(
+    ticket_id: str, upd: TicketUpdate, tickets: TicketsDep, store: StoreDep, user: UserDep
+) -> Ticket:
+    await _owned_ticket(store, user, ticket_id)
     t = await tickets.update(ticket_id, upd)
     if t is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "ticket not found")
@@ -741,7 +775,10 @@ class Actor(BaseModel):
 
 
 @router.post("/tickets/{ticket_id}/claim", response_model=Ticket)
-async def claim_ticket(ticket_id: str, body: Actor, tickets: TicketsDep) -> Ticket:
+async def claim_ticket(
+    ticket_id: str, body: Actor, tickets: TicketsDep, store: StoreDep, user: UserDep
+) -> Ticket:
+    await _owned_ticket(store, user, ticket_id)
     t = await tickets.update(
         ticket_id,
         TicketUpdate(status=TicketStatus.CLAIMED, assigned_to=body.actor, actor=body.actor),
@@ -752,7 +789,10 @@ async def claim_ticket(ticket_id: str, body: Actor, tickets: TicketsDep) -> Tick
 
 
 @router.post("/tickets/{ticket_id}/resolve", response_model=Ticket)
-async def resolve_ticket(ticket_id: str, body: Actor, tickets: TicketsDep) -> Ticket:
+async def resolve_ticket(
+    ticket_id: str, body: Actor, tickets: TicketsDep, store: StoreDep, user: UserDep
+) -> Ticket:
+    await _owned_ticket(store, user, ticket_id)
     t = await tickets.update(
         ticket_id, TicketUpdate(status=TicketStatus.RESOLVED, actor=body.actor, note=body.note)
     )
@@ -762,7 +802,10 @@ async def resolve_ticket(ticket_id: str, body: Actor, tickets: TicketsDep) -> Ti
 
 
 @router.post("/tickets/{ticket_id}/reopen", response_model=Ticket)
-async def reopen_ticket(ticket_id: str, body: Actor, tickets: TicketsDep) -> Ticket:
+async def reopen_ticket(
+    ticket_id: str, body: Actor, tickets: TicketsDep, store: StoreDep, user: UserDep
+) -> Ticket:
+    await _owned_ticket(store, user, ticket_id)
     t = await tickets.update(
         ticket_id, TicketUpdate(status=TicketStatus.OPEN, actor=body.actor, note=body.note)
     )
@@ -772,9 +815,12 @@ async def reopen_ticket(ticket_id: str, body: Actor, tickets: TicketsDep) -> Tic
 
 
 @router.post("/tickets/{ticket_id}/notes", response_model=list[TicketEvent])
-async def add_ticket_note(ticket_id: str, body: Actor, store: StoreDep) -> list[TicketEvent]:
+async def add_ticket_note(
+    ticket_id: str, body: Actor, store: StoreDep, user: UserDep
+) -> list[TicketEvent]:
     if not body.note:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "note required")
+    await _owned_ticket(store, user, ticket_id)
     t = await store.update_ticket(ticket_id, TicketUpdate(actor=body.actor, note=body.note))
     if t is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "ticket not found")
@@ -788,13 +834,11 @@ class ClickToCall(BaseModel):
 
 @router.post("/tickets/{ticket_id}/callback", response_model=ClickToCall)
 async def request_callback(
-    ticket_id: str, body: Actor, store: StoreDep, tickets: TicketsDep
+    ticket_id: str, body: Actor, store: StoreDep, tickets: TicketsDep, user: UserDep
 ) -> ClickToCall:
     """Click-to-call: records the callback attempt and returns a tel: link for the agent's
     softphone. Automatic bridge-dialling via LiveKit SIP lands in the second Phase 3 session."""
-    t = await store.get_ticket(ticket_id)
-    if t is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "ticket not found")
+    t = await _owned_ticket(store, user, ticket_id)
     if not t.caller_number:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "ticket has no callback number")
     await store.add_ticket_event(
@@ -814,12 +858,19 @@ class HandoffAnalytics(BaseModel):
 
 
 @router.get("/analytics/handoff", response_model=HandoffAnalytics)
-async def handoff_analytics(store: StoreDep, tenant_id: str | None = None) -> HandoffAnalytics:
+async def handoff_analytics(
+    store: StoreDep, user: UserDep, tenant_id: str | None = None
+) -> HandoffAnalytics:
+    tenant_id = user.scope(tenant_id)
     return HandoffAnalytics(
         transfers=await store.transfer_stats(tenant_id), tickets=await store.ticket_stats(tenant_id)
     )
 
 
 @router.post("/worker-keys", response_model=WorkerKeyCreated, status_code=status.HTTP_201_CREATED)
-async def create_worker_key(body: WorkerKeyCreate, store: StoreDep) -> WorkerKeyCreated:
-    return WorkerKeyCreated(key=await store.create_worker_key(body.tenant_id, body.name))
+async def create_worker_key(
+    body: WorkerKeyCreate, store: StoreDep, user: UserDep
+) -> WorkerKeyCreated:
+    tenant_id = user.scope(body.tenant_id)
+    user.require_admin(tenant_id)
+    return WorkerKeyCreated(key=await store.create_worker_key(tenant_id, body.name))

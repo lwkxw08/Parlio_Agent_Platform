@@ -92,6 +92,15 @@ class Principal(BaseModel):
                 headers={"X-Parlio-MFA-Required": "1"},
             )
 
+    def scope(self, tenant_id: str | None) -> str:
+        """Resolve the organisation a dashboard query is about: the requested one (must be a
+        membership) or the caller's first organisation. Never falls through to "all tenants"."""
+        tid = tenant_id or (self.tenant_ids[0] if self.tenant_ids else None)
+        if tid is None:
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "no organisation")
+        self.require_tenant(tid)
+        return tid
+
     def require_admin(self, tenant_id: str) -> None:
         self.require_tenant(tenant_id)
         if self.role_in(tenant_id) not in ("owner", "admin"):
