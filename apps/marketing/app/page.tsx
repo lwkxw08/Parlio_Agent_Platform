@@ -60,27 +60,27 @@ export default function Home() {
               <div className="eyebrow">The cost of the unanswered phone</div>
               <h2>You paid for that call. Marketing, reputation, years of graft — then it went to voicemail.</h2>
               <p className="lead" style={{ marginTop: "0.8rem" }}>
-                A missed call isn&apos;t a missed message. It&apos;s a boiler repair booked with someone else, a viewing that
-                went to another agent, a new patient who never rang back. ParlioTec answers every one — and shows you,
-                in pounds, what it caught.
+                A missed call isn&apos;t a missed message. It&apos;s business taken by a competitor — a customer who was
+                ready to buy, book or ask, and rang the next name on the list instead. ParlioTec answers every one — and
+                shows you, in pounds, what it caught.
               </p>
               <ul className="checks">
                 <li>Answers instantly while you&apos;re on a job, on another call, or closed for the night</li>
                 <li>Turns the call into a booked appointment or a ticket with everything you need — no ring-backs</li>
                 <li>Sends the caller a text confirmation so they stop shopping around</li>
-                <li>Value dashboard puts a figure on bookings won, emergencies caught and revenue recovered</li>
+                <li>Value dashboard puts a figure on bookings won, urgent calls caught and revenue recovered</li>
               </ul>
             </div>
             <div className="panel-art">
               <div className="ledger">
                 <div className="ledger-head"><b>While you were busy</b><span>This week</span></div>
                 <div className="row"><span>Calls answered you&apos;d have missed</span><b>38</b></div>
-                <div className="row"><span>Booked straight into the diary</span><b>21</b></div>
-                <div className="row"><span>Emergencies put through to a person</span><b>4</b></div>
+                <div className="row"><span>Appointments booked straight into the diary</span><b>21</b></div>
+                <div className="row"><span>Urgent callers put through to a person</span><b>4</b></div>
                 <div className="row"><span>Callbacks queued with full details</span><b>9</b></div>
                 <div className="row total"><span>Revenue kept</span><b className="grad-text">£4,860</b></div>
               </div>
-              <p className="muted small" style={{ marginTop: "0.8rem" }}>Illustrative week for a three-van heating firm · your own figures live on the Value dashboard</p>
+              <p className="muted small" style={{ marginTop: "0.8rem" }}>Illustrative week for a small business · your own figures live on the Value dashboard</p>
             </div>
           </div>
         </div>
