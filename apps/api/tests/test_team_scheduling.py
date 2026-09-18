@@ -212,7 +212,12 @@ async def test_pooled_availability_assigns_and_moves_events(client: AsyncClient)
         "/v1/team/resources",
         params=T,
         json=_res(
-            "Bob", skills=["Repair", "Gas emergency"], areas=["SK"], on_call=True, calendar_id="bob"
+            "Bob",
+            skills=["Repair", "Gas emergency"],
+            areas=["SK"],
+            on_call=True,
+            hours=_weekday_hours(8, 17),
+            calendar_id="bob",
         ),
     )
     bob = r.json()
