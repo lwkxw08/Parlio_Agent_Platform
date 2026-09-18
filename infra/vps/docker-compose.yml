@@ -84,6 +84,7 @@ services:
     depends_on: [livekit, minio]
 
   api:
+    image: ghcr.io/lwkxw08/parlio-api:${IMAGE_TAG:-local}
     build:
       context: ../..
       dockerfile: apps/api/Dockerfile
@@ -106,7 +107,8 @@ services:
       PARLIO_OUTBOUND_TRUNK_ID: ${OUTBOUND_SIP_TRUNK_ID:-}
       PARLIO_OUTBOUND_CALLER_ID: ${OUTBOUND_CALLER_ID:-}
       PARLIO_STORE_BACKEND: postgres
-      PARLIO_DATABASE_URL: postgresql+asyncpg://parlio_app:${POSTGRES_APP_PASSWORD}@postgres:5432/parlio
+      # Set DATABASE_URL in .env to use a managed Postgres instead of the local container.
+      PARLIO_DATABASE_URL: ${DATABASE_URL:-postgresql+asyncpg://parlio_app:${POSTGRES_APP_PASSWORD}@postgres:5432/parlio}
       PARLIO_DASHBOARD_URL: ${DASHBOARD_URL}
       PARLIO_SITE_URL: ${SITE_URL:-https://parliotec.com}
       # Browser origins allowed to call the API: dashboard + marketing site (www + .co.uk alias).
@@ -127,6 +129,7 @@ services:
       postgres: { condition: service_healthy }
 
   voice-worker:
+    image: ghcr.io/lwkxw08/parlio-voice-worker:${IMAGE_TAG:-local}
     build:
       context: ../..
       dockerfile: apps/voice-worker/Dockerfile
