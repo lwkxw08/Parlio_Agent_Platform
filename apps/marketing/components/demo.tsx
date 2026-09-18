@@ -3,6 +3,7 @@
 import type { RemoteTrack, Room } from "livekit-client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { type DemoInfo, fetchSiteInfo, startDemoVoice } from "@/lib/api";
+import { SampleCall } from "@/components/sample-call";
 
 type VoiceState = "idle" | "connecting" | "connected" | "error";
 
@@ -35,6 +36,7 @@ export function HearItLive({ compact = false }: { compact?: boolean }) {
   const [simulated, setSimulated] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [seconds, setSeconds] = useState(0);
+  const [mode, setMode] = useState<"listen" | "talk">("listen");
   const roomRef = useRef<Room | null>(null);
   const audioEls = useRef<HTMLMediaElement[]>([]);
 
@@ -112,10 +114,16 @@ export function HearItLive({ compact = false }: { compact?: boolean }) {
 
   const voiceOk = info?.voice_available ?? false;
   const live = state === "connected";
+  const talkUnavailable = info === null || (info !== undefined && !voiceOk) || state === "error";
 
   return (
     <div className="demo-panel">
       <div>
+        <div className="demo-tabs" role="tablist">
+          <button type="button" role="tab" aria-selected={mode === "listen"} className={mode === "listen" ? "on" : ""} onClick={() => setMode("listen")} disabled={live || state === "connecting"}>Listen to a sample call</button>
+          <button type="button" role="tab" aria-selected={mode === "talk"} className={mode === "talk" ? "on" : ""} onClick={() => setMode("talk")}>Talk to it yourself</button>
+        </div>
+        {mode === "listen" ? <SampleCall /> : (<>
         <div className={`demo-orb ${live ? "live" : ""}`} aria-live="polite">
           {state === "idle" && "Tap to talk"}
           {state === "connecting" && "Connecting…"}
@@ -146,6 +154,12 @@ export function HearItLive({ compact = false }: { compact?: boolean }) {
           {live && simulated && "The demo assistant is in text-simulation mode right now, so there is no audio."}
           {live && !simulated && "You're through to the demo plumbing business. Try booking a boiler service."}
         </div>
+        {talkUnavailable && (
+          <div className="demo-status">
+            <button type="button" className="linkish" onClick={() => setMode("listen")}>Listen to a sample call instead →</button>
+          </div>
+        )}
+        </>)}
       </div>
       <div>
         {!compact && (
@@ -154,17 +168,24 @@ export function HearItLive({ compact = false }: { compact?: boolean }) {
             <h2 style={{ marginBottom: "0.7rem" }}>Talk to a ParlioTec assistant right now</h2>
           </>
         )}
-        <p className="muted">
-          This is a real ParlioTec assistant set up as a demo plumbing &amp; heating company — the same voice engine, booking
-          rules and transfer logic your customers would get. Ask it anything; some ideas:
-        </p>
+        {mode === "listen" ? (
+          <p className="muted">
+            A one-minute booking call, start to finish: the assistant checks for an emergency, offers real slots, takes the
+            details and texts a confirmation — all in a natural British voice. Then try it yourself and ask it anything:
+          </p>
+        ) : (
+          <p className="muted">
+            This is a real ParlioTec assistant set up as a demo plumbing &amp; heating company — the same voice engine, booking
+            rules and transfer logic your customers would get. Ask it anything; some ideas:
+          </p>
+        )}
         <ul className="demo-list">
           <li>&ldquo;My boiler&apos;s making a banging noise — can someone come out?&rdquo;</li>
           <li>&ldquo;Book me a boiler service next week, mornings only.&rdquo;</li>
           <li>&ldquo;Do you cover Manchester? How much is a callout?&rdquo;</li>
           <li>&ldquo;I can smell gas.&rdquo; — hear how emergencies are handled.</li>
         </ul>
-        {state === "idle" && (
+        {mode === "talk" && state === "idle" && (
           <label className="field" style={{ marginTop: "1.2rem" }}>
             Your first name (optional — the assistant will use it)
             <input value={name} onChange={(e) => setName(e.target.value)} maxLength={80} placeholder="e.g. Sam" />
