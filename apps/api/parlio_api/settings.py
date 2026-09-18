@@ -17,6 +17,17 @@ class Settings(BaseSettings):
     events_consumer_group: str = "core-api"
     seed_demo_assistant: bool = True
     demo_number: str = "+440000000000"
+    # Marketing site (apps/marketing): the "Hear it for yourself" demo runs browser voice against
+    # this tenant, capped per calendar month; the phone number is for visitors who prefer to dial.
+    site_demo_tenant_id: str = "demo"
+    site_demo_phone: str | None = None
+    site_demo_monthly_minutes: int = 300
+    site_demo_starts_per_ip_per_hour: int = 5
+    site_url: str = "https://parliotec.co.uk"
+    # Cloudflare Pages production + preview hosts of the marketing site
+    site_preview_origin_regex: str | None = (
+        r"^https://([a-z0-9-]+\.)?parliotec-marketing\.pages\.dev$"
+    )
 
     store_backend: Literal["memory", "postgres"] = "memory"
     database_url: str = "postgresql+asyncpg://parlio:parlio@localhost:5432/parlio"

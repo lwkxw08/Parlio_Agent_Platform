@@ -148,6 +148,7 @@ from parlio_api.routes import (
 from parlio_api.routes import (
     screening as screening_routes,
 )
+from parlio_api.routes import site as site_routes
 from parlio_api.routes import (
     team as team_routes,
 )
@@ -684,7 +685,8 @@ def create_app() -> FastAPI:
     s = get_settings()
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=sorted({*s.cors_origins, s.dashboard_url}),
+        allow_origins=sorted({*s.cors_origins, s.dashboard_url, s.site_url}),
+        allow_origin_regex=s.site_preview_origin_regex,
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
@@ -695,6 +697,7 @@ def create_app() -> FastAPI:
     app.include_router(account.public)
     app.include_router(journey_routes.router)
     app.include_router(journey_routes.public)
+    app.include_router(site_routes.public)
     app.include_router(adoption_routes.router)
     app.include_router(help_routes.router)
     app.include_router(adoption_routes.admin)

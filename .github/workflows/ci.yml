@@ -96,6 +96,45 @@ jobs:
       - run: npm run typecheck
       - run: npm run pages:build
 
+  # Marketing site (apps/marketing): static export, deployed to the Cloudflare Pages
+  # project "parliotec-marketing" (main -> production, other branches -> preview URL).
+  marketing:
+    name: Marketing site (typecheck, build, deploy)
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      deployments: write
+    defaults:
+      run:
+        working-directory: apps/marketing
+    env:
+      HAS_CF: ${{ secrets.CLOUDFLARE_API_TOKEN != '' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/marketing/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run build
+        env:
+          NEXT_PUBLIC_API_URL: ${{ vars.NEXT_PUBLIC_API_URL || 'http://localhost:8000' }}
+          NEXT_PUBLIC_DASHBOARD_URL: ${{ vars.NEXT_PUBLIC_DASHBOARD_URL || 'https://app.parliotec.co.uk' }}
+          NEXT_PUBLIC_SITE_URL: ${{ vars.NEXT_PUBLIC_SITE_URL || 'https://parliotec.co.uk' }}
+      - name: Deploy
+        if: env.HAS_CF == 'true'
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: apps/marketing
+          command: pages deploy out --project-name parliotec-marketing --branch ${{ github.head_ref || github.ref_name }}
+      - if: env.HAS_CF != 'true'
+        run: echo "CLOUDFLARE_API_TOKEN not set - skipping deploy"
+
   # Dashboard previews: every PR/branch gets an always-on Cloudflare Pages URL.
   # Requires repo secrets CLOUDFLARE_API_TOKEN + CLOUDFLARE_ACCOUNT_ID (Pages:Edit scope).
   deploy-dashboard:
