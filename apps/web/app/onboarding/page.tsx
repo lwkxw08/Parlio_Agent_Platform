@@ -142,7 +142,7 @@ export default function Onboarding() {
 
   return (
     <>
-      <h1>Set up your AI receptionist</h1>
+      <h1>Set up your AI assistant</h1>
       <div className="steps">
         {STEPS.map((s, i) => <span key={s} className={i === step ? "active" : i < step ? "done" : ""}>{i + 1}. {s}</span>)}
       </div>
