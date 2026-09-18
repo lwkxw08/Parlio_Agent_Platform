@@ -56,7 +56,7 @@ async def test_upsert_assistant_and_resolve(client: AsyncClient) -> None:
         tenant_id="demo",
         company_id="c1",
         assistant_id="a1",
-        business_name="Bright Sparks Electrical",
+        business_name="Bright Sparks",
     )
     r = await client.put(
         "/v1/assistants/a1",
