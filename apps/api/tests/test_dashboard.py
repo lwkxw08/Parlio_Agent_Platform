@@ -105,6 +105,79 @@ async def test_supabase_mode_requires_valid_token(
         get_settings.cache_clear()
 
 
+def _es256_token(key: Any, claims: dict[str, Any], kid: str) -> str:
+    import base64
+    import json
+
+    from cryptography.hazmat.primitives import hashes
+    from cryptography.hazmat.primitives.asymmetric import ec
+    from cryptography.hazmat.primitives.asymmetric.utils import decode_dss_signature
+
+    def enc(b: bytes) -> str:
+        return base64.urlsafe_b64encode(b).rstrip(b"=").decode()
+
+    head = enc(json.dumps({"alg": "ES256", "typ": "JWT", "kid": kid}).encode())
+    body = enc(json.dumps(claims).encode())
+    der = key.sign(f"{head}.{body}".encode(), ec.ECDSA(hashes.SHA256()))
+    r, s = decode_dss_signature(der)
+    return f"{head}.{body}.{enc(r.to_bytes(32, 'big') + s.to_bytes(32, 'big'))}"
+
+
+@pytest.mark.parametrize("backend", ["memory"], indirect=True)
+async def test_supabase_mode_asymmetric_keys_via_jwks(
+    client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """New Supabase projects sign access tokens with ES256; we verify against the JWKS."""
+    import base64
+
+    from cryptography.hazmat.primitives.asymmetric import ec
+
+    import parlio_api.auth as auth
+
+    key = ec.generate_private_key(ec.SECP256R1())
+    other = ec.generate_private_key(ec.SECP256R1())
+    nums = key.public_key().public_numbers()
+
+    def b64(i: int) -> str:
+        return base64.urlsafe_b64encode(i.to_bytes(32, "big")).rstrip(b"=").decode()
+
+    jwks = {
+        "keys": [{"kty": "EC", "crv": "P-256", "kid": "k1", "x": b64(nums.x), "y": b64(nums.y)}]
+    }
+    fetches = 0
+
+    async def fake_keys(self: auth.JwksCache, *, force: bool = False) -> list[dict[str, Any]]:
+        nonlocal fetches
+        fetches += 1
+        return list(jwks["keys"])
+
+    monkeypatch.setattr(auth.JwksCache, "keys", fake_keys)
+    monkeypatch.setenv("PARLIO_AUTH_MODE", "supabase")
+    monkeypatch.setenv("PARLIO_SUPABASE_URL", "https://proj.supabase.co")
+    monkeypatch.delenv("PARLIO_SUPABASE_JWT_SECRET", raising=False)
+    get_settings.cache_clear()
+    auth._jwks.clear()
+    try:
+        good = _es256_token(
+            key, {"sub": "u9", "email": "es@example.com", "exp": time.time() + 60}, "k1"
+        )
+        r = await client.get("/v1/me", headers={"Authorization": f"Bearer {good}"})
+        assert r.status_code == 200 and r.json()["email"] == "es@example.com"
+        forged = _es256_token(other, {"sub": "u9", "email": "es@example.com"}, "k1")
+        r = await client.get("/v1/me", headers={"Authorization": f"Bearer {forged}"})
+        assert r.status_code == 401 and "signature" in r.text
+        unknown_kid = _es256_token(key, {"sub": "u9", "email": "es@example.com"}, "k2")
+        r = await client.get("/v1/me", headers={"Authorization": f"Bearer {unknown_kid}"})
+        assert r.status_code == 401
+        assert fetches >= 3  # unknown kid forces a refetch
+        hs = encode_supabase_jwt({"sub": "u1", "email": "a@b.co"}, "x")
+        r = await client.get("/v1/me", headers={"Authorization": f"Bearer {hs}"})
+        assert r.status_code == 401 and "JWT_SECRET" in r.text
+    finally:
+        auth._jwks.clear()
+        get_settings.cache_clear()
+
+
 # -- onboarding --------------------------------------------------------------------------------
 
 
