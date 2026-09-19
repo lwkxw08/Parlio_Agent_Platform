@@ -374,8 +374,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         log.error("PARLIO_VAULT_KEY is the dev default in env=%s; set a real key", settings.env)
     sms = MessageService(store, build_sms_provider(settings), settings.sms_from_number)
     app.state.sms = sms
+    email = build_email(settings)
     notifications = NotificationService(
-        store, build_email(settings), sms, fallback_webhook_url=settings.notify_webhook_url
+        store, email, sms, fallback_webhook_url=settings.notify_webhook_url
     )
     app.state.notifications = notifications
     scheduling = SchedulingService(store, vault)
@@ -511,7 +512,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     scorer: QAScorer = HeuristicScorer()
     if (key := settings.llm_key) is not None:
         scorer = OpenAIScorer(key, settings.openai_model)
-    ops = OpsService(store, billing, sip, SimulationService(store, text_agent, scorer), HttpPager())
+    pager = HttpPager(email=email, sms=sms.provider, sms_from=sms.from_number)
+    ops = OpsService(store, billing, sip, SimulationService(store, text_agent, scorer), pager)
     app.state.ops = ops
     tracker = (
         LinearIssueTracker(settings.linear_api_key, settings.linear_team_id)

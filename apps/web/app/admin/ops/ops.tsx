@@ -209,12 +209,13 @@ export default function Ops({ overview: initial, incidents: initialInc, canAct }
         <div className="grid" style={{ gridTemplateColumns: "1fr 1fr" }}>
           <form className="section form" onSubmit={saveOncall}>
             <h2>On-call paging</h2>
-            <p className="hint">Critical alerts and P1 support tickets page the primary on-call via PagerDuty Events v2, Opsgenie or a generic webhook.</p>
+            <p className="hint">Critical alerts and P1 support tickets page the on-call rota by email or SMS, or via PagerDuty Events v2, Opsgenie or a generic webhook.</p>
             <fieldset disabled={!canAct} style={{ border: 0, padding: 0, margin: 0, display: "contents" }}>
-              <label>Provider<select value={oncall.provider} onChange={(e) => setOncall({ ...oncall, provider: e.target.value as OnCallConfig["provider"] })}><option value="none">None (log only)</option><option value="pagerduty">PagerDuty</option><option value="opsgenie">Opsgenie</option><option value="webhook">Webhook</option></select></label>
-              {oncall.provider !== "webhook" && oncall.provider !== "none" && <label>Integration / API key<input type="password" value={oncall.routing_key ?? ""} onChange={(e) => setOncall({ ...oncall, routing_key: e.target.value || null })} /></label>}
+              <label>Provider<select value={oncall.provider} onChange={(e) => setOncall({ ...oncall, provider: e.target.value as OnCallConfig["provider"] })}><option value="none">None (log only)</option><option value="email">Email the rota</option><option value="sms">SMS the rota</option><option value="pagerduty">PagerDuty</option><option value="opsgenie">Opsgenie</option><option value="webhook">Webhook</option></select></label>
+              {(oncall.provider === "pagerduty" || oncall.provider === "opsgenie") && <label>Integration / API key<input type="password" value={oncall.routing_key ?? ""} onChange={(e) => setOncall({ ...oncall, routing_key: e.target.value || null })} /></label>}
               {oncall.provider === "webhook" && <label>Webhook URL<input type="url" value={oncall.webhook_url ?? ""} onChange={(e) => setOncall({ ...oncall, webhook_url: e.target.value || null })} /></label>}
               <label>Rota (staff emails, primary first)<textarea rows={3} value={oncall.rota.join("\n")} onChange={(e) => setOncall({ ...oncall, rota: e.target.value.split("\n").map((s) => s.trim()).filter(Boolean) })} /></label>
+              {oncall.provider === "sms" && <label>Rota mobile numbers (E.164, one per line)<textarea rows={3} value={(oncall.phones ?? []).join("\n")} onChange={(e) => setOncall({ ...oncall, phones: e.target.value.split("\n").map((s) => s.trim()).filter(Boolean) })} /></label>}
               <label className="check"><input type="checkbox" checked={oncall.page_on.includes("warning")} onChange={(e) => setOncall({ ...oncall, page_on: e.target.checked ? ["critical", "warning"] : ["critical"] })} /> Also page on warnings</label>
               {canAct && <button className="primary" type="submit">Save</button>}
             </fieldset>
