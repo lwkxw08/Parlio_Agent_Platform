@@ -67,7 +67,7 @@ async def test_caps_enforced_and_owner_editable(client: AsyncClient, app: FastAP
         assert r.status_code == 201, r.text
         ann = r.json()["id"]
         r = await client.post("/v1/team/resources", params=Q, json=_res("Bob"))
-        assert r.status_code == 403 and "1 engineers" in r.text and "upgrade" in r.text
+        assert r.status_code == 403 and "1 team members" in r.text and "upgrade" in r.text
         # inactive additions are free; reactivating counts
         r = await client.post("/v1/team/resources", params=Q, json=_res("Bob", active=False))
         assert r.status_code == 201, r.text

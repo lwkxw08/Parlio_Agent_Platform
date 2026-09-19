@@ -45,7 +45,7 @@ const fmtDay = (ymd: string, long = false) => new Date(`${ymd}T12:00:00Z`).toLoc
 const STATUS_CLASS: Record<string, string> = { confirmed: "ok", cancelled: "bad", reschedule_requested: "warn", booked: "" };
 const HUES = [222, 152, 28, 292, 190, 0, 64, 330];
 type HueFor = (resourceId: string | null) => number;
-// Colour is keyed by the engineer's position in the Team list so it stays the same across filters and days.
+// Colour is keyed by the team member's position in the Team list so it stays the same across filters and days.
 const hueFor = (resources: Resource[]): HueFor => (resourceId) => {
   const i = resources.findIndex((r) => r.id === resourceId);
   return HUES[(i < 0 ? 0 : i) % HUES.length];
@@ -108,10 +108,10 @@ export default function ScheduleBoard({ tenant, initial, error: initialError, st
           <select value={resourceId} onChange={(e) => setResourceId(e.target.value)}><option value="">Everyone</option>{resources.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}</select>
         )}
         <button className="ghost" onClick={() => load(true)} disabled={busy}>{busy ? "Refreshing…" : "Refresh"}</button>
-        <Link className="small" href={`/team?tenant=${tenant}&tab=engineers`}>Manage engineers</Link>
+        <Link className="small" href={`/team?tenant=${tenant}&tab=engineers`}>Manage team members</Link>
       </div>
       {error && <p className="hint warn">{error}</p>}
-      {view && view.lanes.length === 0 && <p className="muted">Nothing to show — connect a calendar or add engineers under Team.</p>}
+      {view && view.lanes.length === 0 && <p className="muted">Nothing to show — connect a calendar or add team members under Team.</p>}
       {view && view.lanes.length > 1 && (
         <div className="row small" style={{ gap: 12, flexWrap: "wrap", marginBottom: 6 }}>
           {view.lanes.map((l) => <span key={l.resource_id ?? "single"}><Swatch hue={hue(l.resource_id)} /> {l.name}</span>)}
@@ -131,7 +131,7 @@ export default function ScheduleBoard({ tenant, initial, error: initialError, st
         />
       )}
       <p className="hint" style={{ marginTop: "1rem" }}>
-        Each engineer has their own colour. Shaded areas are shifts; hatched blocks are other events already in the engineer&apos;s calendar; thin grey blocks are travel gaps.
+        Each team member has their own colour. Shaded areas are shifts; hatched blocks are other events already in the team member&apos;s calendar; thin grey blocks are travel gaps.
         Click a booking to see the details{actions ? " and reassign, move or cancel it" : ""}.
       </p>
     </>

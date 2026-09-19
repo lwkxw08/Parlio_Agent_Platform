@@ -68,7 +68,7 @@ export default function Plans({ plans: initialPlans, coupons: initialCoupons, ca
           {canEdit && <button type="button" className="primary" onClick={() => setEditing(blankPlan())}>New plan</button>}
         </div>
         <table>
-          <thead><tr><th>Plan</th><th>Monthly</th><th>Minutes</th><th>Overage /min</th><th>Numbers</th><th>SMS</th><th>Assistants</th><th>Concurrent</th><th>Engineers</th><th>Locations</th><th>Users</th><th>Trial</th><th>Functionality</th>{canEdit && <th />}</tr></thead>
+          <thead><tr><th>Plan</th><th>Monthly</th><th>Minutes</th><th>Overage /min</th><th>Numbers</th><th>SMS</th><th>Assistants</th><th>Concurrent</th><th>Team members</th><th>Locations</th><th>Users</th><th>Trial</th><th>Functionality</th>{canEdit && <th />}</tr></thead>
           <tbody>
             {plans.map((p) => (
               <tr key={p.id}>
@@ -109,7 +109,7 @@ export default function Plans({ plans: initialPlans, coupons: initialCoupons, ca
               {numField("sms_overage_pence", "SMS overage (pence)")}
               {numField("max_assistants", "Max assistants", 1)}
               {numField("max_concurrent_calls", "Max concurrent calls", 1)}
-              {numField("max_resources", "Max engineers / bookable calendars (0 = unlimited)")}
+              {numField("max_resources", "Max team members / bookable calendars (0 = unlimited)")}
               {numField("max_sites", "Max locations (0 = unlimited)")}
               {numField("max_members", "Max dashboard users (0 = unlimited)")}
               <label>Free trial (days)<input type="number" min={0} max={365} placeholder={`Default ${defaultTrialDays}`} value={editing.trial_days ?? ""} onChange={(e) => setEditing({ ...editing, trial_days: e.target.value === "" ? null : Number(e.target.value) })} /></label>

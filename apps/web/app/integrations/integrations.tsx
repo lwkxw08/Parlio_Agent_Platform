@@ -305,9 +305,9 @@ function Calendar(p: Props) {
         <h2>Connected calendars</h2>
         <p className="hint">With a calendar connected the assistant checks free slots and books appointments mid-call. With a booking link it texts the caller the link instead.</p>
         <p className="hint">
-          Appointments are booked straight into this calendar only while it is the sole connection and you have no engineers under{" "}
-          <Link href="/team">Team → Engineers &amp; scheduling</Link>. Once engineers exist, each booking goes to the assigned engineer&apos;s calendar
-          (this one included only if an engineer uses it); the booking rules and service types below still apply to everyone.
+          Appointments are booked straight into this calendar only while it is the sole connection and you have no team members under{" "}
+          <Link href="/team">Team → Team members &amp; scheduling</Link>. Once team members exist, each booking goes to the assigned team member&apos;s calendar
+          (this one included only if a team member uses it); the booking rules and service types below still apply to everyone.
         </p>
         <table>
           <thead><tr><th>Name</th><th>Provider</th><th>Account / link</th><th>Slots</th><th>Status</th><th></th></tr></thead>
