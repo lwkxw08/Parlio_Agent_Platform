@@ -49,6 +49,7 @@ class Me(BaseModel):
     auth: dict[str, Any]
     staff_role: str | None = None
     view_as: str | None = None
+    mfa_verified: bool = False
 
 
 @router.get("/me", response_model=Me)
@@ -62,6 +63,7 @@ async def me(user: UserDep, settings: SettingsDep) -> Me:
         auth={"mode": settings.auth_mode, "supabase_url": settings.supabase_url},
         staff_role=user.staff_role,
         view_as=user.view_as,
+        mfa_verified=user.mfa_verified,
     )
 
 

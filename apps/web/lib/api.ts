@@ -464,6 +464,7 @@ export type Me = {
   auth: { mode: "dev" | "supabase"; supabase_url: string | null };
   staff_role: StaffRole | null;
   view_as: string | null;
+  mfa_verified: boolean;
 };
 
 export type WebsiteAnalysis = {
