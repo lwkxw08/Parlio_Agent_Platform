@@ -50,10 +50,17 @@ class Me(BaseModel):
     staff_role: str | None = None
     view_as: str | None = None
     mfa_verified: bool = False
+    organisations: dict[str, str] = {}
 
 
 @router.get("/me", response_model=Me)
-async def me(user: UserDep, settings: SettingsDep) -> Me:
+async def me(user: UserDep, settings: SettingsDep, store: StoreDep) -> Me:
+    names: dict[str, str] = {}
+    for m in user.tenant_memberships:
+        if m.tenant_id in names:
+            continue
+        assistants = await store.list_assistants(m.tenant_id)
+        names[m.tenant_id] = assistants[0].business_name if assistants else m.tenant_id
     return Me(
         user_id=user.user_id,
         email=user.email,
@@ -64,6 +71,7 @@ async def me(user: UserDep, settings: SettingsDep) -> Me:
         staff_role=user.staff_role,
         view_as=user.view_as,
         mfa_verified=user.mfa_verified,
+        organisations=names,
     )
 
 

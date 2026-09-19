@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { fetchAssistants, fetchHealth, fetchMe, fetchSnapshot } from "@/lib/api";
 import LiveSnapshot from "./snapshot";
 import { humanize } from "@/app/breakdown";
@@ -8,6 +9,7 @@ export const dynamic = "force-dynamic";
 export default async function Overview() {
   const [health, me, assistants] = await Promise.all([fetchHealth(), fetchMe(), fetchAssistants()]);
   const tenant = me.ok ? me.data.memberships.find((m) => m.status === "active")?.tenant_id ?? null : null;
+  if (me.ok && !tenant && !me.data.staff_role) redirect("/onboarding");
   const snapshot = tenant ? await fetchSnapshot(tenant) : null;
 
   return (
