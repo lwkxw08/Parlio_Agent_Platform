@@ -52,6 +52,32 @@ Reading it:
   formats, `America/New_York` analytics buckets). Per-region *media* tuning needs a US-hosted worker
   and number; no US measurements exist yet — record them here when a US tenant is onboarded.
 
+## Staging control-plane load — 2 vCPU / 4 GB droplet, local Postgres (Sept 2026)
+
+`parlio-load --base-url https://api.staging.parliotec.com --tenant demo --tenants 1`, 5 calls per
+concurrent slot, client in the EU. `docker stats` sampled during the 30-concurrent run.
+
+| Concurrent | Calls / events | events/s | ingest p50 | p95 | p99 | errors |
+|---|---|---|---|---|---|---|
+| 30 | 150 / 1,350 | 40 | 253 ms | 1.62 s | 2.73 s | 1 (0.07 %) |
+| 60 | 300 / 2,700 | 48 | 839 ms | 2.12 s | 2.63 s | 3 (0.11 %) |
+| 100 | 500 / 4,500 | 72 | 902 ms | 2.57 s | 3.64 s | 0 |
+
+During the 30-concurrent run: API container 87–97 % of one core, Postgres 40–75 %, voice worker
+idle at ~5 % / 1.3 GB, 1-min load average ≈ 2.5 on 2 vCPU. No rate limiting triggered, the API
+never returned 5xx in bulk, and it recovered to idle within 10 s of the run ending.
+
+What this means for a PoC promise:
+- **Control plane** (event ingest, post-call, dashboard reads) copes with 100 simultaneous calls'
+  worth of events on one small droplet — it degrades gracefully (latency, not errors). Ingest
+  latency is not on the caller's audio path, so a 1–2 s p95 here does not make the assistant slow.
+- **Media** (the voice worker: VAD + turn detector + STT/LLM/TTS streams per call) is the real
+  concurrency limit and is not exercised by this test. `CAPACITY_RUNBOOK.md` budgets **~5 calls
+  per vCPU**; on the shared 2 vCPU production droplet (API + LiveKit + SIP + worker) plan on
+  **~6–8 simultaneous calls**, and move the worker to its own 4 vCPU node (~20 calls) before
+  promising a customer more than that. A PoC customer at 15 calls/day peaks well under 3 concurrent.
+- Load rows were purged from the staging database afterwards (`delete … where id like 'load-%'`).
+
 ## After every deploy
 1. `parlio-e2e … --json > runs/<date>.json` — must pass.
 2. Compare `latency report` with the table above; a p95 regression > 20 % is runbook 2 in `README.md`.

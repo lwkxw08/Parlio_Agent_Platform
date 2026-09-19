@@ -1,6 +1,6 @@
 # Parlio operations runbooks
 
-Alerts come from the Phase 17 health engine (`apps/api/parlio_api/ops.py`), surface on **Platform admin → Ops**, and page the on-call (PagerDuty / Opsgenie / webhook) for `critical`. Every runbook follows: **detect → confirm → mitigate → communicate → RCA**.
+Alerts come from the Phase 17 health engine (`apps/api/parlio_api/ops.py`), surface on **Platform admin → Ops**, and page the on-call (email / SMS to the rota, or PagerDuty / Opsgenie / webhook) for `critical`. Because the health engine runs inside the API, "the API is down" is watched from outside: DigitalOcean Uptime checks (eu_west + us_east) on `api.parliotec.com/healthz`, `app.parliotec.com`, `parliotec.com`, `lk.parliotec.com` and `api.staging.parliotec.com`, each with Down (2 min), SSL-expiry (<14 days) and latency (>3 s) alerts emailed to the DigitalOcean account owner. Every runbook follows: **detect → confirm → mitigate → communicate → RCA**.
 
 ## Severities & SLA targets
 
