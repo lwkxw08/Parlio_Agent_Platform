@@ -465,6 +465,7 @@ export type Me = {
   staff_role: StaffRole | null;
   view_as: string | null;
   mfa_verified: boolean;
+  organisations: Record<string, string>;
 };
 
 export type WebsiteAnalysis = {

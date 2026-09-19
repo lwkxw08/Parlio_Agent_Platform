@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { fetchConnections, fetchMe, fetchMembers, fetchResources, fetchScheduler, fetchSites, fetchTeamSettings } from "@/lib/api";
 import Members from "./members";
 import Resources from "./resources";
@@ -11,7 +12,7 @@ export default async function Team({ searchParams }: { searchParams: Promise<{ t
   if (!me.ok) return <><h1>Team</h1><p className="muted">{me.status === 401 ? <Link href="/login">Sign in</Link> : "API unreachable"}</p></>;
   const active = me.data.memberships.filter((m) => m.status === "active");
   const tenant = sp.tenant ?? active[0]?.tenant_id;
-  if (!tenant) return <><h1>Team</h1><p className="muted">No organisation yet — <Link href="/onboarding">set one up</Link>.</p></>;
+  if (!tenant) redirect(me.data.staff_role ? "/admin" : "/onboarding");
   const tab = sp.tab === "engineers" ? "engineers" : "members";
   const [members, resources, settings, scheduler, connections, sites] = await Promise.all([
     fetchMembers(tenant),
@@ -30,7 +31,7 @@ export default async function Team({ searchParams }: { searchParams: Promise<{ t
       <h1>Team</h1>
       {active.length > 1 && (
         <div className="chips" style={{ marginBottom: "1rem" }}>
-          {active.map((m) => <Link key={m.tenant_id} href={`/team?tenant=${m.tenant_id}&tab=${tab}`} className={m.tenant_id === tenant ? "active" : ""}>{m.tenant_id}</Link>)}
+          {active.map((m) => <Link key={m.tenant_id} href={`/team?tenant=${m.tenant_id}&tab=${tab}`} className={m.tenant_id === tenant ? "active" : ""}>{me.data.organisations[m.tenant_id] ?? m.tenant_id}</Link>)}
         </div>
       )}
       <div className="tabs" style={{ marginBottom: "1rem" }}>
@@ -39,7 +40,7 @@ export default async function Team({ searchParams }: { searchParams: Promise<{ t
         <Link href={`/schedule?tenant=${tenant}`}>Open schedule →</Link>
       </div>
       {tab === "members" ? (
-        <Members tenant={tenant} initial={members ?? []} me={me.data.user_id} canManage={canManage} />
+        <Members tenant={tenant} orgName={me.data.organisations[tenant] ?? tenant} initial={members ?? []} me={me.data.user_id} canManage={canManage} />
       ) : (
         <Resources
           tenant={tenant}

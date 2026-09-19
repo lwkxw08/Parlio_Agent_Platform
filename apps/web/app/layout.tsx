@@ -42,7 +42,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         <main>
           {status?.active && <StatusBanner status={status} />}
           {account.kind === "user" && account.viewAs && <ViewAsBanner tenant={account.viewAs} />}
-          <AuthGate signedOut={account.kind === "signin"}>{children}</AuthGate>
+          <AuthGate signedOut={account.kind === "signin"} checkCookie={account.kind === "user" && !account.dev}>{children}</AuthGate>
         </main>
         {account.kind === "user" && <HelpDrawer />}
       </body>

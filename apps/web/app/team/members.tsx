@@ -13,7 +13,7 @@ const ROLE_HELP: Partial<Record<Member["role"], string>> = {
   viewer: "Read-only access",
 };
 
-export default function Members({ tenant, initial, me, canManage }: { tenant: string; initial: Member[]; me: string; canManage: boolean }) {
+export default function Members({ tenant, orgName, initial, me, canManage }: { tenant: string; orgName: string; initial: Member[]; me: string; canManage: boolean }) {
   const [members, setMembers] = useState(initial);
   const [email, setEmail] = useState("");
   const [name, setName] = useState("");
@@ -40,7 +40,7 @@ export default function Members({ tenant, initial, me, canManage }: { tenant: st
   };
 
   const remove = async (m: Member) => {
-    if (!confirm(`Remove ${m.email} from ${tenant}?`)) return;
+    if (!confirm(`Remove ${m.email} from ${orgName}?`)) return;
     if (await del(`/v1/organisations/${tenant}/members/${m.user_id}`)) setMembers((ms) => ms.filter((x) => x.user_id !== m.user_id));
     else setMsg("Removal refused (the last owner cannot be removed)");
     if (m.user_id === me) reload();
@@ -49,7 +49,7 @@ export default function Members({ tenant, initial, me, canManage }: { tenant: st
   return (
     <>
       <div className="section">
-        <h2>Members of {tenant}</h2>
+        <h2>Members of {orgName}</h2>
         <table>
           <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Status</th><th></th></tr></thead>
           <tbody>

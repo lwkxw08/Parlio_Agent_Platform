@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { fetchApprovals, fetchLiveCalls, fetchMe } from "@/lib/api";
 import Live from "./live";
 
@@ -10,7 +11,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ t
   if (!me.ok) return <><h1>Live</h1><p className="muted">{me.status === 401 ? <Link href="/login">Sign in</Link> : "API unreachable"}</p></>;
   const active = me.data.memberships.filter((m) => m.status === "active");
   const tenant = sp.tenant ?? active[0]?.tenant_id;
-  if (!tenant) return <><h1>Live</h1><p className="muted">No organisation yet — <Link href="/onboarding">set one up</Link>.</p></>;
+  if (!tenant) redirect(me.data.staff_role ? "/admin" : "/onboarding");
   const [calls, approvals] = await Promise.all([fetchLiveCalls(tenant), fetchApprovals(tenant)]);
   const role = me.data.memberships.find((m) => m.tenant_id === tenant)?.role ?? "viewer";
   if (calls === null) return <><h1>Live</h1><p className="muted">API unreachable</p></>;
@@ -19,7 +20,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ t
       <h1>Live calls</h1>
       {active.length > 1 && (
         <div className="chips" style={{ marginBottom: "1rem" }}>
-          {active.map((m) => <Link key={m.tenant_id} href={`/live?tenant=${m.tenant_id}`} className={m.tenant_id === tenant ? "active" : ""}>{m.tenant_id}</Link>)}
+          {active.map((m) => <Link key={m.tenant_id} href={`/live?tenant=${m.tenant_id}`} className={m.tenant_id === tenant ? "active" : ""}>{me.data.organisations[m.tenant_id] ?? m.tenant_id}</Link>)}
         </div>
       )}
       <Live tenant={tenant} me={me.data.email} canControl={role !== "viewer"} initialCalls={calls} initialApprovals={approvals ?? []} />
