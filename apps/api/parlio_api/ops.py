@@ -27,6 +27,7 @@ from parlio_voice.models import AssistantConfig
 
 from .billing import BillingService, SubscriptionStatus
 from .connectors import JOB_KIND, JobStatus
+from .messaging import render_template
 from .qa import SCORE_KIND, SimulationRun, SimulationService
 from .sip import RegistrationState, SipService, SipTrunk, TrunkMode, TrunkStatus
 from .store import CallFilter, CallRecord, CallStore, TenantDoc
@@ -904,11 +905,14 @@ class OpsService:
         if cfg is None:
             raise ValueError("tenant has no assistant")
         started = datetime.now(UTC)
+        greeting = render_template(
+            cfg.greeting, {"business_name": cfg.business_name, "name": cfg.name}
+        )
         checks: list[SyntheticCheck] = [
             SyntheticCheck(
                 path="greeting",
-                passed=bool(cfg.greeting.strip()),
-                detail=cfg.greeting[:120] or "no greeting configured",
+                passed=bool(greeting),
+                detail=greeting[:120] or "no greeting configured",
             )
         ]
         sim: SimulationRun | None = None
