@@ -169,7 +169,7 @@ async def test_transfer_events_are_recorded_and_aggregated(client: AsyncClient) 
     r = await client.get("/v1/transfers", params={"tenant_id": "demo"})
     assert {t["id"] for t in r.json()} == {"tr-1", "tr-2"}
     r = await client.get("/v1/transfers", params={"tenant_id": "other"})
-    assert r.json() == []
+    assert r.status_code == 403
 
     r = await client.get("/v1/analytics/handoff", params={"tenant_id": "demo"})
     s = r.json()["transfers"]

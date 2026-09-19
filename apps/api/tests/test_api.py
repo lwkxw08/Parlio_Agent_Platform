@@ -53,7 +53,10 @@ async def test_resolve_unknown_number_404(client: AsyncClient) -> None:
 
 async def test_upsert_assistant_and_resolve(client: AsyncClient) -> None:
     cfg = AssistantConfig(
-        tenant_id="t1", company_id="c1", assistant_id="a1", business_name="Bright Sparks Electrical"
+        tenant_id="demo",
+        company_id="c1",
+        assistant_id="a1",
+        business_name="Bright Sparks",
     )
     r = await client.put(
         "/v1/assistants/a1",
@@ -63,7 +66,7 @@ async def test_upsert_assistant_and_resolve(client: AsyncClient) -> None:
     r = await client.get(
         "/v1/worker/assistants/resolve", params={"number": "+441612345678"}, headers=HEADERS
     )
-    assert r.json()["business_name"] == "Bright Sparks Electrical"
+    assert r.json()["business_name"] == "Bright Sparks"
 
 
 async def test_call_lifecycle_events_build_call_record(client: AsyncClient) -> None:
@@ -176,10 +179,25 @@ async def test_calls_are_tenant_scoped(client: AsyncClient) -> None:
     for tenant, cid in (("t-a", "a-1"), ("t-b", "b-1")):
         e = ev(CallEventType.CALL_STARTED, cid, {"caller": "+447700900001"}, tenant=tenant)
         await client.post("/v1/worker/events", json=e, headers=HEADERS)
+    e = ev(CallEventType.CALL_STARTED, "d-1", {"caller": "+447700900001"})
+    await client.post("/v1/worker/events", json=e, headers=HEADERS)
+    # the dev owner belongs to "demo" only: other tenants are forbidden, and an
+    # unqualified query resolves to the caller's own organisation, never to "all"
     r = await client.get("/v1/calls", params={"tenant_id": "t-a"})
-    assert [c["call_id"] for c in r.json()] == ["a-1"]
+    assert r.status_code == 403
     r = await client.get("/v1/calls")
-    assert {c["call_id"] for c in r.json()} == {"a-1", "b-1"}
+    assert [c["call_id"] for c in r.json()] == ["d-1"]
+
+
+async def test_user_without_organisation_sees_nothing(client: AsyncClient) -> None:
+    hdr = {"X-Parlio-User": "nobody@example.com"}
+    for path in ("/v1/assistants", "/v1/calls", "/v1/tickets", "/v1/transfers"):
+        r = await client.get(path, headers=hdr)
+        assert r.status_code == 403, path
+    r = await client.get("/v1/assistants/demo/versions", headers=hdr)
+    assert r.status_code == 403
+    r = await client.get("/v1/calls", params={"tenant_id": "demo"}, headers=hdr)
+    assert r.status_code == 403
 
 
 async def test_rls_blocks_cross_tenant_rows(
