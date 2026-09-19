@@ -1499,7 +1499,7 @@ export type Incident = {
   updates: IncidentUpdate[]; started_at: string; resolved_at: string | null; rca_due_at: string | null; rca: string | null; created_by: string | null;
 };
 export type StatusPage = { overall: ComponentState; components: ComponentStatus[]; incidents: Incident[]; uptime_30d_pct: number; generated_at: string };
-export type OnCallConfig = { provider: "none" | "pagerduty" | "opsgenie" | "webhook"; routing_key: string | null; webhook_url: string | null; page_on: string[]; rota: string[]; updated_by: string | null; updated_at: string };
+export type OnCallConfig = { provider: "none" | "email" | "sms" | "pagerduty" | "opsgenie" | "webhook"; routing_key: string | null; webhook_url: string | null; page_on: string[]; rota: string[]; phones: string[]; updated_by: string | null; updated_at: string };
 export type FailoverState = { primary_carrier: string; secondary_carrier: string; active: string; auto: boolean; region: string; last_switch_at: string | null; reason: string | null; updated_by: string | null };
 export type OpsOverview = {
   board: TenantHealth[]; alerts: Record<string, number>; open_alerts: OpsAlert[]; status: StatusPage; oncall: OnCallConfig; failover: FailoverState;

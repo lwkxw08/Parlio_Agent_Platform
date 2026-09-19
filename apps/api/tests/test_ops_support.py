@@ -203,3 +203,25 @@ async def test_synthetic_failure_opens_ticket(client: AsyncClient, app: FastAPI)
     assert runs and all(r.trigger == "post_deploy" for r in runs)
     ok, reasons = await ops.canary_ok()
     assert isinstance(ok, bool) and isinstance(reasons, list)
+
+
+async def test_http_pager_emails_and_texts_the_rota() -> None:
+    from parlio_api.messaging import LogSmsProvider
+    from parlio_api.notifications import LogEmailSender
+    from parlio_api.ops import HttpPager, OnCallConfig, OpsAlert
+
+    email, sms = LogEmailSender(), LogSmsProvider()
+    pager = HttpPager(email=email, sms=sms, sms_from="+447700900000")
+    alert = OpsAlert(
+        tenant_id="acme", kind="sip", severity="critical", title="SIP trunk down", detail="x"
+    )
+    ok = await pager.page(
+        OnCallConfig(provider="email", rota=["admin@example.com", "second@example.com"]), alert
+    )
+    assert ok and [t for t, _, _ in email.sent] == ["admin@example.com", "second@example.com"]
+    assert "CRITICAL" in email.sent[0][1] and "SIP trunk down" in email.sent[0][1]
+    ok = await pager.page(OnCallConfig(provider="sms", phones=["+447700900001"]), alert)
+    assert ok and sms.sent[0][1] == "+447700900001" and "SIP trunk down" in sms.sent[0][2]
+    # no sender wired / empty rota -> not paged, no exception
+    assert not await HttpPager().page(OnCallConfig(provider="email", rota=["a@b.c"]), alert)
+    assert not await pager.page(OnCallConfig(provider="sms"), alert)

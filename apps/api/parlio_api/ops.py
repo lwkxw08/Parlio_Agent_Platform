@@ -27,7 +27,8 @@ from parlio_voice.models import AssistantConfig
 
 from .billing import BillingService, SubscriptionStatus
 from .connectors import JOB_KIND, JobStatus
-from .messaging import render_template
+from .messaging import SmsProvider, render_template
+from .notifications import EmailSender
 from .qa import SCORE_KIND, SimulationRun, SimulationService
 from .sip import RegistrationState, SipService, SipTrunk, TrunkMode, TrunkStatus
 from .store import CallFilter, CallRecord, CallStore, TenantDoc
@@ -263,11 +264,12 @@ class StatusPage(BaseModel):
 
 
 class OnCallConfig(BaseModel):
-    provider: Literal["none", "pagerduty", "opsgenie", "webhook"] = "none"
+    provider: Literal["none", "email", "sms", "pagerduty", "opsgenie", "webhook"] = "none"
     routing_key: str | None = None  # PagerDuty Events v2 integration key / Opsgenie API key
     webhook_url: str | None = None
     page_on: list[Severity] = Field(default=["critical"])
     rota: list[str] = Field(default_factory=list, description="staff emails, primary first")
+    phones: list[str] = Field(default_factory=list, description="E.164 numbers for SMS paging")
     updated_by: str | None = None
     updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
@@ -379,12 +381,48 @@ class LogPager:
 
 
 class HttpPager:
-    """PagerDuty Events v2 / Opsgenie alerts API / generic webhook."""
+    """Email / SMS to the rota, PagerDuty Events v2, Opsgenie alerts API or a generic webhook."""
 
-    def __init__(self, client: httpx.AsyncClient | None = None) -> None:
+    def __init__(
+        self,
+        client: httpx.AsyncClient | None = None,
+        email: EmailSender | None = None,
+        sms: SmsProvider | None = None,
+        sms_from: str | None = None,
+    ) -> None:
         self.client = client or httpx.AsyncClient(timeout=10.0)
+        self.email = email
+        self.sms = sms
+        self.sms_from = sms_from
+
+    async def _page_rota(self, cfg: OnCallConfig, alert: OpsAlert) -> bool:
+        subject = f"[ParlioTec {alert.severity.upper()}] {alert.title}"
+        text = (
+            f"{alert.title}\n\nTenant: {alert.tenant_id}\n{alert.detail}\n\n"
+            + "\n".join(f"{k}: {v}" for k, v in alert.evidence.items())
+            + f"\n\nAlert id: {alert.id}"
+        )
+        ok = False
+        if cfg.provider == "email" and self.email is not None:
+            for to in cfg.rota:
+                try:
+                    await self.email.send(to, subject, text)
+                    ok = True
+                except Exception:
+                    log.warning("email page to %s failed", to, exc_info=True)
+        elif cfg.provider == "sms" and self.sms is not None and self.sms_from:
+            body = f"ParlioTec {alert.severity.upper()}: {alert.title} ({alert.tenant_id})"[:300]
+            for to in cfg.phones:
+                try:
+                    await self.sms.send(self.sms_from, to, body)
+                    ok = True
+                except Exception:
+                    log.warning("sms page to %s failed", to, exc_info=True)
+        return ok
 
     async def page(self, cfg: OnCallConfig, alert: OpsAlert) -> bool:
+        if cfg.provider in ("email", "sms"):
+            return await self._page_rota(cfg, alert)
         body: dict[str, Any]
         url: str
         headers: dict[str, str] = {}
