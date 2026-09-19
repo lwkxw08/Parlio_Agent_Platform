@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import QRCode from "qrcode";
 import {
   MFA_COOKIE,
   type MfaToken,
@@ -27,6 +28,7 @@ export default function AccountSecurity({ status, sessions }: { status: TwoFacto
   const [st, setSt] = useState(status);
   const [ss, setSs] = useState(sessions);
   const [enrol, setEnrol] = useState<Enrol | null>(null);
+  const [qr, setQr] = useState<string | null>(null);
   const [code, setCode] = useState("");
   const [codes, setCodes] = useState<string[] | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
@@ -34,7 +36,12 @@ export default function AccountSecurity({ status, sessions }: { status: TwoFacto
   const refresh = async () => { const [a, b] = await Promise.all([fetchTwoFactor(), fetchSessions()]); if (a) setSt(a); if (b) setSs(b); };
   if (!st) return <p className="muted small">Two-factor status unavailable.</p>;
 
-  const start = async () => { const r = await post<Enrol>("/v1/account/2fa/enrol"); if (r) setEnrol(r); else flash("Could not start enrolment"); };
+  const start = async () => {
+    const r = await post<Enrol>("/v1/account/2fa/enrol");
+    if (!r) return flash("Could not start enrolment");
+    setEnrol(r);
+    setQr(await QRCode.toDataURL(r.otpauth_uri, { margin: 1, width: 180 }));
+  };
   const confirm = async () => {
     const r = await request<{ codes: string[] }>("/v1/account/2fa/confirm", { method: "POST", body: JSON.stringify({ code }) });
     if (!r.ok) return flash(`Code not accepted: ${r.error}`);
@@ -61,7 +68,7 @@ export default function AccountSecurity({ status, sessions }: { status: TwoFacto
 
   return (
     <>
-      <div className="section form">
+      <div className="section form" id="security">
         <h2>Two-factor authentication <span className={`pill ${st.confirmed ? "ok" : ""}`}>{st.confirmed ? (st.mfa_verified ? "on · verified here" : "on · not verified on this device") : "off"}</span></h2>
         {msg && <p className="small" style={{ color: "var(--accent)" }}>{msg}</p>}
         {!st.confirmed && !enrol && (
@@ -72,8 +79,10 @@ export default function AccountSecurity({ status, sessions }: { status: TwoFacto
         )}
         {enrol && (
           <>
-            <p className="small">1. Add this key to your authenticator app (choose &ldquo;enter a setup key&rdquo;), or <a href={enrol.otpauth_uri}>open in your authenticator</a> on this device:</p>
-            <code style={{ wordBreak: "break-all", fontSize: "1.05rem", letterSpacing: 1 }}>{enrol.secret.replace(/(.{4})/g, "$1 ").trim()}</code>
+            <p className="small">1. Scan this QR code with your authenticator app (Microsoft/Google Authenticator, Authy, 1Password…), or <a href={enrol.otpauth_uri}>open in your authenticator</a> on this device:</p>
+            {qr && <img src={qr} alt="Authenticator QR code" width={180} height={180} style={{ display: "block", borderRadius: 8, background: "#fff", padding: 6 }} />}
+            <p className="small muted">Can&apos;t scan? Choose &ldquo;enter a setup key&rdquo; and type:</p>
+            <code className="block" style={{ fontSize: "1.05rem", letterSpacing: 1 }}>{enrol.secret.replace(/(.{4})/g, "$1 ").trim()}</code>
             <p className="small muted">Account: ParlioTec · Time-based (TOTP), 6 digits, 30 s.</p>
             <p className="small">2. Enter the 6-digit code it shows:</p>
             <div style={{ display: "flex", gap: 8 }}>{codeInput}<button className="primary" onClick={confirm} disabled={code.length < 6}>Confirm</button><button onClick={() => setEnrol(null)}>Cancel</button></div>

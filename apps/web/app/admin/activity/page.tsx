@@ -5,7 +5,7 @@ export const dynamic = "force-dynamic";
 
 export default async function Page() {
   const rows = await fetchAdminActivity(300);
-  if (!rows) return <p className="muted">API unreachable</p>;
+  if (!rows) return <p className="muted">Couldn&apos;t load this page — the API rejected the request (e.g. your IP isn&apos;t on the staff allow-list) or didn&apos;t answer.</p>;
   return (
     <>
       <p className="hint muted small">Every platform-staff action is recorded here (and in the affected tenant&apos;s own audit log).</p>

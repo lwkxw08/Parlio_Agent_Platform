@@ -11,7 +11,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
     return (
       <>
         <h1>Platform admin</h1>
-        <p className="muted">{me.status === 401 ? <Link href="/login">Sign in</Link> : "API unreachable"}</p>
+        <p className="muted">{me.status === 401 ? <Link href="/login">Sign in</Link> : me.status === 0 ? "API unreachable" : me.error}</p>
       </>
     );
   }
@@ -20,6 +20,17 @@ export default async function AdminLayout({ children }: { children: React.ReactN
       <>
         <h1>Platform admin</h1>
         <p className="muted">This area is for ParlioTec platform staff only.</p>
+      </>
+    );
+  }
+  if (me.data.auth.mode !== "dev" && !me.data.mfa_verified) {
+    return (
+      <>
+        <h1>Platform admin</h1>
+        <p className="muted">
+          Platform admin requires two-factor authentication verified on this device.{" "}
+          <Link href="/account#security">Set up or verify 2FA in Account → Security</Link>, then come back.
+        </p>
       </>
     );
   }
