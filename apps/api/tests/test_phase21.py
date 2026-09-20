@@ -388,9 +388,9 @@ def test_cost_rates_per_provider_and_plan_defaults() -> None:
     assert r.tts_for("ELEVENLABS") == 4.5 and r.tts_for("unknown") == 1.5
     plans = {p.id: p for p in PLANS}
     assert (plans["starter"].monthly_pence, plans["starter"].included_minutes) == (7900, 350)
-    assert (plans["starter"].included_sms, plans["starter"].sms_overage_pence) == (75, 6)
+    assert (plans["starter"].included_sms, plans["starter"].sms_overage_pence) == (150, 6)
     assert (plans["growth"].monthly_pence, plans["growth"].included_minutes) == (19900, 1500)
-    assert (plans["growth"].included_sms, plans["growth"].overage_pence_per_minute) == (400, 10)
+    assert (plans["growth"].included_sms, plans["growth"].overage_pence_per_minute) == (600, 10)
     assert (plans["scale"].monthly_pence, plans["scale"].included_minutes) == (49900, 4000)
     assert (plans["scale"].included_sms, plans["scale"].overage_pence_per_minute) == (1000, 8)
     assert plans["enterprise"].overage_pence_per_minute == 14

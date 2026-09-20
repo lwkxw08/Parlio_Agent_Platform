@@ -52,9 +52,9 @@ async def test_caps_enforced_and_owner_editable(client: AsyncClient, app: FastAP
         two = [*sites, {"id": "york", "name": "York", "numbers": []}]
         r = await client.put(f"/v1/assistants/{DEV_TENANT}/sites", json=two)
         assert r.status_code == 403 and "Multiple locations" in r.text
-        # transcript search is Growth+
+        # transcript search is included on every plan
         r = await client.get("/v1/calls/search", params={**Q, "q": "boiler"})
-        assert r.status_code == 403
+        assert r.status_code == 200
 
         # owner enables team scheduling on Starter but keeps the 1-engineer cap
         r = await client.put(
