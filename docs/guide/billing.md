@@ -15,7 +15,7 @@ Where your minutes go: daily minutes, the longest calls (worth a listen if they'
 
 ## Your features
 
-What your plan includes (multiple assistants, live monitoring, connectors, voice cloning, white-label…). Locked features show which plan unlocks them. Below the features you'll see how many **team members / bookable calendars**, **locations** and **dashboard users** your plan allows and how many you're using — when you hit a cap, adding another asks you to upgrade (or contact us for an increase); caps don't apply during your trial. Team scheduling, multiple locations, after-hours personas and transcript search start at Growth; a scheduling-tool backend (ServiceM8 / webhook) at Scale.
+What your plan includes (multiple assistants, live monitoring, connectors, voice cloning, white-label…). Locked features show which plan unlocks them. Below the features you'll see how many **team members / bookable calendars**, **locations** and **dashboard users** your plan allows and how many you're using — when you hit a cap, adding another asks you to upgrade (or contact us for an increase); caps don't apply during your trial. Calendar booking, after-hours personas and transcript search are on every plan; team scheduling, multiple locations, warm transfers and AI call-backs start at Growth; a scheduling-tool backend (ServiceM8 / webhook), BYO SIP and priority support at Scale.
 
 ## Your numbers
 
