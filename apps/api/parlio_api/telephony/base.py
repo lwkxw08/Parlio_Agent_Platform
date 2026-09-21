@@ -25,6 +25,7 @@ class PhoneNumber(BaseModel):
     country: str
     provider_ref: str | None = None
     sip_trunk_ref: str | None = None
+    status: str = "active"  # active | pending (carrier regulatory review) | failed
 
 
 class NumberRegion(BaseModel):
@@ -83,6 +84,10 @@ class TelephonyProvider(ABC):
 
     @abstractmethod
     async def release_number(self, number: PhoneNumber) -> None: ...
+
+    async def number_status(self, number: PhoneNumber) -> str:
+        """Carrier-side activation state; only carriers with post-order review override this."""
+        return "active"
 
     @abstractmethod
     async def send_sms(self, from_e164: str, to_e164: str, body: str) -> str: ...

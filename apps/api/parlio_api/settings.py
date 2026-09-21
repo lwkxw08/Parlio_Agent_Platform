@@ -106,6 +106,11 @@ class Settings(BaseSettings):
     number_provider: Literal["simulated", "telnyx"] = "simulated"
     telnyx_sip_uri: str | None = None
     telnyx_connection_id: str | None = None
+    # Pre-approved Telnyx requirement group (regulatory docs) attached to every number order so
+    # UK numbers activate in minutes rather than sitting in manual review per order.
+    telnyx_requirement_group_id: str | None = None
+    # How often pending (under-review) tenant numbers are re-checked with the carrier.
+    number_activation_interval_s: float = 120.0
     # LiveKit inbound trunk the carrier delivers platform numbers to; bought numbers are added
     # to its DID list so the dispatch rule picks them up (unset = trunk accepts what it has).
     inbound_trunk_id: str | None = None

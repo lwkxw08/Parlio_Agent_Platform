@@ -28,11 +28,13 @@ from parlio_api.advisor import AdvisorService, Reworder
 from parlio_api.billing import (
     BillingProvider,
     BillingService,
+    NumberActivationLoop,
     SimulatedBilling,
     SimulatedNumbers,
     StripeBilling,
     StripeMode,
     SwitchableStripeBilling,
+    TenantNumber,
 )
 from parlio_api.browser_voice import (
     AgentDispatcher,
@@ -275,6 +277,7 @@ def build_number_provider(settings: Settings) -> TelephonyProvider:
             settings.telnyx_api_key,
             connection_id=settings.telnyx_connection_id,
             messaging_profile_id=settings.telnyx_messaging_profile_id,
+            requirement_group_id=settings.telnyx_requirement_group_id,
         )
     return SimulatedNumbers()
 
@@ -443,6 +446,37 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         edge=build_inbound_edge(settings),
     )
     app.state.billing = billing
+
+    async def _number_status_changed(num: TenantNumber) -> None:
+        owners = [
+            m.email
+            for m in await store.list_members(num.tenant_id)
+            if m.role in ("owner", "admin") and m.status == "active"
+        ]
+        pretty = num.e164.replace("+44", "0", 1) if num.e164.startswith("+44") else num.e164
+        if num.status == "active":
+            subject = f"Your ParlioTec number {pretty} is live"
+            body = (
+                f"Good news - {pretty} has been activated and is now answering calls.\n\n"
+                f"Ring it to hear your assistant, then divert your existing business line to it "
+                f"when you're ready: {settings.dashboard_url}/telephony"
+            )
+        else:
+            subject = f"We couldn't activate {pretty}"
+            body = (
+                f"The carrier declined to activate {pretty}. Our team has been alerted and will "
+                f"sort out a replacement number for you - no action needed on your side."
+            )
+            log.error("number %s failed carrier review (tenant %s)", num.e164, num.tenant_id)
+        for to in owners:
+            try:
+                await email.send(to, subject, body)
+            except Exception:
+                log.warning("number status email to %s failed", to, exc_info=True)
+
+    billing.on_number_status = _number_status_changed
+    number_activation = NumberActivationLoop(billing, settings.number_activation_interval_s)
+    number_activation.start()
     admin = AdminService(store, billing, telemetry, app.state.rate_limiter, settings.vault_key)
     await admin.load()
     app.state.admin = admin
@@ -715,6 +749,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         await sla.aclose()
         await inbox_sla.aclose()
         await ops_loop.stop()
+        await number_activation.stop()
         await checkins.stop()
         await digest.stop()
         await advisor.stop()

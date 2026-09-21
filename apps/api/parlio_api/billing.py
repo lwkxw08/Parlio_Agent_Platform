@@ -8,12 +8,15 @@ message stores rather than a separate counter so it can never drift from what th
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import hmac
 import json
 import logging
 import math
 import time
+from collections.abc import Awaitable, Callable
+from contextlib import suppress
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 from typing import Any, Literal, Protocol
@@ -768,6 +771,10 @@ class TenantNumber(BaseModel):
     assistant_id: str
     label: str | None = None
     monthly_pence: int = 100
+    # active: taking calls. pending: bought, but the carrier is still reviewing the regulatory
+    # paperwork (UK numbers) - callers get nothing until it flips. failed: carrier rejected it.
+    status: str = "active"
+    activated_at: datetime | None = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
@@ -851,6 +858,7 @@ class BillingService:
         self.provider = provider
         self.numbers = numbers
         self.edge = edge
+        self.on_number_status: Callable[[TenantNumber], Awaitable[None]] | None = None
         self.rates = rates or CostRates()
         self.sip_uri = sip_uri
         self.trial_days = trial_days
@@ -1468,6 +1476,8 @@ class BillingService:
             provider_ref=bought.provider_ref,
             assistant_id=assistant_id,
             label=label,
+            status=bought.status,
+            activated_at=datetime.now(UTC) if bought.status == "active" else None,
         )
         await self.store.put_doc(
             TenantDoc(
@@ -1479,6 +1489,36 @@ class BillingService:
         )
         await self.store.assign_number(tenant_id, company_id, num.e164, assistant_id)
         return num
+
+    async def activate_pending_numbers(self) -> list[TenantNumber]:
+        """Re-check every under-review number with the carrier; returns those that changed."""
+        changed: list[TenantNumber] = []
+        for doc in await self.store.list_docs(self.NUMBER_KIND, limit=1000):
+            num = TenantNumber.model_validate(doc.data)
+            if num.status != "pending":
+                continue
+            try:
+                status = await self.numbers.number_status(
+                    PhoneNumber(
+                        provider=num.provider,
+                        e164=num.e164,
+                        country=num.country,
+                        provider_ref=num.provider_ref,
+                    )
+                )
+            except httpx.HTTPError:
+                log.warning("number status check failed for %s", num.e164, exc_info=True)
+                continue
+            if status == "pending":
+                continue
+            num.status = status
+            if status == "active":
+                num.activated_at = datetime.now(UTC)
+            await self.store.put_doc(doc.model_copy(update={"data": num.model_dump(mode="json")}))
+            changed.append(num)
+            if self.on_number_status is not None:
+                await self.on_number_status(num)
+        return changed
 
     async def release_number(self, tenant_id: str, number_id: str) -> bool:
         doc = await self.store.get_doc(self.NUMBER_KIND, number_id)
@@ -1497,3 +1537,29 @@ class BillingService:
             await self.edge.remove_number(num.e164)
         await self.store.unassign_number(num.e164)
         return await self.store.delete_doc(self.NUMBER_KIND, number_id)
+
+
+class NumberActivationLoop:
+    """Polls the carrier for numbers still in regulatory review and flips them live."""
+
+    def __init__(self, billing: BillingService, interval_s: float = 120.0) -> None:
+        self.billing, self.interval_s = billing, interval_s
+        self._task: asyncio.Task[None] | None = None
+
+    def start(self) -> None:
+        if self.interval_s > 0:
+            self._task = asyncio.create_task(self._run())
+
+    async def _run(self) -> None:
+        while True:
+            await asyncio.sleep(self.interval_s)
+            try:
+                await self.billing.activate_pending_numbers()
+            except Exception:
+                log.warning("number activation sweep crashed", exc_info=True)
+
+    async def stop(self) -> None:
+        if self._task is not None:
+            self._task.cancel()
+            with suppress(asyncio.CancelledError):
+                await self._task

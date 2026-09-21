@@ -242,7 +242,10 @@ function Numbers({ tenant, canManage, numbers, setNumbers, usage, assistants, se
   const buy = async (e164: string) => {
     const r = await request<TenantNumber>(`/v1/numbers${q}`, { method: "POST", body: JSON.stringify({ e164, assistant_id: assistant, label: label || null }) });
     if (!r.ok) return setMsg(`Could not provision: ${r.error}`);
-    setNumbers((ns) => [...ns, r.data]); setFound(null); setMsg(`${e164} is now routed to ${asstName(assistant)}.`);
+    setNumbers((ns) => [...ns, r.data]); setFound(null);
+    setMsg(r.data.status === "pending"
+      ? `${e164} is yours and routed to ${asstName(assistant)}. The carrier is completing its regulatory check before it can take calls - usually minutes, occasionally a few hours. We'll email you the moment it's live.`
+      : `${e164} is now live and routed to ${asstName(assistant)}.`);
     await onChange();
   };
   const release = async (n: TenantNumber) => {
@@ -257,11 +260,15 @@ function Numbers({ tenant, canManage, numbers, setNumbers, usage, assistants, se
         <p className="hint">{usage.numbers_used} of {usage.numbers_included} included on {usage.plan.name}. Extra numbers are £1/month each.</p>
         {numbers.length === 0 ? <p className="muted small">No numbers yet. Forwarding from your existing line works without one — see <a href="/telephony">Telephony</a>.</p> : (
           <table>
-            <thead><tr><th>Number</th><th>Label</th><th>Assistant</th><th>Provider</th><th>Since</th><th /></tr></thead>
+            <thead><tr><th>Number</th><th>Status</th><th>Label</th><th>Assistant</th><th>Provider</th><th>Since</th><th /></tr></thead>
             <tbody>
               {numbers.map((n) => (
                 <tr key={n.id}>
-                  <td><code>{n.e164}</code></td><td>{n.label ?? "—"}</td><td>{asstName(n.assistant_id)}</td>
+                  <td><code>{n.e164}</code></td>
+                  <td>{n.status === "pending" ? <span className="pill warn" title="The carrier is completing its regulatory check. Callers can't reach this number yet; you'll get an email when it goes live.">Activating…</span>
+                    : n.status === "failed" ? <span className="pill bad" title="The carrier declined this number. We've been alerted and will arrange a replacement.">Needs attention</span>
+                    : <span className="pill ok">Live</span>}</td>
+                  <td>{n.label ?? "—"}</td><td>{asstName(n.assistant_id)}</td>
                   <td>{n.provider === "simulated" ? <span className="pill warn">simulated</span> : n.provider}</td><td>{when(n.created_at)}</td>
                   <td>{canManage && <button onClick={() => release(n)}>Release</button>}</td>
                 </tr>

@@ -127,7 +127,8 @@ button { font: inherit; }
 .mock .float { position: absolute; background: var(--panel); border: 1px solid var(--line); border-radius: 14px; box-shadow: var(--shadow-lg); padding: 0.7rem 0.9rem; font-size: 0.82rem; display: flex; gap: 0.6rem; align-items: center; }
 .mock .float.a { top: 42%; right: -60px; }
 @media (max-width: 1250px) { .mock .float.a { right: -14px; } }
-.mock .float.b { bottom: -44px; left: 50%; transform: translateX(-50%); white-space: nowrap; }
+.mock .float.b { top: 17%; left: -56px; white-space: nowrap; }
+@media (max-width: 1250px) { .mock .float.b { left: -14px; } }
 .mock .float b { display: block; font-size: 0.95rem; }
 @media (max-width: 600px) { .mock .float { display: none; } }
 

@@ -69,6 +69,8 @@ function DivertTo({ numbers, asstName, canManage }: { numbers: TenantNumber[]; a
               <div key={n.id} className="card">
                 <div style={{ fontSize: "1.6rem", fontWeight: 600, letterSpacing: ".02em" }}>{prettyUk(n.e164)}</div>
                 <div className="small muted"><code>{n.e164}</code> · answered by {asstName(n.assistant_id)}{n.label ? ` · ${n.label}` : ""}</div>
+                {n.status === "pending" && <p className="small" style={{ marginTop: 6 }}><span className="pill warn">Activating…</span> The carrier is completing its regulatory check - usually minutes, occasionally a few hours. Hold off diverting until we email you that it&apos;s live.</p>}
+                {n.status === "failed" && <p className="small" style={{ marginTop: 6 }}><span className="pill bad">Needs attention</span> The carrier declined this number; we&apos;re arranging a replacement.</p>}
                 <button type="button" style={{ marginTop: 8 }} onClick={() => copy(n.e164)}>{copied === n.e164 ? "Copied" : "Copy number"}</button>
               </div>
             ))}
