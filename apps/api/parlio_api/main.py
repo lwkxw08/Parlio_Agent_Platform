@@ -31,6 +31,8 @@ from parlio_api.billing import (
     SimulatedBilling,
     SimulatedNumbers,
     StripeBilling,
+    StripeMode,
+    SwitchableStripeBilling,
 )
 from parlio_api.browser_voice import (
     AgentDispatcher,
@@ -240,9 +242,18 @@ async def consume_events(
 
 
 def build_billing_provider(settings: Settings) -> BillingProvider:
-    if settings.billing_provider == "stripe" and settings.stripe_secret_key:
-        return StripeBilling(settings.stripe_secret_key, settings.stripe_webhook_secret)
     if settings.billing_provider == "stripe":
+        modes: dict[StripeMode, StripeBilling] = {}
+        if settings.stripe_test_secret_key:
+            modes["sandbox"] = StripeBilling(
+                settings.stripe_test_secret_key, settings.stripe_test_webhook_secret
+            )
+        if settings.stripe_secret_key:
+            modes["live"] = StripeBilling(
+                settings.stripe_secret_key, settings.stripe_webhook_secret
+            )
+        if modes:
+            return SwitchableStripeBilling(modes)
         log.warning("PARLIO_BILLING_PROVIDER=stripe but no secret key; using simulated billing")
     return SimulatedBilling()
 

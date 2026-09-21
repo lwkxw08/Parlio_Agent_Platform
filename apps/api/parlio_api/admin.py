@@ -36,8 +36,10 @@ from .billing import (
     Invoice,
     Plan,
     Refund,
+    StripeMode,
     Subscription,
     SubscriptionStatus,
+    SwitchableStripeBilling,
     TenantLimits,
     UsageSummary,
     is_browser_call,
@@ -63,6 +65,7 @@ NOTE_KIND = "support_note"
 STATUS_KIND = "platform_status"
 STAFF_SETTINGS_KIND = "staff_settings"
 VOICE_SETTINGS_KIND = "voice_settings"
+BILLING_SETTINGS_KIND = "billing_settings"
 LOCALE_KIND = "tenant_locale"
 
 BUILTIN_PLANS: dict[str, Plan] = {p.id: p.model_copy(deep=True) for p in PLANS}
@@ -76,6 +79,16 @@ FEATURE_FLAGS: dict[str, str] = {
 
 
 # -- models ----------------------------------------------------------------------------------------
+
+
+class BillingPlatformSettings(BaseModel):
+    """Which Stripe account the platform charges through. Sandbox until an owner flips it."""
+
+    provider: str = "simulated"
+    stripe_mode: StripeMode = "sandbox"
+    available_modes: list[StripeMode] = Field(default_factory=list)
+    updated_by: str | None = None
+    updated_at: datetime | None = None
 
 
 class StaffSettings(BaseModel):
@@ -309,6 +322,49 @@ class AdminService:
             lim = TenantLimits.model_validate(d.data)
             if lim.rate_limit_per_minute:
                 self.limiter.overrides[f"tenant:{lim.tenant_id}"] = lim.rate_limit_per_minute
+        provider = self.billing.provider
+        if isinstance(provider, SwitchableStripeBilling):
+            doc = await self.store.get_doc(BILLING_SETTINGS_KIND, "current")
+            if doc:
+                wanted = BillingPlatformSettings.model_validate(doc.data).stripe_mode
+                if wanted in provider.modes:
+                    provider.set_mode(wanted)
+                else:
+                    log.warning(
+                        "Stripe %s selected but not configured; staying %s", wanted, provider.mode
+                    )
+
+    # -- billing provider mode (platform-wide) --------------------------------------------------
+    async def billing_settings(self) -> BillingPlatformSettings:
+        provider = self.billing.provider
+        doc = await self.store.get_doc(BILLING_SETTINGS_KIND, "current")
+        base = (
+            BillingPlatformSettings.model_validate(doc.data) if doc else BillingPlatformSettings()
+        )
+        if isinstance(provider, SwitchableStripeBilling):
+            return base.model_copy(
+                update={
+                    "provider": provider.name,
+                    "stripe_mode": provider.mode,
+                    "available_modes": provider.modes,
+                }
+            )
+        return base.model_copy(update={"provider": provider.name, "available_modes": []})
+
+    async def set_stripe_mode(self, mode: StripeMode, by: str) -> BillingPlatformSettings:
+        provider = self.billing.provider
+        if not isinstance(provider, SwitchableStripeBilling):
+            raise ValueError("Stripe is not the configured billing provider on this server")
+        provider.set_mode(mode)
+        s = BillingPlatformSettings(
+            provider=provider.name,
+            stripe_mode=mode,
+            available_modes=provider.modes,
+            updated_by=by,
+            updated_at=datetime.now(UTC),
+        )
+        await self._put(BILLING_SETTINGS_KIND, "current", PLATFORM_TENANT, s)
+        return s
 
     async def ensure_owner(self, email: str, user_id: str, name: str | None) -> Member:
         """Bootstrap: emails in PARLIO_PLATFORM_OWNER_EMAILS become platform owners on sign-in."""

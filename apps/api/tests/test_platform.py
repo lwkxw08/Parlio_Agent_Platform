@@ -14,7 +14,12 @@ from typing import Any
 import pytest
 from httpx import AsyncClient
 
-from parlio_api.billing import PLAN_BY_ID, StripeBilling, billable_minutes
+from parlio_api.billing import (
+    PLAN_BY_ID,
+    StripeBilling,
+    SwitchableStripeBilling,
+    billable_minutes,
+)
 from parlio_api.compliance import mask_e164, redact_text, redact_transcript
 from parlio_api.observability import RateLimiter, action_for
 from parlio_api.store import CallRecord, CallRedaction
@@ -109,6 +114,40 @@ def test_stripe_signature_verification() -> None:
     old_sig = hmac.new(b"whsec_test", f"{old}.".encode() + payload, hashlib.sha256).hexdigest()
     with pytest.raises(ValueError):
         sb.verify_webhook(payload, f"t={old},v1={old_sig}")
+
+
+def _stripe_sig(secret: bytes, payload: bytes) -> str:
+    ts = int(time.time())
+    sig = hmac.new(secret, f"{ts}.".encode() + payload, hashlib.sha256).hexdigest()
+    return f"t={ts},v1={sig}"
+
+
+def test_switchable_stripe_routes_by_mode_and_ignores_other_account() -> None:
+    sw = SwitchableStripeBilling(
+        {
+            "sandbox": StripeBilling("sk_test_x", "whsec_sandbox"),
+            "live": StripeBilling("sk_live_x", "whsec_live"),
+        }
+    )
+    assert sw.mode == "sandbox" and sw.modes == ["sandbox", "live"]
+    payload = json.dumps({"type": "invoice.paid", "data": {"object": {}}}).encode()
+    ok = sw.verify_webhook(payload, _stripe_sig(b"whsec_sandbox", payload))
+    assert ok["type"] == "invoice.paid"
+    live = sw.verify_webhook(payload, _stripe_sig(b"whsec_live", payload))
+    assert live["type"] == "ignored.other_mode" and live["livemode"] is True
+    with pytest.raises(ValueError):
+        sw.verify_webhook(payload, _stripe_sig(b"whsec_wrong", payload))
+
+    sw.set_mode("live")
+    assert sw.active is sw._providers["live"]
+    assert sw.verify_webhook(payload, _stripe_sig(b"whsec_live", payload))["type"] == "invoice.paid"
+    ignored = sw.verify_webhook(payload, _stripe_sig(b"whsec_sandbox", payload))
+    assert ignored["type"] == "ignored.other_mode"
+
+    only_sandbox = SwitchableStripeBilling({"sandbox": StripeBilling("sk_test_x", "whsec_s")})
+    with pytest.raises(ValueError):
+        only_sandbox.set_mode("live")
+    assert only_sandbox.mode == "sandbox"
 
 
 # -- unit: redaction / rate limiter / audit naming -------------------------------------------
