@@ -124,6 +124,8 @@ async def test_voicemail_answer_without_keypress_is_not_a_transfer() -> None:
     assert len(bridge.dropped) == 1 and bridge.dropped[0].startswith("human-office-")
     assert res.attempts[0].detail == "no keypress after answer"
     assert not any(s.startswith("Thank you") for s in rec.said)
+    # Caller was on hold for the briefing + voicemail greeting, then released.
+    assert bridge.holds == [True, False]
     outcomes = [p["outcome"] for t, p in rec.events if t == CallEventType.TRANSFER_COMPLETED]
     assert outcomes == [TransferOutcome.VOICEMAIL]
 
@@ -142,6 +144,7 @@ async def test_accept_key_off_bridges_on_answer() -> None:
     res = await tools.transfer(None, "boiler")
     assert res.succeeded and bridge.left and not bridge.dropped
     assert rec.said[-1].endswith("Putting them through now.")
+    assert bridge.holds == []
 
 
 async def test_caller_hangup_during_transfer_drops_the_human_leg() -> None:
@@ -283,6 +286,13 @@ def test_promised_transfer_detection() -> None:
     assert mentions_connecting("I'll connect you to the accounts team now.")
     assert mentions_connecting("Let me put you through to Dave")
     assert not mentions_connecting("We're open until six today.")
+    # Asking about a transfer is not promising one.
+    assert not mentions_connecting(
+        "Could you let me know the reason so I can transfer you to the right department?"
+    )
+    assert not mentions_connecting("Would you like me to put you through to accounts?")
+    assert not mentions_connecting("Before I connect you, can I take your name?")
+    assert mentions_connecting("Thanks Keith. Connecting you to accounts now, okay?")
     assert guess_department("connecting you to accounts", ["general", "accounts"]) == "accounts"
     assert guess_department("connecting you now", ["general", "accounts"]) is None
 

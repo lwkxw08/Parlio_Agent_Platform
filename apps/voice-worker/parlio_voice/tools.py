@@ -146,8 +146,28 @@ _TRANSFER_DECLINE_PHRASES = re.compile(
 )
 
 
+_CONNECT_HEDGES = re.compile(
+    r"\b(so (that )?i can|before i|can i|could i|shall i|may i|would you like( me)? to"
+    r"|do you want( me)? to|if you('d| would) like)\b",
+    re.IGNORECASE,
+)
+_QUESTION_OPENERS = re.compile(
+    r"^(can|could|would|shall|should|may|do|did|does|is|are|will|what|which|who|why|how)\b",
+    re.IGNORECASE,
+)
+
+
 def mentions_connecting(text: str) -> bool:
-    return bool(_CONNECT_PHRASES.search(text))
+    """True when the assistant *promises* a transfer ("connecting you now"), not when it asks
+    about one ("so I can transfer you to the right department?")."""
+    for sentence in re.split(r"(?<=[.!?])\s+", text.strip()):
+        m = _CONNECT_PHRASES.search(sentence)
+        if not m:
+            continue
+        question = sentence.endswith("?") and bool(_QUESTION_OPENERS.match(sentence))
+        if not question and not _CONNECT_HEDGES.search(sentence[: m.start()]):
+            return True
+    return False
 
 
 def asks_for_callback(text: str) -> bool:

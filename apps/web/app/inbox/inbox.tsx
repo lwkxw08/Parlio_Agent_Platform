@@ -341,7 +341,8 @@ function ThreadPane({ t, me, members, messages, canned, canReply, busy, now, tim
     textRef.current?.focus();
   };
   const onKey = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); void submit(); }
+    // Enter sends (like the visitor widget); Shift+Enter inserts a new line.
+    if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); void submit(); }
     // "/shortcut" + Tab expands a canned reply.
     if (e.key === "Tab" && text.startsWith("/")) {
       const c = canned.find((x) => x.shortcut && `/${x.shortcut}` === text.trim());
@@ -425,7 +426,7 @@ function ThreadPane({ t, me, members, messages, canned, canReply, busy, now, tim
             value={text}
             onChange={(e) => setText(e.target.value)}
             onKeyDown={onKey}
-            placeholder={asNote || !textChannel ? "Internal note (only your team sees this)" : `Reply by ${CHANNEL_LABEL[t.channel]} — Ctrl/⌘+Enter to send, /shortcut + Tab for canned replies`}
+            placeholder={asNote || !textChannel ? "Internal note (only your team sees this)" : `Reply by ${CHANNEL_LABEL[t.channel]} — Enter to send, Shift+Enter for a new line, /shortcut + Tab for canned replies`}
             disabled={busy}
           />
           <div className="row between">

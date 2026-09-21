@@ -34,7 +34,10 @@ export default function AuthGate({ signedOut, checkCookie, children }: { signedO
     };
   }, [checkCookie, pathname]);
   useEffect(() => {
-    if (blocked) router.replace(`/login?next=${encodeURIComponent(pathname)}`);
+    if (blocked) {
+      router.replace(`/login?next=${encodeURIComponent(pathname)}`);
+      router.refresh();
+    }
   }, [blocked, pathname, router]);
   if (blocked) return null;
   return <>{children}</>;
