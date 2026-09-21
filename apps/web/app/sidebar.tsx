@@ -154,7 +154,7 @@ export default function Sidebar({ account }: { account: Account }) {
       localStorage.setItem(OPEN_KEY, JSON.stringify(next));
       return next;
     });
-  if (path.startsWith("/chat/")) return null;
+  if (path.startsWith("/chat/") || path === "/login" || path.startsWith("/login/")) return null;
   const staff = account.kind === "user" && account.staff;
   const countFor = (href: string) => {
     const key = BADGE_FOR_HREF[href];
