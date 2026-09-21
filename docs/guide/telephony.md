@@ -9,7 +9,7 @@ keywords: telephony, forwarding, divert, forward calls, pbx, sip, trunk, registr
 
 Three ways to get calls to your assistant. You can use more than one.
 
-1. **Forward your number** – the simplest. Divert your existing landline or mobile to the ParlioTec number shown on the *Billing → Your numbers* page. Nothing to install. Divert codes for BT, Virgin, Vodafone, EE, O2, Three and Microsoft Teams are on the *Launch guide*.
+1. **Forward your number** – the simplest. Divert your existing landline or mobile to the ParlioTec number shown in the **Divert your calls to this number** panel at the top of the Telephony page (also on *Billing → Your numbers*). Nothing to install. Divert codes for BT, Virgin, Vodafone, EE, O2, Three and Microsoft Teams are on the *Launch guide*.
 2. **Connect your phone system (PBX)** – ParlioTec gives you SIP credentials (shown once — copy them). Point your PBX at them, and set the **PBX address** so the assistant can transfer callers to internal extensions. **Allowed source IPs** restricts who may send calls on this connection.
 3. **Register a SIP handset or provider** – enter the **Registrar**, **Username / extension**, **Password**, optional **Outbound proxy**, **Transport** (UDP/TCP/TLS) and **DTMF** mode. ParlioTec registers to your provider as if it were a phone, so your existing number rings the assistant with no forwarding.
 

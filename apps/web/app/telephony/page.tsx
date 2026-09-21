@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { fetchAssistants, fetchGuides, fetchMe, fetchTrunks } from "@/lib/api";
+import { fetchAssistants, fetchGuides, fetchMe, fetchNumbers, fetchTrunks } from "@/lib/api";
 import Telephony from "./telephony";
 
 export const dynamic = "force-dynamic";
@@ -12,7 +12,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ t
   const active = me.data.memberships.filter((m) => m.status === "active");
   const tenant = sp.tenant ?? active[0]?.tenant_id;
   if (!tenant) redirect(me.data.staff_role ? "/admin" : "/onboarding");
-  const [trunks, guides, assistants] = await Promise.all([fetchTrunks(tenant), fetchGuides(), fetchAssistants(tenant)]);
+  const [trunks, guides, assistants, numbers] = await Promise.all([fetchTrunks(tenant), fetchGuides(), fetchAssistants(tenant), fetchNumbers(tenant)]);
   const role = me.data.memberships.find((m) => m.tenant_id === tenant)?.role ?? "viewer";
   return (
     <>
@@ -22,7 +22,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ t
           {active.map((m) => <Link key={m.tenant_id} href={`/telephony?tenant=${m.tenant_id}`} className={m.tenant_id === tenant ? "active" : ""}>{me.data.organisations[m.tenant_id] ?? m.tenant_id}</Link>)}
         </div>
       )}
-      <Telephony tenant={tenant} canManage={role === "owner" || role === "admin"} trunks={trunks ?? []} guides={guides ?? []} assistants={assistants ?? []} />
+      <Telephony tenant={tenant} canManage={role === "owner" || role === "admin"} trunks={trunks ?? []} guides={guides ?? []} assistants={assistants ?? []} numbers={numbers ?? []} />
     </>
   );
 }
