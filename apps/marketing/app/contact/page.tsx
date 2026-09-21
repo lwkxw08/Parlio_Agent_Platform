@@ -34,7 +34,7 @@ export default function ContactPage() {
                 <b>Company details</b><br />
                 <span className="placeholder">[Legal entity name]</span>, registered in England &amp; Wales, company no.{" "}
                 <span className="placeholder">[number]</span>. Registered office: <span className="placeholder">[address]</span>.
-                ICO registration: <span className="placeholder">[reference]</span>.
+                ICO registration: <strong>00015465911</strong>.
               </div>
             </div>
           </div>
