@@ -71,6 +71,11 @@ class Bridge(Protocol):
 
     async def drop(self, identity: str) -> None: ...
 
+    async def hold_caller(self, identity: str, held: bool) -> None:
+        """While `held`, the caller hears neither the assistant nor the human leg `identity`
+        (the briefing and any voicemail greeting stay private)."""
+        ...
+
     async def leave(self) -> None: ...
 
 
@@ -183,6 +188,42 @@ class LiveKitSipBridge:
         except api.TwirpError as e:
             log.info("dropping %s failed: %s", identity, e.message)
 
+    async def _private_track_sids(self, identity: str, wait_s: float) -> list[str]:
+        room = self._rtc_room
+        if room is None:
+            return []
+        agent = [
+            pub.sid
+            for pub in room.local_participant.track_publications.values()
+            if pub.kind == rtc.TrackKind.KIND_AUDIO
+        ]
+        # The human leg publishes its audio a moment after answering; give it a beat.
+        deadline = asyncio.get_running_loop().time() + wait_s
+        while True:
+            human = [
+                pub.sid
+                for p in room.remote_participants.values()
+                if p.identity == identity
+                for pub in p.track_publications.values()
+                if pub.kind == rtc.TrackKind.KIND_AUDIO
+            ]
+            if human or asyncio.get_running_loop().time() >= deadline:
+                return agent + human
+            await asyncio.sleep(0.1)
+
+    async def hold_caller(self, identity: str, held: bool) -> None:
+        sids = await self._private_track_sids(identity, 2.0 if held else 0.0)
+        if not sids:
+            return
+        try:
+            await self._lk.room.update_subscriptions(
+                api.UpdateSubscriptionsRequest(
+                    room=self._room, identity=self._caller, track_sids=sids, subscribe=not held
+                )
+            )
+        except api.TwirpError as e:
+            log.info("hold caller (%s) failed: %s", held, e.message)
+
     async def leave(self) -> None:
         if self._leave is not None:
             await self._leave()
@@ -200,6 +241,7 @@ class SimulatedBridge:
         self.accepts = accepts or {}
         self.dialed: list[str] = []
         self.dropped: list[str] = []
+        self.holds: list[bool] = []
         self.left = False
 
     async def dial_into_room(
@@ -218,6 +260,9 @@ class SimulatedBridge:
 
     async def drop(self, identity: str) -> None:
         self.dropped.append(identity)
+
+    async def hold_caller(self, identity: str, held: bool) -> None:
+        self.holds.append(held)
 
     async def leave(self) -> None:
         self.left = True
@@ -275,16 +320,24 @@ class TransferEngine:
                 identity = f"human-{dest.id}-{tid}"
                 outcome = await self.bridge.dial_into_room(dest, identity, self.cfg.ring_timeout_s)
                 if outcome == TransferOutcome.ANSWERED:
-                    if on_answered is not None:
-                        await on_answered(dest)
-                    if self.cfg.accept_key and not await self.bridge.confirm_human(
-                        identity, self.cfg.accept_timeout_s
-                    ):
-                        log.info(
-                            "%s answered but never pressed a key; treating as voicemail", dest.id
-                        )
-                        await self.bridge.drop(identity)
-                        outcome, detail = TransferOutcome.VOICEMAIL, "no keypress after answer"
+                    private = self.cfg.accept_key
+                    if private:
+                        await self.bridge.hold_caller(identity, True)
+                    try:
+                        if on_answered is not None:
+                            await on_answered(dest)
+                        if private and not await self.bridge.confirm_human(
+                            identity, self.cfg.accept_timeout_s
+                        ):
+                            log.info(
+                                "%s answered but never pressed a key; treating as voicemail",
+                                dest.id,
+                            )
+                            await self.bridge.drop(identity)
+                            outcome, detail = TransferOutcome.VOICEMAIL, "no keypress after answer"
+                    finally:
+                        if private:
+                            await self.bridge.hold_caller(identity, False)
             ended = datetime.now(UTC)
             result.attempts.append(
                 TransferAttempt(tid, dest, mode, outcome, started, ended, detail)
