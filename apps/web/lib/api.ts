@@ -723,6 +723,7 @@ export type ScheduleView = {
 export type SyncLogEntry = { id: string; connection_id: string; action: string; ok: boolean; detail: string | null; at: string };
 export type ReminderPolicy = {
   tenant_id: string; enabled: boolean; timezone: string; hours_before: number[];
+  confirmation_enabled: boolean; confirmation_template: string;
   template: string; confirm_reply: string; reschedule_reply: string;
 };
 export type Reminder = {

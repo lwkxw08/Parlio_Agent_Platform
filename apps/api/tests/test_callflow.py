@@ -44,6 +44,7 @@ from parlio_voice.models import (
     CallEventType,
     ScreeningConfig,
     ScreeningMode,
+    SmsTrigger,
     TicketIntake,
 )
 
@@ -284,6 +285,43 @@ async def test_reminders_scheduled_sent_and_confirmed() -> None:
     assert await h.svc.sweep(now + timedelta(days=2, hours=-1)) == 1
 
 
+async def test_booking_confirmation_sms_sent_immediately() -> None:
+    h = _Reminders()
+    now = datetime(2026, 9, 21, 9, 21, tzinfo=UTC)
+    bk = _booking(now + timedelta(hours=1, minutes=9))
+    bk.call_id = "SCL_1"
+    # on by default, independent of reminders (which are off and would not fire for 69 min out)
+    assert await h.svc.on_booking(bk, now) == []
+    assert len(h.prov.sent) == 1
+    sent = h.prov.sent[-1]
+    assert sent[1] == CALLER
+    assert sent[2].startswith("Acme Plumbing: your appointment is booked for")
+    assert "11:30" in sent[2]  # 10:30 UTC shown in Europe/London
+    msgs = await h.sms.recent("demo")
+    assert msgs[0].trigger == SmsTrigger.BOOKING_CONFIRMATION
+    assert msgs[0].call_id == "SCL_1"
+    assert msgs[0].status == MessageStatus.SENT
+
+    # no phone -> nothing; disabled -> nothing (reminders still scheduled)
+    assert (
+        await h.svc.on_booking(_booking(now + timedelta(days=1), phone=None, bid="b2"), now) == []
+    )
+    assert len(h.prov.sent) == 1
+    await h.svc.set_policy(
+        ReminderPolicy(tenant_id="demo", enabled=True, hours_before=[1], confirmation_enabled=False)
+    )
+    rs = await h.svc.on_booking(_booking(now + timedelta(days=1), bid="b3"), now)
+    assert len(rs) == 1 and len(h.prov.sent) == 1
+
+    # STOP suppresses the confirmation but not the booking flow
+    await h.svc.set_policy(ReminderPolicy(tenant_id="demo", enabled=True, hours_before=[1]))
+    await h.sms.set_opt_out("demo", CALLER, True)
+    rs = await h.svc.on_booking(_booking(now + timedelta(days=1), bid="b4"), now)
+    assert len(rs) == 1 and len(h.prov.sent) == 1
+    msgs = await h.sms.recent("demo")
+    assert msgs[0].status == MessageStatus.SKIPPED and "STOP" in (msgs[0].error or "")
+
+
 async def test_reminder_reschedule_creates_ticket_and_cancels_rest() -> None:
     h = _Reminders()
     now = datetime(2026, 9, 11, 9, 0, tzinfo=UTC)
@@ -321,7 +359,7 @@ async def test_reminder_skipped_when_booking_cancelled_or_reply_too_late() -> No
     b.status = "cancelled"
     await h.store.put_doc(b.to_doc())
     assert await h.svc.sweep(now + timedelta(days=1)) == 0
-    assert h.prov.sent == []
+    assert [m for m in h.prov.sent if "reminder" in m[2]] == []
     rs = await h.svc.list_for("demo")
     assert rs[0].status == ReminderStatus.CANCELLED
 

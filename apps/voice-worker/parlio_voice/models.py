@@ -288,6 +288,7 @@ class SmsTrigger(StrEnum):
     PAYMENT_LINK = "payment_link"
     TICKET_CONFIRMATION = "ticket_confirmation"
     APPOINTMENT_REMINDER = "appointment_reminder"
+    BOOKING_CONFIRMATION = "booking_confirmation"
     CUSTOM = "custom"
 
 

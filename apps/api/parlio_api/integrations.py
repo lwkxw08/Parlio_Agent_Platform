@@ -203,7 +203,9 @@ class IntegrationHub:
             try:
                 await self.reminders.on_booking(booking)
             except Exception:
-                log.warning("SMS reminder scheduling failed for %s", booking.id, exc_info=True)
+                log.warning(
+                    "booking SMS (confirmation/reminders) failed for %s", booking.id, exc_info=True
+                )
         if self.outbound is not None:
             try:
                 await self.outbound.on_booking(
