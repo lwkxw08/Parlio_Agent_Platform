@@ -1,8 +1,10 @@
 """Telnyx carrier adapter (REST API v2).
 
 Env: PARLIO_TELNYX_API_KEY, PARLIO_TELNYX_CONNECTION_ID (the SIP connection pointing at the
-LiveKit SIP edge), PARLIO_TELNYX_MESSAGING_PROFILE_ID. Nothing here is hard-coded to UK, but
-default number searches target GB with the London media region.
+LiveKit SIP edge), PARLIO_TELNYX_MESSAGING_PROFILE_ID, PARLIO_TELNYX_REQUIREMENT_GROUP_ID (a
+pre-approved regulatory requirement group: UK numbers ordered with it activate within minutes
+instead of waiting for a manual document review). Nothing here is hard-coded to UK, but default
+number searches target GB with the London media region.
 """
 
 from __future__ import annotations
@@ -16,6 +18,18 @@ from parlio_api.telephony.base import CarrierHealth, CarrierStatus, PhoneNumber,
 API = "https://api.telnyx.com/v2"
 
 
+def _status(pn: dict[str, object] | None) -> str:
+    """Collapse Telnyx's phone-number lifecycle onto active / pending / failed."""
+    if pn is None:
+        return "pending"
+    s = str(pn.get("status") or "")
+    if s == "active":
+        return "active"
+    if s in {"requirement-info-exception", "requirement-info-declined", "deleted", "port-failed"}:
+        return "failed"
+    return "pending"
+
+
 class TelnyxProvider(TelephonyProvider):
     name = "telnyx"
 
@@ -26,9 +40,11 @@ class TelnyxProvider(TelephonyProvider):
         messaging_profile_id: str | None = None,
         client: httpx.AsyncClient | None = None,
         order_poll_s: float = 1.0,
+        requirement_group_id: str | None = None,
     ) -> None:
         self._connection_id = connection_id
         self._messaging_profile_id = messaging_profile_id
+        self._requirement_group_id = requirement_group_id
         self._order_poll_s = order_poll_s
         self._client = client or httpx.AsyncClient(
             base_url=API, headers={"Authorization": f"Bearer {api_key}"}, timeout=15
@@ -52,7 +68,10 @@ class TelnyxProvider(TelephonyProvider):
         ]
 
     async def purchase_number(self, e164: str) -> PhoneNumber:
-        body: dict[str, object] = {"phone_numbers": [{"phone_number": e164}]}
+        item: dict[str, str] = {"phone_number": e164}
+        if self._requirement_group_id:
+            item["requirement_group_id"] = self._requirement_group_id
+        body: dict[str, object] = {"phone_numbers": [item]}
         if self._connection_id:
             body["connection_id"] = self._connection_id
         if self._messaging_profile_id:
@@ -61,23 +80,31 @@ class TelnyxProvider(TelephonyProvider):
         r.raise_for_status()
         # Orders complete asynchronously; the phone-number resource id (not the order id) is what
         # later PATCH/DELETE calls need. Fall back to the E.164, which Telnyx also accepts.
-        ref = await self._phone_number_id(e164) or e164
+        found = await self._phone_number(e164)
         return PhoneNumber(
             provider=self.name,
             e164=e164,
             country=e164[:3],
-            provider_ref=ref,
+            provider_ref=str(found["id"]) if found else e164,
             sip_trunk_ref=self._connection_id,
+            status=_status(found),
         )
 
-    async def _phone_number_id(self, e164: str, attempts: int = 10) -> str | None:
+    async def _phone_number(self, e164: str, attempts: int = 10) -> dict[str, object] | None:
         for i in range(attempts):
             r = await self._client.get("/phone_numbers", params={"filter[phone_number]": e164})
             if r.status_code == 200 and (data := r.json().get("data")):
-                return str(data[0]["id"])
+                return dict(data[0])
             if i < attempts - 1:
                 await asyncio.sleep(self._order_poll_s)
         return None
+
+    async def number_status(self, number: PhoneNumber) -> str:
+        r = await self._client.get(f"/phone_numbers/{number.provider_ref or number.e164}")
+        if r.status_code == 404:
+            return _status(await self._phone_number(number.e164, attempts=1))
+        r.raise_for_status()
+        return _status(r.json().get("data"))
 
     async def route_number_to_trunk(self, number: PhoneNumber, sip_uri: str) -> PhoneNumber:
         # Telnyx routes by connection: the FQDN connection's target is the LiveKit SIP edge.

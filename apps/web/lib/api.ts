@@ -830,6 +830,7 @@ export type CheckoutSession = { url: string; provider: string; session_ref: stri
 export type TenantNumber = {
   id: string; tenant_id: string; e164: string; country: string; provider: string; provider_ref: string | null;
   assistant_id: string; label: string | null; monthly_pence: number; created_at: string;
+  status?: "active" | "pending" | "failed"; activated_at?: string | null;
 };
 export type AvailableNumber = { provider: string; e164: string; country: string; provider_ref: string | null };
 export type NumberRegion = { code: string; label: string; kind: "geographic" | "national" | "freephone" | "mobile" };
