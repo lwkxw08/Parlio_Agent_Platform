@@ -13,6 +13,7 @@ from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Any, Protocol
 from uuid import uuid4
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import httpx
 from pydantic import BaseModel, Field
@@ -374,7 +375,7 @@ def _outcome_label(call: CallRecord) -> str:
             return "Handled by the assistant"
 
 
-def owner_sms_summary(call: CallRecord, business_name: str) -> str:
+def owner_sms_summary(call: CallRecord, business_name: str, timezone: str = "Europe/London") -> str:
     """The post-call text an owner gets: who rang, what about, what happened, how to reach them.
 
     Kept to one SMS segment pair (<= 300 chars) so it reads at a glance on a phone.
@@ -382,7 +383,12 @@ def owner_sms_summary(call: CallRecord, business_name: str) -> str:
     who = str(call.extracted.get("name") or "").strip()
     number = call.party
     ident = who + (f" ({number})" if who and number else "") if who else (number or "Withheld")
-    when = call.started_at.strftime("%H:%M")
+    try:
+        tz = ZoneInfo(timezone)
+    except (ZoneInfoNotFoundError, ValueError):
+        tz = ZoneInfo("Europe/London")
+    started = call.started_at if call.started_at.tzinfo else call.started_at.replace(tzinfo=UTC)
+    when = started.astimezone(tz).strftime("%H:%M")
     what = (call.summary or "").strip()
     if not what:
         what = "No details captured" if call.answered_at else "Caller hung up before speaking"
@@ -402,7 +408,9 @@ def owner_sms_summary(call: CallRecord, business_name: str) -> str:
     return f"{business_name}: {prefix} {when} from {ident}. {what} Outcome: {outcome}.{tail}"
 
 
-def call_completed_event(call: CallRecord, business_name: str) -> NotificationEvent:
+def call_completed_event(
+    call: CallRecord, business_name: str, timezone: str = "Europe/London"
+) -> NotificationEvent:
     missed = call.status == "failed" or call.answered_at is None
     who = call.extracted.get("name") or call.caller or "Unknown caller"
     qualified = is_qualified_lead(call)
@@ -423,6 +431,6 @@ def call_completed_event(call: CallRecord, business_name: str) -> NotificationEv
             "call_id": call.call_id,
             "caller": call.caller,
             "caller_type": call.caller_type,
-            "sms": owner_sms_summary(call, business_name),
+            "sms": owner_sms_summary(call, business_name, timezone),
         },
     )

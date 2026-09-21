@@ -297,22 +297,32 @@ async def entrypoint(ctx: JobContext) -> None:
     site = cfg.site_for(dialed) if outbound is None and web is None else None
     if site is not None:
         ctx.log_context_fields["site"] = site.id
+
+    async def _reject(reason: str, detail: str | None) -> None:
+        # Ending the job alone leaves the SIP leg ringing in an agent-less room; deleting the
+        # room makes LiveKit SIP hang the caller up.
+        payload: dict[str, object] = {"reason": reason, "duration_s": 0}
+        if detail:
+            payload["detail"] = detail
+        events.emit(cfg, call_id, CallEventType.CALL_ENDED, payload)
+        try:
+            await lk.room.delete_room(api.DeleteRoomRequest(room=ctx.room.name))
+        except Exception:
+            log.warning("room delete failed for rejected call %s", call_id, exc_info=True)
+        await events.aclose()
+        await config_client.aclose()
+        await lk.aclose()
+        ctx.shutdown(reason=reason)
+
     if outbound is None and web is None and cfg.is_blocked(caller):
         log.info("blocked caller %s on call %s", caller, call_id)
-        events.emit(cfg, call_id, CallEventType.CALL_ENDED, {"reason": "blocked", "duration_s": 0})
-        ctx.shutdown(reason="blocked")
+        await _reject("blocked", None)
         return
     verdict = await _screen(core_api, cfg, caller) if outbound is None and web is None else None
     if verdict is not None and verdict.get("action") == "reject":
         reason = str(verdict.get("reason") or "screened")
         log.info("screened out caller %s on call %s: %s", caller, call_id, reason)
-        events.emit(
-            cfg,
-            call_id,
-            CallEventType.CALL_ENDED,
-            {"reason": "screened", "detail": reason, "duration_s": 0},
-        )
-        ctx.shutdown(reason="screened")
+        await _reject("screened", reason)
         return
 
     latency = LatencyTracker(
@@ -363,6 +373,25 @@ async def entrypoint(ctx: JobContext) -> None:
         await asyncio.sleep(3)
         if tools.transfer_attempted or not cfg.transfer.enabled:
             return
+        bridge_ = SessionBridge(session)
+        if tools.callback_requested:
+            log.info("assistant offered a transfer during callback intake; steering back")
+            await bridge_.add_system_note(
+                "The caller asked for a callback, not to be put through. Do not transfer. "
+                "Apologise briefly, finish collecting any missing callback details and log "
+                "it with create_ticket."
+            )
+            session.generate_reply()
+            return
+        if not tools.transfer_allowed_without_tool_call():
+            log.info("assistant promised a transfer without a clear request; asking it to decide")
+            await bridge_.add_system_note(
+                "You told the caller you would connect them but did not call transfer_to_human. "
+                "If the caller asked to be put through, call transfer_to_human now; otherwise "
+                "carry on helping them (callback with create_ticket, or book a slot)."
+            )
+            session.generate_reply()
+            return
         dept = guess_department(text, cfg.transfer.departments())
         log.info("assistant promised a transfer without calling the tool; dialling %s", dept)
         res = await tools.transfer(dept, "caller asked to be put through")
@@ -372,7 +401,7 @@ async def entrypoint(ctx: JobContext) -> None:
             f"The transfer to {dept or 'the team'} was not answered (outcome: {res.outcome}). "
             "Tell the caller nobody could pick up and offer to take a message with create_ticket."
         )
-        await SessionBridge(session).add_system_note(note)
+        await bridge_.add_system_note(note)
         session.generate_reply()
 
     @session.on("conversation_item_added")
@@ -429,6 +458,7 @@ async def entrypoint(ctx: JobContext) -> None:
         participant.identity,
         settings.outbound_sip_trunk_id,
         on_leave=_leave_after_bridge,
+        room=ctx.room,
     )
     tools = ReceptionistTools(
         cfg,
@@ -470,6 +500,12 @@ async def entrypoint(ctx: JobContext) -> None:
     def _on_participant_gone(p: rtc.RemoteParticipant) -> None:
         if t_human is not None and p.identity.startswith(HUMAN_PREFIX):
             background.append(asyncio.create_task(_hangup("transferred")))
+        elif p.identity == participant.identity and not tools.transferred:
+            # Caller hung up mid-call (e.g. while a transfer was still dialling): tear the
+            # room down so any ringing human leg stops and the call closes now.
+            tools.caller_gone = True
+            log.info("caller left call %s before it completed; hanging up", call_id)
+            background.append(asyncio.create_task(_hangup("caller_hangup")))
 
     async def _record_caller_track() -> None:
         for pub in participant.track_publications.values():

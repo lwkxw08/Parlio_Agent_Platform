@@ -181,6 +181,10 @@ class TransferConfig(BaseModel):
     enabled: bool = True
     mode: TransferMode = TransferMode.WARM
     ring_timeout_s: int = 25
+    # Warm transfers: the person who answers presses a key to take the call. Voicemail can't,
+    # so an unanswered prompt counts as no answer and the caller is offered a callback.
+    accept_key: bool = True
+    accept_timeout_s: int = 10
     destinations: list[Destination] = Field(default_factory=list)
     department_notes: dict[str, str] = Field(default_factory=dict)
     urgent_keywords: list[str] = Field(
@@ -348,7 +352,11 @@ class SpeakingStyle(BaseModel):
         lines.extend(r.strip() for r in self.extra_rules if r.strip())
         lines.append(
             "When the caller wants a person, call transfer_to_human straight away in that same "
-            "turn; do not just say you will connect them and then wait."
+            "turn; do not just say you will connect them and then wait. But once the caller "
+            "has asked for a callback, stay with the callback: collect the details and log it "
+            "with create_ticket. Their description of the problem (even 'I want some advice' or "
+            "'I need to speak to someone about X') is the reason for the callback, "
+            "not a request to be transferred. If they say no to a transfer, never try again."
         )
         return "Speaking style on the phone:\n" + "\n".join(f"- {line}" for line in lines)
 

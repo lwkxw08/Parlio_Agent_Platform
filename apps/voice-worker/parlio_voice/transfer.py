@@ -11,6 +11,7 @@ room so caller and human are bridged directly. Cold transfer: SIP REFER on the c
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
@@ -18,7 +19,7 @@ from datetime import UTC, datetime
 from typing import Protocol
 from uuid import uuid4
 
-from livekit import api
+from livekit import api, rtc
 from livekit.protocol.sip import (
     CreateSIPParticipantRequest,
     TransferSIPParticipantRequest,
@@ -64,6 +65,12 @@ class Bridge(Protocol):
 
     async def refer_caller(self, dest: Destination, timeout_s: int) -> TransferOutcome: ...
 
+    async def confirm_human(self, identity: str, timeout_s: int) -> bool:
+        """True once the answering party presses a key; False on timeout or hangup."""
+        ...
+
+    async def drop(self, identity: str) -> None: ...
+
     async def leave(self) -> None: ...
 
 
@@ -87,12 +94,14 @@ class LiveKitSipBridge:
         caller_identity: str,
         outbound_trunk_id: str | None,
         on_leave: Callable[[], Awaitable[None]] | None = None,
+        room: rtc.Room | None = None,
     ) -> None:
         self._lk = lk
         self._room = room_name
         self._caller = caller_identity
         self._trunk = outbound_trunk_id
         self._leave = on_leave
+        self._rtc_room = room
 
     async def dial_into_room(
         self, dest: Destination, identity: str, timeout_s: int
@@ -137,6 +146,43 @@ class LiveKitSipBridge:
             return TransferOutcome.NO_ANSWER
         return TransferOutcome.ANSWERED
 
+    async def confirm_human(self, identity: str, timeout_s: int) -> bool:
+        room = self._rtc_room
+        if room is None:
+            return True
+        loop = asyncio.get_running_loop()
+        accepted: asyncio.Future[bool] = loop.create_future()
+
+        def _settle(value: bool) -> None:
+            if not accepted.done():
+                accepted.set_result(value)
+
+        def _on_dtmf(ev: rtc.SipDTMF) -> None:
+            if ev.participant is not None and ev.participant.identity == identity:
+                _settle(True)
+
+        def _on_gone(p: rtc.RemoteParticipant) -> None:
+            if p.identity == identity:
+                _settle(False)
+
+        room.on("sip_dtmf_received", _on_dtmf)
+        room.on("participant_disconnected", _on_gone)
+        try:
+            return await asyncio.wait_for(accepted, timeout_s)
+        except TimeoutError:
+            return False
+        finally:
+            room.off("sip_dtmf_received", _on_dtmf)
+            room.off("participant_disconnected", _on_gone)
+
+    async def drop(self, identity: str) -> None:
+        try:
+            await self._lk.room.remove_participant(
+                api.RoomParticipantIdentity(room=self._room, identity=identity)
+            )
+        except api.TwirpError as e:
+            log.info("dropping %s failed: %s", identity, e.message)
+
     async def leave(self) -> None:
         if self._leave is not None:
             await self._leave()
@@ -145,9 +191,15 @@ class LiveKitSipBridge:
 class SimulatedBridge:
     """Offline bridge for tests and the latency harness: outcomes are scripted per destination."""
 
-    def __init__(self, outcomes: dict[str, TransferOutcome] | None = None) -> None:
+    def __init__(
+        self,
+        outcomes: dict[str, TransferOutcome] | None = None,
+        accepts: dict[str, bool] | None = None,
+    ) -> None:
         self.outcomes = outcomes or {}
+        self.accepts = accepts or {}
         self.dialed: list[str] = []
+        self.dropped: list[str] = []
         self.left = False
 
     async def dial_into_room(
@@ -159,6 +211,13 @@ class SimulatedBridge:
     async def refer_caller(self, dest: Destination, timeout_s: int) -> TransferOutcome:
         self.dialed.append(dest.id)
         return self.outcomes.get(dest.id, TransferOutcome.ANSWERED)
+
+    async def confirm_human(self, identity: str, timeout_s: int) -> bool:
+        dest_id = identity.removeprefix("human-").rsplit("-tr-", 1)[0]
+        return self.accepts.get(dest_id, True)
+
+    async def drop(self, identity: str) -> None:
+        self.dropped.append(identity)
 
     async def leave(self) -> None:
         self.left = True
@@ -198,7 +257,10 @@ class TransferEngine:
         *,
         urgent: bool = False,
         mode: TransferMode | None = None,
+        on_answered: Callable[[Destination], Awaitable[None]] | None = None,
     ) -> TransferResult:
+        """`on_answered` runs once a warm-transfer leg picks up (the briefing), before the
+        answering party is asked to press a key when `accept_key` is on."""
         mode = mode or self.cfg.mode
         result = TransferResult(outcome=TransferOutcome.UNAVAILABLE)
         if not self.cfg.enabled:
@@ -206,14 +268,27 @@ class TransferEngine:
         for dest in self.plan(department, urgent):
             tid = f"tr-{uuid4().hex[:12]}"
             started = datetime.now(UTC)
+            detail: str | None = None
             if mode == TransferMode.COLD:
                 outcome = await self.bridge.refer_caller(dest, self.cfg.ring_timeout_s)
             else:
-                outcome = await self.bridge.dial_into_room(
-                    dest, f"human-{dest.id}-{tid}", self.cfg.ring_timeout_s
-                )
+                identity = f"human-{dest.id}-{tid}"
+                outcome = await self.bridge.dial_into_room(dest, identity, self.cfg.ring_timeout_s)
+                if outcome == TransferOutcome.ANSWERED:
+                    if on_answered is not None:
+                        await on_answered(dest)
+                    if self.cfg.accept_key and not await self.bridge.confirm_human(
+                        identity, self.cfg.accept_timeout_s
+                    ):
+                        log.info(
+                            "%s answered but never pressed a key; treating as voicemail", dest.id
+                        )
+                        await self.bridge.drop(identity)
+                        outcome, detail = TransferOutcome.VOICEMAIL, "no keypress after answer"
             ended = datetime.now(UTC)
-            result.attempts.append(TransferAttempt(tid, dest, mode, outcome, started, ended))
+            result.attempts.append(
+                TransferAttempt(tid, dest, mode, outcome, started, ended, detail)
+            )
             if outcome == TransferOutcome.ANSWERED:
                 result.outcome = outcome
                 result.connected = dest

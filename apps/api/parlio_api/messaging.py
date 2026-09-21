@@ -270,7 +270,7 @@ class MessageService:
 
     # -- lifecycle hooks --------------------------------------------------------------------
     async def on_call_ended(self, call: CallRecord, cfg: AssistantConfig) -> Message | None:
-        if not call.caller or call.caller.startswith("anonymous"):
+        if not call.caller or call.caller.startswith("anonymous") or call.kind == "blocked":
             return None
         ctx: dict[str, Any] = {"caller_name": call.extracted.get("name")}
         trigger = SmsTrigger.MISSED_CALL if call_missed(call) else SmsTrigger.AFTER_CALL

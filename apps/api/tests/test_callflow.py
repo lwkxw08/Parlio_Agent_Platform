@@ -106,7 +106,10 @@ def test_owner_sms_summary_content() -> None:
         escalated=True,
     )
     s = owner_sms_summary(c, "Acme Plumbing")
-    assert s.startswith("Acme Plumbing: Call 09:30 from Keith Wilson (+447700900123).")
+    # 09:30 UTC in September is 10:30 in the tenant's local time (Europe/London default)
+    assert s.startswith("Acme Plumbing: Call 10:30 from Keith Wilson (+447700900123).")
+    assert "Call 09:30 from" in owner_sms_summary(c, "Acme Plumbing", "UTC")
+    assert "Call 10:30 from" in owner_sms_summary(c, "Acme Plumbing", "Not/AZone")
     assert "Burst pipe" in s and "URGENT" in s
     assert "Call back: +447000000001" in s and "M20 2AB" in s
     # callback == caller number is not repeated
@@ -115,7 +118,7 @@ def test_owner_sms_summary_content() -> None:
     # missed call / withheld number / long summary truncation
     c3 = call(caller=None, answered_at=None, summary="x" * 400)
     s3 = owner_sms_summary(c3, "Acme")
-    assert "Missed call 09:30 from Withheld" in s3 and "..." in s3 and len(s3) < 260
+    assert "Missed call 10:30 from Withheld" in s3 and "..." in s3 and len(s3) < 260
     assert "Caller hung up before speaking" in owner_sms_summary(call(answered_at=None), "Acme")
 
 
@@ -133,7 +136,7 @@ async def test_owner_sms_rule_delivers_and_respects_gating(
             "name": "Owner SMS",
             "channel": "sms",
             "target": OWNER,
-            "events": ["call.completed"],
+            "events": ["call.completed", "call.missed"],
         },
     )
     assert r.status_code == 201, r.text
@@ -164,6 +167,23 @@ async def test_owner_sms_rule_delivers_and_respects_gating(
     assert r.status_code == 200, r.text
     before = len(prov.sent)
     await run_call("own-2")
+    assert not [m for m in prov.sent[before:] if m[1] == OWNER]
+
+    # screened-out / blocked calls never text the owner, even with the rule back on
+    r = await client.put(
+        f"/v1/notifications/rules/{rule['id']}",
+        params={"tenant_id": "demo"},
+        json={**rule, "enabled": True},
+    )
+    assert r.status_code == 200, r.text
+    before = len(prov.sent)
+    for e in (
+        ev(CallEventType.CALL_STARTED, "own-3", {"caller": "anonymous", "dialed": "+440"}),
+        ev(CallEventType.CALL_ENDED, "own-3", {"reason": "screened", "duration_s": 0}),
+    ):
+        rr = await client.post("/v1/worker/events", json=e, headers=HEADERS)
+        assert rr.status_code in (200, 202), rr.text
+    await app.state.postcall.drain()
     assert not [m for m in prov.sent[before:] if m[1] == OWNER]
 
 
