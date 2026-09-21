@@ -32,7 +32,7 @@ function PlanCard({ p, featured, trialDays }: { p: PublicPlan; featured: boolean
         <p className="muted small">
           {p.id === "starter" && "For one person or a small office that can't afford to miss a call."}
           {p.id === "growth" && "For teams that book appointments and need a real diary."}
-          {p.id === "scale" && "For multi-van, multi-site operations and their scheduling tools."}
+          {p.id === "scale" && "For larger teams with several calendars, multiple locations or a scheduling tool."}
           {p.enterprise && "Dedicated capacity, UK-sovereign deployment, custom terms."}
         </p>
       </div>
