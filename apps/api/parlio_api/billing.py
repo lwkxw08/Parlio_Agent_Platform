@@ -778,6 +778,29 @@ class TenantNumber(BaseModel):
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
+class PoolNumber(BaseModel):
+    """A platform-owned number bought ahead of demand so a new tenant gets a live number at once."""
+
+    id: str = Field(default_factory=lambda: uuid4().hex[:12])
+    e164: str
+    country: str = "GB"
+    area_code: str | None = None
+    provider: str
+    provider_ref: str | None = None
+    status: str = "active"  # active | pending | failed (same lifecycle as TenantNumber)
+    monthly_pence: int = 100
+    bought_by: str | None = None
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+
+
+class NumberPoolSummary(BaseModel):
+    numbers: list[PoolNumber]
+    available: int  # active and unassigned - what a new tenant can take right now
+    pending: int
+    failed: int
+    monthly_pence: int
+
+
 class SimulatedNumbers(TelephonyProvider):
     """Hands out fake UK numbers in the requested area code so provisioning is testable
     without carrier credit."""
@@ -837,6 +860,8 @@ def _period(now: datetime) -> tuple[datetime, datetime]:
 class BillingService:
     KIND = "subscription"
     NUMBER_KIND = "number"
+    POOL_KIND = "number_pool"
+    POOL_TENANT = "parlio-platform"  # parlio_api.admin.PLATFORM_TENANT (avoids an import cycle)
     CREDIT_KIND = "billing_credit"
     LIMITS_KIND = "tenant_limits"
     INVOICE_KIND = "invoice"
@@ -1445,7 +1470,111 @@ class BillingService:
     async def search_numbers(
         self, country: str = "GB", limit: int = 5, area_code: str | None = None
     ) -> list[PhoneNumber]:
-        return await self.numbers.search_numbers(country, limit, area_code)
+        """Live pool stock first (instant, already routed), then the carrier's inventory."""
+        code = (area_code or "").lstrip("0") or None
+        pooled = [
+            PhoneNumber(
+                provider=p.provider,
+                e164=p.e164,
+                country=p.country,
+                provider_ref=p.provider_ref,
+                status="active",
+            )
+            for p in await self.pool_numbers()
+            if p.status == "active"
+            and p.country == country
+            and (code is None or p.e164.startswith(f"+44{code}"))
+        ]
+        if len(pooled) >= limit:
+            return pooled[:limit]
+        carrier = await self.numbers.search_numbers(country, limit - len(pooled), area_code)
+        return pooled + carrier
+
+    # -- platform number pool (Platform admin) ---
+
+    async def pool_numbers(self) -> list[PoolNumber]:
+        docs = await self.store.list_docs(self.POOL_KIND, self.POOL_TENANT, limit=1000)
+        return sorted((PoolNumber.model_validate(d.data) for d in docs), key=lambda n: n.e164)
+
+    async def pool_summary(self) -> NumberPoolSummary:
+        nums = await self.pool_numbers()
+        return NumberPoolSummary(
+            numbers=nums,
+            available=sum(n.status == "active" for n in nums),
+            pending=sum(n.status == "pending" for n in nums),
+            failed=sum(n.status == "failed" for n in nums),
+            monthly_pence=sum(n.monthly_pence for n in nums),
+        )
+
+    async def _put_pool(self, num: PoolNumber) -> None:
+        await self.store.put_doc(
+            TenantDoc(
+                kind=self.POOL_KIND,
+                id=num.id,
+                tenant_id=self.POOL_TENANT,
+                data=num.model_dump(mode="json"),
+            )
+        )
+
+    async def buy_pool_numbers(
+        self,
+        quantity: int,
+        area_code: str | None = None,
+        country: str = "GB",
+        bought_by: str | None = None,
+    ) -> list[PoolNumber]:
+        """Buy ``quantity`` numbers from the carrier into stock; stops early if stock runs out."""
+        if not 1 <= quantity <= 50:
+            raise ValueError("buy between 1 and 50 numbers at a time")
+        taken = {n.e164 for n in await self.pool_numbers()}
+        candidates = [
+            c
+            for c in await self.numbers.search_numbers(country, quantity + 5, area_code)
+            if c.e164 not in taken
+        ]
+        bought: list[PoolNumber] = []
+        for cand in candidates[:quantity]:
+            pn = await self.numbers.purchase_number(cand.e164)
+            pn = await self.numbers.route_number_to_trunk(pn, self.sip_uri)
+            if self.edge is not None:
+                await self.edge.add_number(pn.e164)
+            num = PoolNumber(
+                e164=pn.e164,
+                country=pn.country,
+                area_code=(area_code or "").lstrip("0") or None,
+                provider=pn.provider,
+                provider_ref=pn.provider_ref,
+                status=pn.status,
+                bought_by=bought_by,
+            )
+            await self._put_pool(num)
+            bought.append(num)
+        return bought
+
+    async def release_pool_number(self, pool_id: str) -> bool:
+        doc = await self.store.get_doc(self.POOL_KIND, pool_id)
+        if doc is None or doc.tenant_id != self.POOL_TENANT:
+            return False
+        num = PoolNumber.model_validate(doc.data)
+        await self.numbers.release_number(
+            PhoneNumber(
+                provider=num.provider,
+                e164=num.e164,
+                country=num.country,
+                provider_ref=num.provider_ref,
+            )
+        )
+        if self.edge is not None:
+            await self.edge.remove_number(num.e164)
+        return await self.store.delete_doc(self.POOL_KIND, pool_id)
+
+    async def _take_from_pool(self, e164: str) -> PoolNumber | None:
+        for doc in await self.store.list_docs(self.POOL_KIND, self.POOL_TENANT, limit=1000):
+            num = PoolNumber.model_validate(doc.data)
+            if num.e164 == e164 and num.status == "active":
+                await self.store.delete_doc(self.POOL_KIND, doc.id)
+                return num
+        return None
 
     async def provision_number(
         self,
@@ -1463,10 +1592,19 @@ class BillingService:
             raise ValueError("Starter includes 1 number; upgrade to add more")
         if await self.store.get_assistant(assistant_id) is None:
             raise ValueError("unknown assistant")
-        bought = await self.numbers.purchase_number(e164)
-        bought = await self.numbers.route_number_to_trunk(bought, self.sip_uri)
-        if self.edge is not None:
-            await self.edge.add_number(bought.e164)
+        if (pooled := await self._take_from_pool(e164)) is not None:
+            bought = PhoneNumber(
+                provider=pooled.provider,
+                e164=pooled.e164,
+                country=pooled.country,
+                provider_ref=pooled.provider_ref,
+                status="active",
+            )
+        else:
+            bought = await self.numbers.purchase_number(e164)
+            bought = await self.numbers.route_number_to_trunk(bought, self.sip_uri)
+            if self.edge is not None:
+                await self.edge.add_number(bought.e164)
         num = TenantNumber(
             tenant_id=tenant_id,
             company_id=company_id,
@@ -1492,6 +1630,24 @@ class BillingService:
 
     async def activate_pending_numbers(self) -> list[TenantNumber]:
         """Re-check every under-review number with the carrier; returns those that changed."""
+        for pdoc in await self.store.list_docs(self.POOL_KIND, self.POOL_TENANT, limit=1000):
+            pool = PoolNumber.model_validate(pdoc.data)
+            if pool.status != "pending":
+                continue
+            try:
+                pstatus = await self.numbers.number_status(
+                    PhoneNumber(
+                        provider=pool.provider,
+                        e164=pool.e164,
+                        country=pool.country,
+                        provider_ref=pool.provider_ref,
+                    )
+                )
+            except httpx.HTTPError:
+                log.warning("pool number status check failed for %s", pool.e164, exc_info=True)
+                continue
+            if pstatus != "pending":
+                await self._put_pool(pool.model_copy(update={"status": pstatus}))
         changed: list[TenantNumber] = []
         for doc in await self.store.list_docs(self.NUMBER_KIND, limit=1000):
             num = TenantNumber.model_validate(doc.data)

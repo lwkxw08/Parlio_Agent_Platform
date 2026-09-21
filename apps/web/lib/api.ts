@@ -1454,6 +1454,15 @@ export type BillingPlatformSettings = {
 };
 export const fetchBillingSettings = () => get<BillingPlatformSettings>("/v1/admin/billing/settings");
 export const setStripeMode = (stripe_mode: StripeMode) => put<BillingPlatformSettings>("/v1/admin/billing/settings", { stripe_mode });
+export type PoolNumber = {
+  id: string; e164: string; country: string; area_code: string | null; provider: string; provider_ref: string | null;
+  status: "active" | "pending" | "failed"; monthly_pence: number; bought_by: string | null; created_at: string;
+};
+export type NumberPoolSummary = { numbers: PoolNumber[]; available: number; pending: number; failed: number; monthly_pence: number };
+export const fetchNumberPool = () => get<NumberPoolSummary>("/v1/admin/numbers/pool");
+export const buyPoolNumbers = (quantity: number, area_code: string | null) =>
+  request<PoolNumber[]>("/v1/admin/numbers/pool/buy", { method: "POST", body: JSON.stringify({ quantity, area_code }) });
+export const releasePoolNumber = (id: string) => del(`/v1/admin/numbers/pool/${id}`);
 export const fetchEntitlementCatalogue = () => get<Record<string, string>>("/v1/admin/entitlements");
 export const fetchEntitlements = (tenantId: string) => get<Entitlements>(`/v1/billing/entitlements?tenant_id=${encodeURIComponent(tenantId)}`);
 export const fetchAdminCoupons = () => get<Coupon[]>("/v1/admin/coupons");

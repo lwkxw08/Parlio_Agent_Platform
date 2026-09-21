@@ -36,7 +36,9 @@ from parlio_api.billing import (
     Coupon,
     Credit,
     Invoice,
+    NumberPoolSummary,
     Plan,
+    PoolNumber,
     Refund,
     StripeMode,
     Subscription,
@@ -294,6 +296,63 @@ async def put_billing_settings(
         meta={"from": before, "to": saved.stripe_mode},
     )
     return saved
+
+
+class PoolBuyIn(BaseModel):
+    quantity: int = Field(ge=1, le=50)
+    area_code: str | None = Field(default=None, max_length=6)
+    country: str = Field(default="GB", min_length=2, max_length=2)
+
+
+@router.get("/numbers/pool", response_model=NumberPoolSummary)
+async def number_pool(user: StaffDep, billing: BillingDep) -> NumberPoolSummary:
+    user.require_staff("support", "finance", "readonly")
+    return await billing.pool_summary()
+
+
+@router.post("/numbers/pool/buy", response_model=list[PoolNumber])
+async def buy_pool_numbers(
+    body: PoolBuyIn,
+    request: Request,
+    user: StaffDep,
+    billing: BillingDep,
+    audit: AuditDep,
+) -> list[PoolNumber]:
+    user.require_staff("finance")
+    try:
+        bought = await billing.buy_pool_numbers(
+            body.quantity, body.area_code, body.country, bought_by=user.email
+        )
+    except ValueError as e:
+        raise _fail(e) from e
+    await _audit(
+        audit,
+        request,
+        user,
+        PLATFORM_TENANT,
+        "admin.number_pool.buy",
+        meta={
+            "requested": body.quantity,
+            "bought": [n.e164 for n in bought],
+            "area_code": body.area_code,
+        },
+    )
+    return bought
+
+
+@router.delete("/numbers/pool/{pool_id}", status_code=204)
+async def release_pool_number(
+    pool_id: str,
+    request: Request,
+    user: StaffDep,
+    billing: BillingDep,
+    audit: AuditDep,
+) -> Response:
+    user.require_staff("finance")
+    if not await billing.release_pool_number(pool_id):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "pool number not found")
+    await _audit(audit, request, user, PLATFORM_TENANT, "admin.number_pool.release", target=pool_id)
+    return Response(status_code=204)
 
 
 class NoteIn(BaseModel):
