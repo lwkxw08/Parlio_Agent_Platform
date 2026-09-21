@@ -17,6 +17,7 @@ import json
 import logging
 import secrets
 from collections import deque
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 from typing import Any, Literal, Protocol
@@ -315,6 +316,7 @@ class SupervisorService:
     def __init__(self, hub: LiveCallHub, control: RoomControl) -> None:
         self.hub = hub
         self.control = control
+        self.on_ghost_hangup: Callable[[str, str, str], Awaitable[bool]] | None = None
 
     def _call(self, call_id: str, tenant_id: str) -> LiveCall:
         call = self.hub.get(call_id)
@@ -345,7 +347,12 @@ class SupervisorService:
     async def command(
         self, call_id: str, tenant_id: str, user_id: str, name: str, cmd: Command, text: str | None
     ) -> JoinInfo | None:
-        call = self._call(call_id, tenant_id)
+        try:
+            call = self._call(call_id, tenant_id)
+        except LookupError:
+            if cmd == Command.HANGUP and await self._ghost_hangup(call_id, tenant_id, name):
+                return None
+            raise
         assert call.room
         if cmd in (Command.WHISPER, Command.SAY) and not (text and text.strip()):
             raise ValueError("text is required")
@@ -356,7 +363,15 @@ class SupervisorService:
             and cmd != Command.HANGUP
         ):
             raise PermissionError(f"call is being handled by {call.supervisor}")
-        await self.control.send(call.room, ControlMessage(cmd=cmd, text=text, by=name))
+        try:
+            await self.control.send(call.room, ControlMessage(cmd=cmd, text=text, by=name))
+        except Exception as e:
+            if cmd != Command.HANGUP:
+                raise
+            log.warning("hangup for %s: room %s unreachable (%s)", call_id, call.room, e)
+            if not await self._ghost_hangup(call_id, tenant_id, name):
+                raise
+            return None
         if cmd == Command.TAKEOVER:
             self.hub.set_supervisor(call_id, user_id, "taken_over")
             return JoinInfo(
@@ -373,6 +388,12 @@ class SupervisorService:
         if cmd == Command.HANGUP:
             self.hub.set_supervisor(call_id, user_id, "none")
         return None
+
+    async def _ghost_hangup(self, call_id: str, tenant_id: str, name: str) -> bool:
+        """The room is gone but the call record is still open: close it from the API side."""
+        if self.on_ghost_hangup is None:
+            return False
+        return await self.on_ghost_hangup(call_id, tenant_id, name)
 
     def leave(self, call_id: str, tenant_id: str, user_id: str) -> None:
         call = self.hub.get(call_id)

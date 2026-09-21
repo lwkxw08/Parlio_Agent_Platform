@@ -469,12 +469,35 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.payments = PaymentService(
         store, build_payment_provider(settings), sms, dashboard_url=settings.dashboard_url
     )
-    app.state.supervisor = SupervisorService(live, control)
+    supervisor = SupervisorService(live, control)
+    app.state.supervisor = supervisor
     app.state.approvals = ApprovalService(store, live, notifications, settings.dashboard_url)
     hub = IntegrationHub(
         store, sms, notifications, sip, telemetry, compliance, connectors, outbound, live
     )
     app.state.hub = hub
+
+    async def close_ghost_call(call_id: str, tenant_id: str, by: str) -> bool:
+        rec = await store.get_call(call_id)
+        if (
+            rec is None
+            or rec.tenant_id != tenant_id
+            or rec.status not in ("ringing", "in_progress")
+        ):
+            return False
+        ev = CallEvent(
+            type=CallEventType.CALL_ENDED,
+            call_id=call_id,
+            tenant_id=rec.tenant_id,
+            company_id=rec.company_id,
+            assistant_id=rec.assistant_id,
+            payload={"reason": "supervisor_hangup", "by": by, "transcript": []},
+        )
+        if await store.apply_event(ev):
+            await hub.on_event(ev)
+        return True
+
+    supervisor.on_ghost_hangup = close_ghost_call
     calendar.on_booked = hub.on_booking
     contacts = ContactIntelligence(store)
     app.state.contacts = contacts
