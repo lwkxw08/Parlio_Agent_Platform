@@ -6,8 +6,9 @@ import { humanize } from "@/app/breakdown";
 
 export const dynamic = "force-dynamic";
 
-export default async function TicketPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function TicketPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ ai?: string }> }) {
   const { id } = await params;
+  const { ai } = await searchParams;
   const detail = await fetchTicket(id);
   if (!detail) notFound();
   const { ticket: t, events, sla_remaining_s } = detail;
@@ -24,7 +25,7 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
         Ticket {ticketRef(t.id)} · raised {new Date(t.created_at).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" })}
         {t.department ? ` · ${t.department}` : ""} <span title="Full reference" style={{ opacity: 0.6 }}>({t.id})</span>
       </p>
-      <TicketActions ticket={t} />
+      <TicketActions ticket={t} openAi={ai === "1"} />
       <div className="grid">
         <div className="card"><div className="label">Status</div><div className="value">{t.status}</div></div>
         <div className="card"><div className="label">Priority</div><div className="value"><span className={`pill ${t.priority}`}>{humanize(t.priority)}</span></div></div>

@@ -277,6 +277,8 @@ class MessageService:
         return await self.send_scenario(cfg, trigger, call.caller, ctx, call_id=call.call_id)
 
     async def on_ticket_created(self, ticket: Ticket, cfg: AssistantConfig) -> Message | None:
+        if ticket.source == "sms_reminder":
+            return None  # the reminder reply already texted them
         if not ticket.caller_number:
             return None
         ctx = {

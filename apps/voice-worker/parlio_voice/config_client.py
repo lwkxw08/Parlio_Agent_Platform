@@ -203,7 +203,7 @@ DEMO_CONFIG = AssistantConfig(
             name="Callback confirmation",
             template=(
                 "Hi {caller_name}, thanks for calling {business_name}. We've logged your request "
-                "(ref {ticket_id}) and an engineer will call you back shortly."
+                "(ref {ticket_id}) and one of the team will call you back shortly."
             ),
         ),
         SmsScenario(
@@ -211,7 +211,7 @@ DEMO_CONFIG = AssistantConfig(
             name="Missed call",
             template=(
                 "Sorry we missed you! This is {business_name}. Reply here or call us back on "
-                "0161 496 0000 and we'll get an engineer to you."
+                "0161 496 0000 and we'll get someone to you."
             ),
         ),
         SmsScenario(

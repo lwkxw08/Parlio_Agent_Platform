@@ -37,8 +37,9 @@ from parlio_api.screening import (
     ScreeningService,
     looks_like_robocaller,
 )
-from parlio_api.store import CallRecord, ContactUpdate, MemoryStore
+from parlio_api.store import CallRecord, ContactUpdate, MemoryStore, Ticket
 from parlio_api.vault import LocalVault
+from parlio_voice.config_client import DEMO_CONFIG
 from parlio_voice.models import (
     AssistantConfig,
     CallEventType,
@@ -767,3 +768,24 @@ async def test_sms_stop_opts_out_and_start_opts_back_in(client: AsyncClient, app
     assert not await sms.opted_out("demo", CALLER)
     assert "opted back in" in prov.sent[-1][2]
     assert (await sms.send("demo", "demo", CALLER, "hello")).status == MessageStatus.SENT
+
+
+async def test_reschedule_ticket_does_not_send_a_second_sms() -> None:
+    store = MemoryStore(None)
+    prov = LogSmsProvider()
+    sms = MessageService(store, prov, "+442046206823")
+    t = Ticket(
+        id="tk-1",
+        tenant_id="demo",
+        company_id="demo",
+        caller_name="Sam",
+        caller_number=CALLER,
+        reason="Wants to reschedule",
+        source="sms_reminder",
+    )
+    assert await sms.on_ticket_created(t, DEMO_CONFIG) is None
+    assert prov.sent == []
+    t.source = "ai_intake"
+    m = await sms.on_ticket_created(t, DEMO_CONFIG)
+    assert m is not None and m.status == MessageStatus.SENT
+    assert "engineer" not in prov.sent[-1][2].lower()

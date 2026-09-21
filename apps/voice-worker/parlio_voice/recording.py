@@ -18,6 +18,7 @@ from parlio_voice.settings import Settings
 log = logging.getLogger("parlio.recording")
 
 EGRESS_START_TIMEOUT_S = 8.0
+EGRESS_STOP_TIMEOUT_S = 3.0
 
 
 class CallRecorder:
@@ -71,8 +72,11 @@ class CallRecorder:
         return key
 
     async def stop(self) -> None:
-        for eid in self.egress_ids:
+        async def _stop(eid: str) -> None:
             try:
-                await self._lk.egress.stop_egress(api.StopEgressRequest(egress_id=eid))
+                async with asyncio.timeout(EGRESS_STOP_TIMEOUT_S):
+                    await self._lk.egress.stop_egress(api.StopEgressRequest(egress_id=eid))
             except Exception:
                 log.warning("stop egress %s failed (may have already ended)", eid)
+
+        await asyncio.gather(*(_stop(eid) for eid in self.egress_ids))

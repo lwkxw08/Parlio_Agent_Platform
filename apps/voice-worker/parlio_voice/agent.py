@@ -547,11 +547,6 @@ async def entrypoint(ctx: JobContext) -> None:
         await audio.sample()
         if t_human is not None:
             human_leg["duration_s"] = round(time.perf_counter() - t_human, 1)
-        await recorder.stop()
-        try:
-            await core_api.release(call_id)
-        except Exception:
-            log.debug("trunk release failed for %s", call_id, exc_info=True)
         history = [
             {"role": item.role, "text": item.text_content}
             for item in session.history.items
@@ -572,6 +567,13 @@ async def entrypoint(ctx: JobContext) -> None:
             },
         )
         await events.aclose()
+        # Publish first: egress/trunk teardown can outlive the job's shutdown budget and
+        # the call must never stay "in progress" because a recorder RPC was slow.
+        await recorder.stop()
+        try:
+            await core_api.release(call_id)
+        except Exception:
+            log.debug("trunk release failed for %s", call_id, exc_info=True)
         await config_client.aclose()
         await lk.aclose()
         if redis is not None:
