@@ -307,7 +307,7 @@ Today booking is one calendar per tenant (the primary `CalendarConnection`, with
 - Managed Postgres (DO London) with daily backups + PITR; object storage for recordings; secrets moved to a vault/env manager; staging environment; `alembic upgrade head` in CD; uptime monitoring feeding the status page; load test at target concurrency (Phase 6 script).
 
 **Legal & compliance (owner / solicitor)**
-- ICO registration, T&Cs, privacy notice, DPA + sub-processor list (Trust centre copy reviewed), recording-consent wording, Ofcom CLI rules for outbound, Cyber Essentials application, PCI SAQ-A confirmation for hosted payment links.
+- ICO registration (done: 00015465911), T&Cs, privacy notice, DPA + sub-processor list (Trust centre copy reviewed), recording-consent wording, Ofcom CLI rules for outbound, Cyber Essentials application, PCI SAQ-A confirmation for hosted payment links.
 
 **Operational**
 - Support inbox + on-call rota, runbooks reviewed, pricing/entitlements finalised in Platform admin → Plans, onboarding email templates, soft launch with 2–3 pilot tenants before opening self-serve sign-up.
