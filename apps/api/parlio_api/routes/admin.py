@@ -19,6 +19,7 @@ from parlio_api.admin import (
     PLATFORM_TENANT,
     STAFF_ROLES,
     AdminOverview,
+    BillingPlatformSettings,
     FeatureFlags,
     PlatformAnalytics,
     PlatformStatus,
@@ -37,6 +38,7 @@ from parlio_api.billing import (
     Invoice,
     Plan,
     Refund,
+    StripeMode,
     Subscription,
     SubscriptionStatus,
     TenantLimits,
@@ -255,6 +257,41 @@ async def put_voice_settings(
             "provider_by_market": {k: v.value for k, v in saved.provider_by_market.items()},
             "default_market": saved.default_market,
         },
+    )
+    return saved
+
+
+@router.get("/billing/settings", response_model=BillingPlatformSettings)
+async def get_billing_settings(user: StaffDep, admin: AdminDep) -> BillingPlatformSettings:
+    return await admin.billing_settings()
+
+
+class StripeModeIn(BaseModel):
+    stripe_mode: StripeMode
+
+
+@router.put("/billing/settings", response_model=BillingPlatformSettings)
+async def put_billing_settings(
+    body: StripeModeIn,
+    request: Request,
+    user: StaffDep,
+    admin: AdminDep,
+    audit: AuditDep,
+) -> BillingPlatformSettings:
+    if user.staff_role != "owner":
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "only platform owners switch Stripe mode")
+    before = (await admin.billing_settings()).stripe_mode
+    try:
+        saved = await admin.set_stripe_mode(body.stripe_mode, user.email)
+    except ValueError as e:
+        raise _fail(e) from e
+    await _audit(
+        audit,
+        request,
+        user,
+        PLATFORM_TENANT,
+        "admin.billing.stripe_mode",
+        meta={"from": before, "to": saved.stripe_mode},
     )
     return saved
 

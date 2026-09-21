@@ -124,7 +124,7 @@ export const COMPARE: CompareRow[] = [
 ];
 
 export const INDUSTRIES = [
-  { id: "trades", title: "Plumbers, heating & electrical", body: "Book the boiler service at 90 minutes and the repair at 60, keep 30 minutes travel between jobs, and send genuine emergencies to the on-call team member.", pains: ["Missed calls while on the tools", "Double-booked vans", "Out-of-hours emergencies"] },
+  { id: "trades", title: "Plumbers, heating & electrical", body: "Book the boiler service at 90 minutes and the repair at 60, keep 30 minutes travel between jobs, and send genuine emergencies to the on-call team member.", pains: ["Missed calls while on the tools", "Double bookings", "Out-of-hours emergencies"] },
   { id: "field", title: "Field service & maintenance", body: "Pooled availability across the whole crew, assignment by area or skill, and bookings straight into ServiceM8 or your job system.", pains: ["Dispatcher bottleneck", "Uneven workloads", "Jobs logged twice"] },
   { id: "clinics", title: "Clinics, dental & practices", body: "Reception that never puts patients on hold, books by appointment type, sends reminders with reply-to-confirm, and records consent properly.", pains: ["Front-desk queues", "No-shows", "Consent & recording rules"] },
   { id: "property", title: "Estate agents & lettings", body: "Viewings booked into negotiators' calendars, maintenance issues ticketed with photos via WhatsApp, landlords called back by the AI with the update.", pains: ["Evening enquiry surge", "Repairs chasing", "Lost leads"] },

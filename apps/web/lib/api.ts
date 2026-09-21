@@ -1446,6 +1446,13 @@ export const fetchAdminTenant = (tenant_id: string) => request<TenantDetail>(`/v
 export const fetchFeatureFlagCatalogue = () => get<Record<string, string>>("/v1/admin/feature-flags");
 export const fetchAdminPlans = () => get<Plan[]>("/v1/admin/plans");
 export const fetchAdminPlanDefaults = () => get<{ trial_days: number }>("/v1/admin/plans/defaults");
+export type StripeMode = "sandbox" | "live";
+export type BillingPlatformSettings = {
+  provider: string; stripe_mode: StripeMode; available_modes: StripeMode[];
+  updated_by?: string | null; updated_at?: string | null;
+};
+export const fetchBillingSettings = () => get<BillingPlatformSettings>("/v1/admin/billing/settings");
+export const setStripeMode = (stripe_mode: StripeMode) => put<BillingPlatformSettings>("/v1/admin/billing/settings", { stripe_mode });
 export const fetchEntitlementCatalogue = () => get<Record<string, string>>("/v1/admin/entitlements");
 export const fetchEntitlements = (tenantId: string) => get<Entitlements>(`/v1/billing/entitlements?tenant_id=${encodeURIComponent(tenantId)}`);
 export const fetchAdminCoupons = () => get<Coupon[]>("/v1/admin/coupons");

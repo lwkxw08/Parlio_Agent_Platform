@@ -296,7 +296,9 @@ function Calendar(p: Props) {
   };
   const remove = async (c: CalendarConnection) => {
     if (!confirm(`Disconnect ${c.name}?`)) return;
-    if (await del(`/v1/calendar/connections/${c.id}${q}`)) setConnections((cs) => cs.filter((x) => x.id !== c.id));
+    const r = await request<undefined>(`/v1/calendar/connections/${c.id}${q}`, { method: "DELETE" });
+    if (r.ok || r.status === 404) setConnections((cs) => cs.filter((x) => x.id !== c.id));
+    else setMsg(`Could not disconnect: ${r.error}`);
   };
 
   return (

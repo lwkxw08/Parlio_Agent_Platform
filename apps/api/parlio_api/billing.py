@@ -15,7 +15,7 @@ import logging
 import time
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
-from typing import Any, Protocol
+from typing import Any, Literal, Protocol
 from uuid import uuid4
 
 import httpx
@@ -23,7 +23,13 @@ from pydantic import BaseModel, Field
 
 from parlio_api.messaging import MessageService, MessageStatus
 from parlio_api.store import CallFilter, CallRecord, CallStore, TenantDoc
-from parlio_api.telephony.base import CarrierHealth, CarrierStatus, PhoneNumber, TelephonyProvider
+from parlio_api.telephony.base import (
+    CarrierHealth,
+    CarrierStatus,
+    InboundEdge,
+    PhoneNumber,
+    TelephonyProvider,
+)
 
 log = logging.getLogger("parlio.billing")
 
@@ -511,6 +517,11 @@ class SimulatedBilling:
         return None
 
 
+STRIPE_SAAS_TAX_CODE = "txcd_10103001"  # Software as a service (SaaS) - business use
+
+StripeMode = Literal["sandbox", "live"]
+
+
 class StripeBilling:
     """Stripe via REST (no SDK). Prices are looked up by `lookup_key = parlio_<plan_id>`."""
 
@@ -551,6 +562,7 @@ class StripeBilling:
                 "line_items[0][price_data][unit_amount]": str(plan.monthly_pence),
                 "line_items[0][price_data][recurring][interval]": "month",
                 "line_items[0][price_data][product_data][name]": f"ParlioTec {plan.name}",
+                "line_items[0][price_data][product_data][tax_code]": STRIPE_SAAS_TAX_CODE,
                 "line_items[0][quantity]": "1",
                 "allow_promotion_codes": "true",
                 "metadata[plan_id]": plan.id,
@@ -627,6 +639,73 @@ class StripeBilling:
     async def cancel(self, subscription_ref: str) -> None:
         r = await self._http.delete(f"/subscriptions/{subscription_ref}")
         r.raise_for_status()
+
+
+class SwitchableStripeBilling:
+    """Holds a sandbox and/or live ``StripeBilling`` and routes every call to the active mode.
+
+    The mode is a platform-admin setting (default sandbox). Webhooks from either account are
+    accepted if their signature matches that account's secret, but events for the inactive mode
+    are ignored so a live event can never touch state while the platform is in sandbox.
+    """
+
+    name = "stripe"
+
+    def __init__(self, providers: dict[StripeMode, StripeBilling], mode: StripeMode = "sandbox"):
+        if not providers:
+            raise ValueError("at least one Stripe mode must be configured")
+        self._providers = providers
+        self.mode: StripeMode = mode if mode in providers else next(iter(providers))
+
+    @property
+    def modes(self) -> list[StripeMode]:
+        return list(self._providers)
+
+    def set_mode(self, mode: StripeMode) -> None:
+        if mode not in self._providers:
+            raise ValueError(f"Stripe {mode} credentials are not configured on this server")
+        self.mode = mode
+
+    @property
+    def active(self) -> StripeBilling:
+        return self._providers[self.mode]
+
+    async def ensure_customer(self, tenant_id: str, email: str | None) -> str:
+        return await self.active.ensure_customer(tenant_id, email)
+
+    async def checkout(
+        self, customer_ref: str, plan: Plan, success_url: str, cancel_url: str
+    ) -> CheckoutSession:
+        return await self.active.checkout(customer_ref, plan, success_url, cancel_url)
+
+    async def report_usage(self, subscription_ref: str, overage_minutes: float) -> None:
+        await self.active.report_usage(subscription_ref, overage_minutes)
+
+    def verify_webhook(self, payload: bytes, signature: str | None) -> dict[str, Any]:
+        errors: list[str] = []
+        for mode, p in self._providers.items():
+            try:
+                event = p.verify_webhook(payload, signature)
+            except ValueError as e:
+                errors.append(f"{mode}: {e}")
+                continue
+            if mode != self.mode:
+                log.warning("ignoring Stripe %s webhook while mode is %s", mode, self.mode)
+                return {"type": "ignored.other_mode", "livemode": mode == "live"}
+            return event
+        raise ValueError("; ".join(errors))
+
+    async def list_invoices(self, customer_ref: str) -> list[dict[str, Any]]:
+        return await self.active.list_invoices(customer_ref)
+
+    async def refund(self, customer_ref: str, pence: int, reason: str) -> str | None:
+        return await self.active.refund(customer_ref, pence, reason)
+
+    async def set_paused(self, subscription_ref: str, paused: bool) -> None:
+        await self.active.set_paused(subscription_ref, paused)
+
+    async def cancel(self, subscription_ref: str) -> None:
+        await self.active.cancel(subscription_ref)
 
 
 def verify_stripe_webhook(
@@ -741,11 +820,13 @@ class BillingService:
         rates: CostRates | None = None,
         sip_uri: str = "sip:parlio.local",
         trial_days: int = 14,
+        edge: InboundEdge | None = None,
     ) -> None:
         self.store = store
         self.sms = sms
         self.provider = provider
         self.numbers = numbers
+        self.edge = edge
         self.rates = rates or CostRates()
         self.sip_uri = sip_uri
         self.trial_days = trial_days
@@ -1333,6 +1414,8 @@ class BillingService:
             raise ValueError("unknown assistant")
         bought = await self.numbers.purchase_number(e164)
         bought = await self.numbers.route_number_to_trunk(bought, self.sip_uri)
+        if self.edge is not None:
+            await self.edge.add_number(bought.e164)
         num = TenantNumber(
             tenant_id=tenant_id,
             company_id=company_id,
@@ -1367,5 +1450,7 @@ class BillingService:
                 provider_ref=num.provider_ref,
             )
         )
+        if self.edge is not None:
+            await self.edge.remove_number(num.e164)
         await self.store.unassign_number(num.e164)
         return await self.store.delete_doc(self.NUMBER_KIND, number_id)

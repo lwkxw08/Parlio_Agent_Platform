@@ -90,8 +90,13 @@ class Settings(BaseSettings):
 
     # Phase 6: billing, observability, compliance
     billing_provider: Literal["simulated", "stripe"] = "simulated"
+    # Live Stripe account (sk_live_ / its webhook signing secret).
     stripe_secret_key: str | None = None
     stripe_webhook_secret: str | None = None
+    # Stripe sandbox (sk_test_ / its webhook signing secret). When both pairs are set, Platform
+    # admin -> Billing picks which one is active; the default is sandbox.
+    stripe_test_secret_key: str | None = None
+    stripe_test_webhook_secret: str | None = None
     # Phase 12: one-off payment links texted mid-call (Stripe Checkout) - same Stripe account;
     # a separate webhook endpoint secret if you register a second endpoint.
     payments_provider: Literal["simulated", "stripe"] = "simulated"
@@ -101,6 +106,9 @@ class Settings(BaseSettings):
     number_provider: Literal["simulated", "telnyx"] = "simulated"
     telnyx_sip_uri: str | None = None
     telnyx_connection_id: str | None = None
+    # LiveKit inbound trunk the carrier delivers platform numbers to; bought numbers are added
+    # to its DID list so the dispatch rule picks them up (unset = trunk accepts what it has).
+    inbound_trunk_id: str | None = None
     trial_days: int = 14
     otlp_endpoint: str | None = None
     metrics_token: str | None = None

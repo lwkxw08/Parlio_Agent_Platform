@@ -89,3 +89,14 @@ class TelephonyProvider(ABC):
 
     @abstractmethod
     async def health(self) -> CarrierHealth: ...
+
+
+class InboundEdge(ABC):
+    """The platform's SIP edge: numbers the carrier delivers must be known to it so inbound
+    INVITEs for a newly bought number are accepted and dispatched to the voice worker."""
+
+    @abstractmethod
+    async def add_number(self, e164: str) -> None: ...
+
+    @abstractmethod
+    async def remove_number(self, e164: str) -> None: ...

@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
 import {
   type Assistant,
@@ -7,6 +8,7 @@ import {
   type IssuedCredentials,
   type ProviderGuide,
   type SipTrunk,
+  type TenantNumber,
   type TestCallResult,
   type TrunkMode,
   type TrunkView,
@@ -43,7 +45,43 @@ const regPill = (t: SipTrunk) => {
   return <span className={`pill ${cls}`} title={t.registration.detail ?? undefined}>{s.replace("_", " ")}</span>;
 };
 
-export default function Telephony({ tenant, canManage, trunks: initial, guides, assistants }: { tenant: string; canManage: boolean; trunks: SipTrunk[]; guides: ProviderGuide[]; assistants: Assistant[] }) {
+const prettyUk = (e164: string) => {
+  if (!e164.startsWith("+44")) return e164;
+  const n = "0" + e164.slice(3);
+  if (n.startsWith("02")) return `${n.slice(0, 3)} ${n.slice(3, 7)} ${n.slice(7)}`;
+  return `${n.slice(0, 5)} ${n.slice(5)}`;
+};
+
+/** Forwarding mode: the ParlioTec number(s) the customer diverts their existing line to. */
+function DivertTo({ numbers, asstName, canManage }: { numbers: TenantNumber[]; asstName: (id: string) => string; canManage: boolean }) {
+  const [copied, setCopied] = useState<string | null>(null);
+  const copy = async (e164: string) => {
+    try { await navigator.clipboard.writeText(e164); setCopied(e164); setTimeout(() => setCopied(null), 2000); } catch { /* clipboard unavailable */ }
+  };
+  return (
+    <div className="section" style={{ borderColor: "var(--accent)" }}>
+      <h2>Divert your calls to this number</h2>
+      {numbers.length ? (
+        <>
+          <p className="hint">Set a divert (always, or on no-answer / busy) from your existing landline or mobile to your ParlioTec number below. Divert codes for BT, Virgin, Vodafone, EE, O2, Three and Microsoft Teams are on the <Link href="/launch">Launch guide</Link>.</p>
+          <div className="grid">
+            {numbers.map((n) => (
+              <div key={n.id} className="card">
+                <div style={{ fontSize: "1.6rem", fontWeight: 600, letterSpacing: ".02em" }}>{prettyUk(n.e164)}</div>
+                <div className="small muted"><code>{n.e164}</code> · answered by {asstName(n.assistant_id)}{n.label ? ` · ${n.label}` : ""}</div>
+                <button type="button" style={{ marginTop: 8 }} onClick={() => copy(n.e164)}>{copied === n.e164 ? "Copied" : "Copy number"}</button>
+              </div>
+            ))}
+          </div>
+        </>
+      ) : (
+        <p className="hint">You don&apos;t have a ParlioTec number yet. {canManage ? <>Choose one on <Link href="/billing">Billing → Your numbers</Link>, then divert your existing line to it.</> : "Ask an owner or admin to add one under Billing → Your numbers."}</p>
+      )}
+    </div>
+  );
+}
+
+export default function Telephony({ tenant, canManage, trunks: initial, guides, assistants, numbers }: { tenant: string; canManage: boolean; trunks: SipTrunk[]; guides: ProviderGuide[]; assistants: Assistant[]; numbers: TenantNumber[] }) {
   const [trunks, setTrunks] = useState(initial);
   const [creds, setCreds] = useState<IssuedCredentials | null>(null);
   const [test, setTest] = useState<Record<string, TestCallResult>>({});
@@ -106,9 +144,11 @@ export default function Telephony({ tenant, canManage, trunks: initial, guides, 
   const setDdi = (i: number, patch: Partial<DdiRoute>) => setForm((f) => f && { ...f, ddis: f.ddis.map((d, j) => (j === i ? { ...d, ...patch } : d)) });
   const modeGuides = form ? guides.filter((g) => g.mode === form.mode) : [];
   const activeGuide = guides.find((g) => g.id === guide);
+  const forwarding = trunks.some((t) => t.mode === "forward") || form?.mode === "forward" || (!trunks.length && !form);
 
   return (
     <>
+      {forwarding && <DivertTo numbers={numbers} asstName={asstName} canManage={canManage} />}
       {creds && (
         <div className="section" style={{ borderColor: "var(--accent)" }}>
           <h2>PBX credentials — copy now, shown once</h2>
