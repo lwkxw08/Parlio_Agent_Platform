@@ -24,6 +24,8 @@ For each destination (**+ Add person**):
 
 Transfer mode, ring timeout and urgent keywords live in *Assistant Studio → No-answer behaviour*. **Warm** transfers mean the assistant introduces the caller to your colleague first and only connects if they accept; **Cold** is a straight blind transfer.
 
+During a warm transfer the caller is placed on silent hold while the assistant briefs your colleague privately. Your colleague accepts by **pressing any key** on their phone; if nothing is pressed within a few seconds (voicemail never presses a key, so voicemail counts as no answer) the assistant tries the next fallback destination and, if nobody accepts, returns to the caller and offers a call back — which lands on *Tickets*. If the caller hangs up while waiting, the transfer is cancelled.
+
 ## Transferred calls
 
 Breakdown cards for the selected period: transfers by department and destination, answered versus unanswered, average time to answer, and (when *Record transferred calls* is on) team members' talk time.

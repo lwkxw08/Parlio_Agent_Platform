@@ -12,6 +12,7 @@ import hashlib
 import hmac
 import json
 import logging
+import math
 import time
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
@@ -468,7 +469,12 @@ class BillingProvider(Protocol):
 
     async def ensure_customer(self, tenant_id: str, email: str | None) -> str: ...
     async def checkout(
-        self, customer_ref: str, plan: Plan, success_url: str, cancel_url: str
+        self,
+        customer_ref: str,
+        plan: Plan,
+        success_url: str,
+        cancel_url: str,
+        trial_days: int = 0,
     ) -> CheckoutSession: ...
     async def report_usage(self, subscription_ref: str, overage_minutes: float) -> None: ...
     def verify_webhook(self, payload: bytes, signature: str | None) -> dict[str, Any]: ...
@@ -490,7 +496,12 @@ class SimulatedBilling:
         return f"cus_sim_{tenant_id}"
 
     async def checkout(
-        self, customer_ref: str, plan: Plan, success_url: str, cancel_url: str
+        self,
+        customer_ref: str,
+        plan: Plan,
+        success_url: str,
+        cancel_url: str,
+        trial_days: int = 0,
     ) -> CheckoutSession:
         return CheckoutSession(
             url=f"{success_url}?simulated=1&plan={plan.id}",
@@ -549,11 +560,19 @@ class StripeBilling:
         return str(r.json()["id"])
 
     async def checkout(
-        self, customer_ref: str, plan: Plan, success_url: str, cancel_url: str
+        self,
+        customer_ref: str,
+        plan: Plan,
+        success_url: str,
+        cancel_url: str,
+        trial_days: int = 0,
     ) -> CheckoutSession:
+        # Card is taken up front; Stripe charges the first month when the trial ends.
+        trial = {"subscription_data[trial_period_days]": str(trial_days)} if trial_days > 0 else {}
         r = await self._http.post(
             "/checkout/sessions",
             data={
+                **trial,
                 "mode": "subscription",
                 "customer": customer_ref,
                 "success_url": success_url,
@@ -674,9 +693,14 @@ class SwitchableStripeBilling:
         return await self.active.ensure_customer(tenant_id, email)
 
     async def checkout(
-        self, customer_ref: str, plan: Plan, success_url: str, cancel_url: str
+        self,
+        customer_ref: str,
+        plan: Plan,
+        success_url: str,
+        cancel_url: str,
+        trial_days: int = 0,
     ) -> CheckoutSession:
-        return await self.active.checkout(customer_ref, plan, success_url, cancel_url)
+        return await self.active.checkout(customer_ref, plan, success_url, cancel_url, trial_days)
 
     async def report_usage(self, subscription_ref: str, overage_minutes: float) -> None:
         await self.active.report_usage(subscription_ref, overage_minutes)
@@ -968,6 +992,14 @@ class BillingService:
             upd["coupon_months_left"] = c.months
         return await self._save(sub.model_copy(update=upd))
 
+    @staticmethod
+    def _trial_days_remaining(sub: Subscription) -> int:
+        """Whole days of free trial still owed to this tenant (0 once it has lapsed)."""
+        if sub.status != SubscriptionStatus.TRIALING or sub.trial_ends_at is None:
+            return 0
+        left = sub.trial_ends_at - datetime.now(UTC)
+        return max(0, math.ceil(left.total_seconds() / 86400))
+
     def coupon(self, code: str, plan_id: str) -> Coupon | None:
         c = COUPONS.get(code.strip().upper())
         if c is None or not c.valid_for(plan_id, datetime.now(UTC)):
@@ -980,7 +1012,11 @@ class BillingService:
         sub = await self.change_plan(tenant_id, plan_id)
         customer = sub.customer_ref or await self.provider.ensure_customer(tenant_id, email)
         session = await self.provider.checkout(
-            customer, sub.plan, f"{return_url}?checkout=success", f"{return_url}?checkout=cancel"
+            customer,
+            sub.plan,
+            f"{return_url}?checkout=success",
+            f"{return_url}?checkout=cancel",
+            trial_days=self._trial_days_remaining(sub),
         )
         upd: dict[str, Any] = {"customer_ref": customer, "provider": self.provider.name}
         if self.provider.name == "simulated":
@@ -1001,8 +1037,13 @@ class BillingService:
         if sub is None:
             return "ignored"
         if etype == "checkout.session.completed":
+            # Card on file; a still-running trial stays TRIALING until Stripe's first invoice.paid.
             upd = {
-                "status": SubscriptionStatus.ACTIVE,
+                "status": (
+                    SubscriptionStatus.TRIALING
+                    if self._trial_days_remaining(sub) > 0
+                    else SubscriptionStatus.ACTIVE
+                ),
                 "subscription_ref": obj.get("subscription"),
             }
             plan_id = (obj.get("metadata") or {}).get("plan_id")
@@ -1010,7 +1051,9 @@ class BillingService:
                 upd["plan_id"] = plan_id
             await self._save(sub.model_copy(update=upd))
         elif etype in ("invoice.paid", "invoice.payment_succeeded"):
-            await self._save(sub.model_copy(update={"status": SubscriptionStatus.ACTIVE}))
+            # Stripe issues a £0 invoice when a trial starts; only a real payment activates.
+            if obj.get("amount_paid", 1) != 0 or self._trial_days_remaining(sub) <= 0:
+                await self._save(sub.model_copy(update={"status": SubscriptionStatus.ACTIVE}))
         elif etype == "invoice.payment_failed":
             await self._save(sub.model_copy(update={"status": SubscriptionStatus.PAST_DUE}))
         elif etype == "customer.subscription.deleted":

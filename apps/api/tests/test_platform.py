@@ -10,13 +10,18 @@ import json
 import time
 from datetime import UTC, datetime, timedelta
 from typing import Any
+from urllib.parse import parse_qsl
 
+import httpx
 import pytest
 from httpx import AsyncClient
 
 from parlio_api.billing import (
     PLAN_BY_ID,
+    BillingService,
     StripeBilling,
+    Subscription,
+    SubscriptionStatus,
     SwitchableStripeBilling,
     billable_minutes,
 )
@@ -120,6 +125,40 @@ def _stripe_sig(secret: bytes, payload: bytes) -> str:
     ts = int(time.time())
     sig = hmac.new(secret, f"{ts}.".encode() + payload, hashlib.sha256).hexdigest()
     return f"t={ts},v1={sig}"
+
+
+async def test_stripe_checkout_carries_remaining_trial() -> None:
+    seen: list[dict[str, str]] = []
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        seen.append(dict(parse_qsl(req.content.decode())))
+        return httpx.Response(200, json={"id": "cs_1", "url": "https://checkout.stripe.com/x"})
+
+    http = httpx.AsyncClient(
+        base_url="https://api.stripe.com/v1", transport=httpx.MockTransport(handler)
+    )
+    sb = StripeBilling("sk_test_x", None, client=http)
+    plan = PLAN_BY_ID["growth"]
+    await sb.checkout("cus_1", plan, "https://a/ok", "https://a/no", trial_days=9)
+    await sb.checkout("cus_1", plan, "https://a/ok", "https://a/no")
+    assert seen[0]["subscription_data[trial_period_days]"] == "9"
+    assert seen[0]["line_items[0][price_data][unit_amount]"] == str(plan.monthly_pence)
+    assert "subscription_data[trial_period_days]" not in seen[1]
+
+    now = datetime.now(UTC)
+    trialing = Subscription(
+        tenant_id="t",
+        plan_id="growth",
+        status=SubscriptionStatus.TRIALING,
+        period_start=now,
+        period_end=now + timedelta(days=30),
+        trial_ends_at=now + timedelta(days=4, hours=2),
+    )
+    assert BillingService._trial_days_remaining(trialing) == 5
+    lapsed = trialing.model_copy(update={"trial_ends_at": now - timedelta(days=1)})
+    assert BillingService._trial_days_remaining(lapsed) == 0
+    active = trialing.model_copy(update={"status": SubscriptionStatus.ACTIVE})
+    assert BillingService._trial_days_remaining(active) == 0
 
 
 def test_switchable_stripe_routes_by_mode_and_ignores_other_account() -> None:
