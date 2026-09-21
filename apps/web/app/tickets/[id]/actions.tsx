@@ -88,15 +88,15 @@ export default function TicketActions({ ticket: t, openAi = false }: { ticket: T
             <button type="button" className={kind === "booking" ? "active" : ""} onClick={() => setKind("booking")}>Book an appointment</button>
           </div>
           {kind === "answer" && (
-            <label className="field">
+            <label className="field" style={{ display: "flex", flexDirection: "column", gap: "0.3rem", marginTop: "0.6rem" }}>
               <span>The update to give them</span>
-              <textarea rows={3} value={resolution} onChange={(e) => setResolution(e.target.value)} placeholder="e.g. The invoice has been corrected to £340 including VAT and a new copy has been emailed — nothing more to pay until it arrives." />
+              <textarea className="field" rows={5} style={{ width: "100%", resize: "vertical", lineHeight: 1.4 }} value={resolution} onChange={(e) => setResolution(e.target.value)} placeholder="e.g. The invoice has been corrected to £340 including VAT and a new copy has been emailed — nothing more to pay until it arrives." />
             </label>
           )}
           {kind === "transfer" && (
-            <label className="field">
+            <label className="field" style={{ display: "flex", flexDirection: "column", gap: "0.3rem", marginTop: "0.6rem" }}>
               <span>Who will take the call (must be free when the assistant rings)</span>
-              <input value={transferTo} onChange={(e) => setTransferTo(e.target.value)} placeholder="e.g. Dave in Accounts" />
+              <input className="field" style={{ width: "100%" }} value={transferTo} onChange={(e) => setTransferTo(e.target.value)} placeholder="e.g. Dave in Accounts" />
             </label>
           )}
           {kind === "booking" && <p className="muted small">The assistant will check the calendar with them and book the slot they asked for.</p>}

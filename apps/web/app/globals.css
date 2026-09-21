@@ -106,7 +106,7 @@ main :where(select, textarea, input:not([type=checkbox], [type=radio], [type=ran
 main :where(select, textarea, input):focus-visible { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(59, 123, 255, .18); }
 main :where(select) { cursor: pointer; }
 main :where(input, select, textarea):disabled { opacity: 0.6; cursor: not-allowed; }
-.form input, .form textarea, .form select, .filters input, .filters select, .inline, input.field, select.field { background: var(--field); color: var(--fg); border: 1px solid var(--line); border-radius: 6px; padding: 0.45rem 0.6rem; font: inherit; }
+.form input, .form textarea, .form select, .filters input, .filters select, .inline, input.field, select.field, textarea.field { background: var(--field); color: var(--fg); border: 1px solid var(--line); border-radius: 6px; padding: 0.45rem 0.6rem; font: inherit; }
 .inline { padding: 0.25rem 0.55rem; width: 12rem; }
 .board { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1rem; }
 .column h2 { font-size: 1rem; margin: 0 0 0.6rem; }
