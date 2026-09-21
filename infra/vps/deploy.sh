@@ -3,7 +3,8 @@
 # (re)build and start the stack. Idempotent; run from infra/vps on the server.
 #
 # IMAGE_TAG=<git sha> (exported by CI) pulls the api/voice-worker images built in CI from GHCR
-# instead of building on the box; unset it for a local build.
+# instead of building on the box and is written to .env so manual restarts reuse it; unset it
+# (and remove it from .env) for a local build.
 # DATABASE_URL in .env points the API at a managed Postgres; the local postgres container is
 # then left out of the stack.
 #
@@ -27,6 +28,8 @@ dc() { docker compose --env-file .env "$@"; }
 
 if [ -n "${IMAGE_TAG:-}" ]; then
   export IMAGE_TAG
+  # Persist so a later plain `docker compose up -d <svc>` keeps this image instead of :local.
+  sed -i "/^IMAGE_TAG=/d" .env && echo "IMAGE_TAG=$IMAGE_TAG" >> .env
   dc pull api voice-worker || { echo "pull of $IMAGE_TAG failed; building locally" >&2; dc build; }
 else
   dc build
