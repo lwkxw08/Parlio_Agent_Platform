@@ -12,6 +12,7 @@ from parlio_api.messaging import LogSmsProvider, MessageService
 from parlio_api.store import MemoryStore, TenantDoc
 from parlio_api.telephony import PROVIDERS, TelnyxProvider
 from parlio_api.telephony.base import CarrierStatus, PhoneNumber
+from parlio_voice.models import AssistantConfig
 
 
 def _provider(handler) -> TelnyxProvider:  # type: ignore[no-untyped-def]
@@ -171,3 +172,37 @@ async def test_billing_activation_sweep_notifies() -> None:
     changed = await svc.activate_pending_numbers()
     assert [n.status for n in changed] == ["active"] and seen[0].activated_at is not None
     assert (await svc.list_numbers("t1"))[0].status == "active"
+
+
+async def test_number_pool_buys_stock_and_hands_it_to_tenants() -> None:
+    purchases: list[str] = []
+
+    class Numbers(SimulatedNumbers):
+        async def purchase_number(self, e164: str) -> PhoneNumber:
+            purchases.append(e164)
+            return await super().purchase_number(e164)
+
+    store = MemoryStore(None)
+    sms = MessageService(store, LogSmsProvider(), None)
+    svc = BillingService(store, sms, SimulatedBilling(), Numbers(), sip_uri="sip:x")
+    bought = await svc.buy_pool_numbers(2, "0161", bought_by="keith@x")
+    assert len(bought) == 2 and all(n.e164.startswith("+44161") for n in bought)
+    summary = await svc.pool_summary()
+    assert (summary.available, summary.pending, summary.monthly_pence) == (2, 0, 200)
+
+    # a tenant searching Manchester numbers is offered live stock first
+    offered = await svc.search_numbers("GB", 3, "161")
+    assert [o.e164 for o in offered[:2]] == [n.e164 for n in bought]
+
+    await store.upsert_assistant(
+        AssistantConfig(tenant_id="t1", company_id="c1", assistant_id="a1", business_name="B"),
+        [],
+    )
+    del purchases[:]
+    num = await svc.provision_number("t1", "c1", "a1", bought[0].e164)
+    assert num.status == "active" and num.activated_at is not None
+    assert purchases == []  # came from stock, no new carrier order
+    assert (await svc.pool_summary()).available == 1
+
+    assert await svc.release_pool_number(bought[1].id)
+    assert (await svc.pool_summary()).numbers == []
