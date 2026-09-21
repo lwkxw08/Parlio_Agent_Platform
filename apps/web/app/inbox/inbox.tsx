@@ -179,6 +179,13 @@ export default function Inbox(p: Props) {
     const t = await patchThread(p.tenant, current.id, body);
     setBusy(false);
     if (t) setThreads((prev) => new Map(prev).set(t.id, t));
+    // Closing drops the thread out of an open/waiting list: move on to the next card so the
+    // user doesn't have to click it.
+    if (t && t.status === "closed" && filters.status !== "closed") {
+      const i = list.findIndex((x) => x.id === t.id);
+      const next = list[i + 1] ?? list[i - 1];
+      setSelected(next && next.id !== t.id ? next.id : null);
+    }
     void fetchInboxStats(p.tenant).then((s) => s && setStats(s));
   };
 

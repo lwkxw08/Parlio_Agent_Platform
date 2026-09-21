@@ -2,12 +2,16 @@
 title: Billing & usage
 route: /billing
 summary: Your plan, allowances and usage, overage, invoices, coupons, the features your plan includes, your phone numbers and how to add one.
-keywords: billing, plan, subscription, usage, minutes, sms allowance, overage, invoice, coupon, upgrade, downgrade, trial, features, numbers, add a number, area code, release number
+keywords: billing, plan, subscription, card, checkout, stripe, payment, pay, usage, minutes, sms allowance, overage, invoice, coupon, upgrade, downgrade, trial, features, numbers, add a number, area code, release number
 ---
 
 ## Current subscription
 
 Your plan (Starter, Growth, Scale or Enterprise), trial or renewal date, and this month's usage against allowances: minutes, SMS, numbers, and channel messages. **Change plan** upgrades or downgrades (pro-rated); usage past an allowance is billed as overage at the per-minute / per-message rate shown. **Coupon** applies a discount code — **Check** shows what it would do before you commit.
+
+## Paying by card
+
+**Subscribe** opens a secure Stripe checkout page (card, Apple Pay or Google Pay; promotion codes accepted). If you are still in your free trial your card is saved but not charged until the trial ends; after that the plan renews monthly and invoices appear below. ParlioTec never sees or stores your card details.
 
 ## Minutes per day, Largest calls, By assistant
 

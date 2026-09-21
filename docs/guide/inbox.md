@@ -7,7 +7,7 @@ keywords: inbox, sms, whatsapp, web chat, chat widget, embed, canned replies, ha
 
 ## Conversations
 
-Threads from every text channel. Filter by **Open**, **Waiting on us**, **Closed** or **Unassigned**. The AI answers first (using your FAQs and rules) and hands off to a person when the visitor asks or when it can't help; a handoff shows a badge on the sidebar and, if configured, a Slack/SMS alert. In a thread you can **Reply**, **Pause AI** so it stops answering while you handle it, **Assign** to a teammate, add internal **Notes**, and **Close**. A callback ticket linked to the thread progresses with it.
+Threads from every text channel. Filter by **Open**, **Waiting on us**, **Closed** or **Unassigned**. The AI answers first (using your FAQs and rules) and hands off to a person when the visitor asks or when it can't help; a handoff shows a badge on the sidebar and, if configured, a Slack/SMS alert. In a thread you can **Reply** (Enter sends, Shift+Enter for a new line), **Pause AI** so it stops answering while you handle it, **Assign** to a teammate, add internal **Notes**, and **Close** — the next conversation in the list is selected for you. Call and voicemail threads take notes only; ring the customer back from their contact card or *Outbound*. A callback ticket linked to the thread progresses with it.
 
 ## Canned replies
 

@@ -20,7 +20,10 @@ ensure() { grep -q "^$1=.\+" .env || { sed -i "/^$1=/d" .env; echo "$1=$(gen)" >
 for v in LIVEKIT_API_KEY LIVEKIT_API_SECRET POSTGRES_PASSWORD POSTGRES_APP_PASSWORD \
          MINIO_ROOT_PASSWORD PARLIO_WORKER_API_KEY PARLIO_VAULT_KEY; do ensure "$v"; done
 
+# The caller's IMAGE_TAG (CI) must win over the one persisted in .env from the previous deploy.
+CALLER_IMAGE_TAG="${IMAGE_TAG:-}"
 set -a; . ./.env; set +a
+IMAGE_TAG="${CALLER_IMAGE_TAG:-${IMAGE_TAG:-}}"
 mkdir -p config
 for t in *.tmpl; do envsubst < "$t" > "config/${t%.tmpl}"; done
 
