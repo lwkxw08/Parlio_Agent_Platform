@@ -15,6 +15,7 @@ from livekit import api
 from livekit.protocol import sip as sipp
 
 from parlio_api.sip import Codec, SipTrunk, TestCallResult, Transport, TrunkMode
+from parlio_api.telephony.base import InboundEdge
 
 log = logging.getLogger("parlio.api.sip.livekit")
 
@@ -120,6 +121,40 @@ class LiveKitProvisioner:
             except Exception:
                 log.debug("test room cleanup failed", exc_info=True)
         return TestCallResult(ok=True, outcome="answered", detail=f"{to} answered via {trunk.mode}")
+
+
+class LiveKitInboundEdge(InboundEdge):
+    """Platform-owned inbound trunk (carrier → LiveKit SIP): keeps its DID list in step with
+    the numbers tenants buy, so the existing dispatch rule routes them to the worker."""
+
+    def __init__(self, lk: api.LiveKitAPI, trunk_id: str) -> None:
+        self._lk = lk
+        self._trunk_id = trunk_id
+
+    async def _numbers(self) -> list[str]:
+        res = await self._lk.sip.list_inbound_trunk(
+            sipp.ListSIPInboundTrunkRequest(trunk_ids=[self._trunk_id])
+        )
+        for t in res.items:
+            if t.sip_trunk_id == self._trunk_id:
+                return list(t.numbers)
+        raise RuntimeError(f"LiveKit inbound trunk {self._trunk_id} not found")
+
+    async def add_number(self, e164: str) -> None:
+        nums = await self._numbers()
+        if e164 in nums:
+            return
+        await self._lk.sip.update_inbound_trunk_fields(self._trunk_id, numbers=[*nums, e164])
+        log.info("added %s to inbound trunk %s", e164, self._trunk_id)
+
+    async def remove_number(self, e164: str) -> None:
+        nums = await self._numbers()
+        if e164 not in nums:
+            return
+        await self._lk.sip.update_inbound_trunk_fields(
+            self._trunk_id, numbers=[n for n in nums if n != e164]
+        )
+        log.info("removed %s from inbound trunk %s", e164, self._trunk_id)
 
 
 def _meta(trunk: SipTrunk) -> str:

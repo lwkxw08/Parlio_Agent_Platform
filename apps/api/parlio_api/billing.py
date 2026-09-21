@@ -23,7 +23,13 @@ from pydantic import BaseModel, Field
 
 from parlio_api.messaging import MessageService, MessageStatus
 from parlio_api.store import CallFilter, CallRecord, CallStore, TenantDoc
-from parlio_api.telephony.base import CarrierHealth, CarrierStatus, PhoneNumber, TelephonyProvider
+from parlio_api.telephony.base import (
+    CarrierHealth,
+    CarrierStatus,
+    InboundEdge,
+    PhoneNumber,
+    TelephonyProvider,
+)
 
 log = logging.getLogger("parlio.billing")
 
@@ -741,11 +747,13 @@ class BillingService:
         rates: CostRates | None = None,
         sip_uri: str = "sip:parlio.local",
         trial_days: int = 14,
+        edge: InboundEdge | None = None,
     ) -> None:
         self.store = store
         self.sms = sms
         self.provider = provider
         self.numbers = numbers
+        self.edge = edge
         self.rates = rates or CostRates()
         self.sip_uri = sip_uri
         self.trial_days = trial_days
@@ -1333,6 +1341,8 @@ class BillingService:
             raise ValueError("unknown assistant")
         bought = await self.numbers.purchase_number(e164)
         bought = await self.numbers.route_number_to_trunk(bought, self.sip_uri)
+        if self.edge is not None:
+            await self.edge.add_number(bought.e164)
         num = TenantNumber(
             tenant_id=tenant_id,
             company_id=company_id,
@@ -1367,5 +1377,7 @@ class BillingService:
                 provider_ref=num.provider_ref,
             )
         )
+        if self.edge is not None:
+            await self.edge.remove_number(num.e164)
         await self.store.unassign_number(num.e164)
         return await self.store.delete_doc(self.NUMBER_KIND, number_id)

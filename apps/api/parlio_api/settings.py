@@ -101,6 +101,9 @@ class Settings(BaseSettings):
     number_provider: Literal["simulated", "telnyx"] = "simulated"
     telnyx_sip_uri: str | None = None
     telnyx_connection_id: str | None = None
+    # LiveKit inbound trunk the carrier delivers platform numbers to; bought numbers are added
+    # to its DID list so the dispatch rule picks them up (unset = trunk accepts what it has).
+    inbound_trunk_id: str | None = None
     trial_days: int = 14
     otlp_endpoint: str | None = None
     metrics_token: str | None = None

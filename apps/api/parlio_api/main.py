@@ -161,7 +161,7 @@ from parlio_api.screening import ScreeningService
 from parlio_api.security import SecurityService
 from parlio_api.settings import Settings, get_settings
 from parlio_api.sip import SimulatedProvisioner, SimulatedRegistrar, SipProvisioner, SipService
-from parlio_api.sip_livekit import LiveKitProvisioner
+from parlio_api.sip_livekit import LiveKitInboundEdge, LiveKitProvisioner
 from parlio_api.store import CallStore, MemoryStore, RequiredField, Ticket
 from parlio_api.support import (
     SUPPORT_TENANT,
@@ -172,7 +172,7 @@ from parlio_api.support import (
     SupportTicketIn,
     support_assistant,
 )
-from parlio_api.telephony.base import TelephonyProvider
+from parlio_api.telephony.base import InboundEdge, TelephonyProvider
 from parlio_api.telephony.telnyx import TelnyxProvider
 from parlio_api.tickets import Notifier, SlaMonitor, TicketService
 from parlio_api.value import DigestService, ValueService
@@ -316,6 +316,19 @@ def build_calendar_backends(
     return backends
 
 
+def build_inbound_edge(settings: Settings) -> InboundEdge | None:
+    if settings.inbound_trunk_id and settings.livekit_url:
+        return LiveKitInboundEdge(
+            api.LiveKitAPI(
+                settings.livekit_url, settings.livekit_api_key, settings.livekit_api_secret
+            ),
+            settings.inbound_trunk_id,
+        )
+    if settings.inbound_trunk_id:
+        log.warning("PARLIO_INBOUND_TRUNK_ID set but no LiveKit URL; bought numbers not routed")
+    return None
+
+
 def build_sip_provisioner(settings: Settings) -> SipProvisioner:
     if settings.sip_provisioner == "livekit" and settings.livekit_url:
         return LiveKitProvisioner(
@@ -416,6 +429,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         build_number_provider(settings),
         sip_uri=settings.telnyx_sip_uri or f"sip:{settings.sip_domain}",
         trial_days=settings.trial_days,
+        edge=build_inbound_edge(settings),
     )
     app.state.billing = billing
     admin = AdminService(store, billing, telemetry, app.state.rate_limiter, settings.vault_key)
