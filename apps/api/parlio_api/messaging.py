@@ -270,13 +270,15 @@ class MessageService:
 
     # -- lifecycle hooks --------------------------------------------------------------------
     async def on_call_ended(self, call: CallRecord, cfg: AssistantConfig) -> Message | None:
-        if not call.caller or call.caller.startswith("anonymous"):
+        if not call.caller or call.caller.startswith("anonymous") or call.kind == "blocked":
             return None
         ctx: dict[str, Any] = {"caller_name": call.extracted.get("name")}
         trigger = SmsTrigger.MISSED_CALL if call_missed(call) else SmsTrigger.AFTER_CALL
         return await self.send_scenario(cfg, trigger, call.caller, ctx, call_id=call.call_id)
 
     async def on_ticket_created(self, ticket: Ticket, cfg: AssistantConfig) -> Message | None:
+        if ticket.source == "sms_reminder":
+            return None  # the reminder reply already texted them
         if not ticket.caller_number:
             return None
         ctx = {

@@ -2,15 +2,15 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { post, type OutboundCall, type Ticket, type TicketEvent } from "@/lib/api";
+import { request, post, type OutboundCall, type Ticket, type TicketEvent } from "@/lib/api";
 
-export default function TicketActions({ ticket: t }: { ticket: Ticket }) {
+export default function TicketActions({ ticket: t, openAi = false }: { ticket: Ticket; openAi?: boolean }) {
   const router = useRouter();
   const [actor, setActor] = useState("me");
   const [note, setNote] = useState("");
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [aiOpen, setAiOpen] = useState(false);
+  const [aiOpen, setAiOpen] = useState(openAi);
   const [kind, setKind] = useState<"answer" | "transfer" | "booking">("answer");
   const [resolution, setResolution] = useState("");
   const [transferTo, setTransferTo] = useState("");
@@ -42,19 +42,22 @@ export default function TicketActions({ ticket: t }: { ticket: Ticket }) {
   const aiReady = kind === "booking" || (kind === "answer" ? resolution.trim().length > 0 : transferTo.trim().length > 0);
   const aiCallback = () =>
     run(async () => {
-      const r = await post<OutboundCall>(`/v1/outbound/calls?tenant_id=${t.tenant_id}`, {
-        purpose: "ticket_callback", to: t.caller_number, name: t.caller_name, ticket_id: t.id,
-        context: { callback_window: t.callback_window ?? "" },
-        resolution_kind: kind,
-        resolution: kind === "answer" ? resolution.trim() : undefined,
-        transfer_to: kind === "transfer" ? transferTo.trim() : undefined,
+      const r = await request<OutboundCall>(`/v1/outbound/calls?tenant_id=${t.tenant_id}`, {
+        method: "POST",
+        body: JSON.stringify({
+          purpose: "ticket_callback", to: t.caller_number, name: t.caller_name, ticket_id: t.id,
+          context: { callback_window: t.callback_window ?? "" },
+          resolution_kind: kind,
+          resolution: kind === "answer" ? resolution.trim() : undefined,
+          transfer_to: kind === "transfer" ? transferTo.trim() : undefined,
+        }),
       });
-      if (r) {
+      if (r.ok) {
         setAiOpen(false);
         setResolution("");
-        flash(`AI will call ${t.caller_number} at ${new Date(r.scheduled_at).toLocaleString("en-GB", { dateStyle: "short", timeStyle: "short" })}`);
+        flash(`AI will call ${t.caller_number} at ${new Date(r.data.scheduled_at).toLocaleString("en-GB", { dateStyle: "short", timeStyle: "short" })}`);
       } else {
-        flash("Could not schedule (outbound disabled, outside calling hours or number on do-not-call list)");
+        flash(`Could not schedule: ${r.error || "outbound disabled, outside calling hours or number on do-not-call list"}`);
       }
     });
 

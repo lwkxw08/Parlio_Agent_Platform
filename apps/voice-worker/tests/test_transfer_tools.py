@@ -1,7 +1,9 @@
+import asyncio
 from datetime import UTC, datetime
 from typing import Any
 
 import pytest
+from livekit import rtc
 
 from parlio_voice.config_client import DEMO_CONFIG
 from parlio_voice.models import (
@@ -16,8 +18,12 @@ from parlio_voice.models import (
 from parlio_voice.tools import (
     ReceptionistTools,
     after_hours_instruction,
+    asks_for_callback,
+    asks_for_transfer,
     booking_first_instruction,
+    build_tools,
     caller_id_instruction,
+    declines_transfer,
     guess_department,
     mentions_connecting,
     normalise_number,
@@ -98,13 +104,54 @@ async def test_warm_transfer_answered_briefs_and_leaves() -> None:
     assert res.succeeded and res.connected and res.connected.id == "office"
     assert bridge.dialed == ["office"] and bridge.left
     assert "Connecting you" in rec.said[0]
-    briefing = rec.said[-1]
+    briefing = rec.said[1]
     assert briefing.startswith("Hi, this is") and "Hi Office" not in briefing
     assert "leaking tap" in briefing and "0 7 7 0 0" in briefing
+    assert briefing.endswith("Press any key to take the call.")
+    assert rec.said[-1].startswith("Thank you, putting them through")
     assert tools.transfer_attempted
     types = [t for t, _ in rec.events]
     assert types == [CallEventType.TRANSFER_STARTED, CallEventType.TRANSFER_COMPLETED]
     assert rec.events[1][1]["outcome"] == TransferOutcome.ANSWERED
+
+
+async def test_voicemail_answer_without_keypress_is_not_a_transfer() -> None:
+    bridge = SimulatedBridge({"office": TransferOutcome.ANSWERED}, accepts={"office": False})
+    tools, rec = make_tools(cfg([office()]), bridge, MONDAY_10)
+    res = await tools.transfer(None, "boiler")
+    assert not res.succeeded and res.outcome == TransferOutcome.VOICEMAIL
+    assert res.connected is None and not tools.transferred and not bridge.left
+    assert len(bridge.dropped) == 1 and bridge.dropped[0].startswith("human-office-")
+    assert res.attempts[0].detail == "no keypress after answer"
+    assert not any(s.startswith("Thank you") for s in rec.said)
+    outcomes = [p["outcome"] for t, p in rec.events if t == CallEventType.TRANSFER_COMPLETED]
+    assert outcomes == [TransferOutcome.VOICEMAIL]
+
+
+async def test_voicemail_on_first_destination_rings_the_fallback() -> None:
+    bridge = SimulatedBridge(accepts={"office": False})
+    tools, _ = make_tools(cfg([office(fallback_id="oncall"), oncall()]), bridge, MONDAY_10)
+    res = await tools.transfer("general", "boiler")
+    assert res.succeeded and res.connected and res.connected.id == "oncall"
+    assert bridge.dialed == ["office", "oncall"] and len(bridge.dropped) == 1
+
+
+async def test_accept_key_off_bridges_on_answer() -> None:
+    bridge = SimulatedBridge(accepts={"office": False})
+    tools, rec = make_tools(cfg([office()], accept_key=False), bridge, MONDAY_10)
+    res = await tools.transfer(None, "boiler")
+    assert res.succeeded and bridge.left and not bridge.dropped
+    assert rec.said[-1].endswith("Putting them through now.")
+
+
+async def test_caller_hangup_during_transfer_drops_the_human_leg() -> None:
+    bridge = SimulatedBridge()
+    tools, _ = make_tools(cfg([office()]), bridge, MONDAY_10)
+    tools.caller_gone = True
+    res = await tools.transfer(None, "boiler")
+    assert not res.succeeded and res.outcome == TransferOutcome.NO_ANSWER
+    assert not tools.transferred and not bridge.left
+    assert len(bridge.dropped) == 1 and bridge.dropped[0].startswith("human-office-")
 
 
 async def test_no_answer_falls_back_to_fallback_destination() -> None:
@@ -240,6 +287,57 @@ def test_promised_transfer_detection() -> None:
     assert guess_department("connecting you now", ["general", "accounts"]) is None
 
 
+def test_caller_intent_phrases() -> None:
+    assert asks_for_callback("Hi. Can I book a plumber callback, please?")
+    assert asks_for_callback("could someone call me back this afternoon")
+    assert not asks_for_callback("I'd just like to speak to a plumber for some recommendation.")
+    assert asks_for_transfer("can you put me through to accounts")
+    assert asks_for_transfer("I want to speak to someone now")
+    assert not asks_for_transfer("I'd just like to speak to a plumber for some recommendation.")
+    assert declines_transfer("No. Please call back.")
+    assert declines_transfer("don't transfer me, just call back")
+    assert not declines_transfer("yes please put me through")
+
+
+def test_callback_in_progress_blocks_transfer_safety_net_and_tool() -> None:
+    bridge = SimulatedBridge({"office": TransferOutcome.ANSWERED})
+    tools, _ = make_tools(cfg([office()]), bridge, MONDAY_10)
+    # Nothing asked for yet: the safety net must not dial on the assistant's wording alone.
+    assert not tools.transfer_allowed_without_tool_call()
+    tools.observe_user_text("Hi. Can I book a plumber callback, please?")
+    tools.observe_user_text("Keith Wilson.")
+    tools.observe_user_text("I'd just like to speak to a plumber for some recommendation.")
+    assert tools.callback_requested and not tools.transfer_requested
+    assert not tools.transfer_allowed_without_tool_call()
+    tools.observe_user_text("No. Please call back.")
+    assert tools.callback_requested and not tools.transfer_allowed_without_tool_call()
+
+
+async def test_transfer_tool_refuses_during_callback_intake() -> None:
+    bridge = SimulatedBridge({"office": TransferOutcome.ANSWERED})
+    tools, rec = make_tools(cfg([office()]), bridge, MONDAY_10)
+    tools.observe_user_text("can someone call me back please")
+    fn = next(x for x in build_tools(tools) if x.info.name == "transfer_to_human")
+    out = await fn(reason="wants advice")
+    assert out["outcome"] == "not_transferred" and "create_ticket" in out["note"]
+    assert bridge.dialed == [] and not tools.transfer_attempted and rec.events == []
+    # The caller changes their mind and asks to be put through: now it goes ahead.
+    tools.observe_user_text("actually, can you put me through to someone now")
+    assert tools.transfer_requested and not tools.callback_requested
+    assert tools.transfer_allowed_without_tool_call()
+    out = await fn(reason="wants advice")
+    assert out["outcome"] == TransferOutcome.ANSWERED and bridge.dialed == ["office"]
+
+
+def test_explicit_transfer_request_still_allows_safety_net() -> None:
+    bridge = SimulatedBridge({"office": TransferOutcome.ANSWERED})
+    tools, _ = make_tools(cfg([office()]), bridge, MONDAY_10)
+    tools.observe_user_text("put me through to the office please")
+    assert tools.transfer_allowed_without_tool_call()
+    tools.observe_user_text("no, don't transfer me")
+    assert not tools.transfer_allowed_without_tool_call()
+
+
 class FakeApi:
     """Stands in for CoreApiClient; records calls and returns canned API responses."""
 
@@ -373,3 +471,51 @@ async def test_calendar_tools_ask_for_service_and_pass_it_through() -> None:
     assert "hint" not in chosen
     await tools.book_appointment("2026-09-14T09:00:00Z", "Sam", service="svc-2")
     assert api.bookings[-1]["service_id"] == "svc-2"
+
+
+class _FakeRoom:
+    """Minimal rtc.Room stand-in: on/off registration + manual emit."""
+
+    def __init__(self) -> None:
+        self.handlers: dict[str, list[Any]] = {}
+
+    def on(self, event: str, fn: Any) -> None:
+        self.handlers.setdefault(event, []).append(fn)
+
+    def off(self, event: str, fn: Any) -> None:
+        self.handlers[event].remove(fn)
+
+    def emit(self, event: str, *args: Any) -> None:
+        for fn in list(self.handlers.get(event, [])):
+            fn(*args)
+
+
+class _P:
+    def __init__(self, identity: str) -> None:
+        self.identity = identity
+
+
+async def test_livekit_confirm_human_keypress_hangup_and_timeout() -> None:
+    from parlio_voice.transfer import LiveKitSipBridge
+
+    room = _FakeRoom()
+    bridge = LiveKitSipBridge(None, "room", "caller", "trunk", room=room)  # type: ignore[arg-type]
+
+    async def press(identity: str, digit: str) -> None:
+        await asyncio.sleep(0)
+        dtmf = rtc.SipDTMF(code=1, digit=digit, participant=_P(identity))  # type: ignore[arg-type]
+        room.emit("sip_dtmf_received", dtmf)
+
+    # the caller pressing a key does not count; the human pressing one does
+    task = asyncio.create_task(bridge.confirm_human("human-a-1", 1))
+    await press("caller", "1")
+    await press("human-a-1", "5")
+    assert await task is True
+    # the human hanging up (voicemail cut off / declined) is a no
+    task = asyncio.create_task(bridge.confirm_human("human-a-2", 1))
+    await asyncio.sleep(0)
+    room.emit("participant_disconnected", _P("human-a-2"))
+    assert await task is False
+    # silence (a voicemail greeting) times out
+    assert await bridge.confirm_human("human-a-3", 0) is False
+    assert room.handlers["sip_dtmf_received"] == []

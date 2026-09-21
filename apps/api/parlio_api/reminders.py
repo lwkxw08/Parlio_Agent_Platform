@@ -22,7 +22,7 @@ from zoneinfo import ZoneInfo
 from pydantic import BaseModel, Field
 
 from parlio_api.calendar import BOOKING_KIND, Booking
-from parlio_api.messaging import MessageService, MessageStatus
+from parlio_api.messaging import Message, MessageService, MessageStatus
 from parlio_api.store import CallStore, TenantDoc, Ticket
 from parlio_voice.models import SmsTrigger, TicketIntake, TicketPriority
 
@@ -77,6 +77,10 @@ class ReminderPolicy(BaseModel):
     enabled: bool = False
     timezone: str = "Europe/London"
     hours_before: list[int] = Field(default_factory=lambda: [24])
+    confirmation_enabled: bool = True
+    confirmation_template: str = (
+        "{business}: your appointment is booked for {when}. Reply STOP to opt out of texts."
+    )
     template: str = (
         "{business}: reminder of your appointment on {when}. Reply 1 to confirm or 2 to "
         "reschedule. Reply STOP to opt out."
@@ -199,10 +203,12 @@ class ReminderService:
     async def on_booking(
         self, booking: Booking, now: datetime | None = None
     ) -> list[AppointmentReminder]:
-        """Schedule one reminder per offset that is still in the future."""
+        """Text a confirmation now, then schedule one reminder per offset still in the future."""
         if not booking.phone:
             return []
         pol = await self.policy(booking.tenant_id)
+        if pol.confirmation_enabled:
+            await self.send_confirmation(booking, pol)
         if not pol.enabled:
             return []
         now = now or datetime.now(UTC)
@@ -223,6 +229,27 @@ class ReminderService:
             await self.store.put_doc(r.to_doc())
             out.append(r)
         return out
+
+    async def send_confirmation(self, booking: Booking, pol: ReminderPolicy) -> Message | None:
+        if not booking.phone:
+            return None
+        body = pol.confirmation_template.format(
+            business=await self.business(booking.tenant_id),
+            when=_when(booking.start, pol.timezone),
+            name=booking.name,
+            engineer=booking.resource_name or "",
+        )
+        m = await self.sms.send(
+            booking.tenant_id,
+            booking.company_id,
+            booking.phone,
+            body,
+            call_id=booking.call_id,
+            trigger=SmsTrigger.BOOKING_CONFIRMATION,
+        )
+        if m.status != MessageStatus.SENT:
+            log.info("booking confirmation for %s not sent: %s", booking.id, m.error)
+        return m
 
     async def list_for(self, tenant_id: str, limit: int = 200) -> list[AppointmentReminder]:
         docs = await self.store.list_docs(REMINDER_KIND, tenant_id, limit)

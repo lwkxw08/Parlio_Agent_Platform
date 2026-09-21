@@ -525,6 +525,8 @@ function RulesEditor({ tenant, canManage, conn, onSaved }: {
 
 const DEFAULT_POLICY: Omit<ReminderPolicy, "tenant_id"> = {
   enabled: false, timezone: "Europe/London", hours_before: [24],
+  confirmation_enabled: true,
+  confirmation_template: "{business}: your appointment is booked for {when}. Reply STOP to opt out of texts.",
   template: "{business}: reminder of your appointment on {when}. Reply 1 to confirm or 2 to reschedule. Reply STOP to opt out.",
   confirm_reply: "Thanks {name}, you're confirmed for {when}. See you then - {business}",
   reschedule_reply: "No problem {name}, we'll call you shortly to find a new time - {business}",
@@ -547,8 +549,13 @@ function Reminders({ tenant, canManage, reminderPolicy, reminders }: Props) {
   return (
     <>
       <form className="section" onSubmit={save}>
-        <h2 id="sms-appointment-reminders">SMS appointment reminders</h2>
-        <p className="hint">When the assistant books an appointment, the customer gets a text before it. Replying <strong>1</strong> confirms the booking; <strong>2</strong> asks to reschedule, which raises a callback ticket for your team and stops further reminders.</p>
+        <h2 id="sms-appointment-reminders">SMS booking confirmation & reminders</h2>
+        <p className="hint">As soon as the assistant books an appointment the customer gets a confirmation text. Reminders go out before it; replying <strong>1</strong> confirms the booking; <strong>2</strong> asks to reschedule, which raises a callback ticket for your team and stops further reminders.</p>
+        <label className="small check"><input type="checkbox" disabled={!canManage} checked={policy.confirmation_enabled} onChange={(e) => setPolicy({ ...policy, confirmation_enabled: e.target.checked })} /> Text a confirmation straight after booking</label>
+        <label>Confirmation text
+          <textarea value={policy.confirmation_template} disabled={!canManage} onChange={(e) => setPolicy({ ...policy, confirmation_template: e.target.value })} />
+          <span className="small muted">Placeholders: {"{business} {name} {when}"}</span>
+        </label>
         <label className="small check"><input type="checkbox" disabled={!canManage} checked={policy.enabled} onChange={(e) => setPolicy({ ...policy, enabled: e.target.checked })} /> Send SMS reminders for bookings</label>
         <div className="grid">
           <div>

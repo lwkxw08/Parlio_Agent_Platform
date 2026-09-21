@@ -37,13 +37,15 @@ from parlio_api.screening import (
     ScreeningService,
     looks_like_robocaller,
 )
-from parlio_api.store import CallRecord, ContactUpdate, MemoryStore
+from parlio_api.store import CallRecord, ContactUpdate, MemoryStore, Ticket
 from parlio_api.vault import LocalVault
+from parlio_voice.config_client import DEMO_CONFIG
 from parlio_voice.models import (
     AssistantConfig,
     CallEventType,
     ScreeningConfig,
     ScreeningMode,
+    SmsTrigger,
     TicketIntake,
 )
 
@@ -106,7 +108,10 @@ def test_owner_sms_summary_content() -> None:
         escalated=True,
     )
     s = owner_sms_summary(c, "Acme Plumbing")
-    assert s.startswith("Acme Plumbing: Call 09:30 from Keith Wilson (+447700900123).")
+    # 09:30 UTC in September is 10:30 in the tenant's local time (Europe/London default)
+    assert s.startswith("Acme Plumbing: Call 10:30 from Keith Wilson (+447700900123).")
+    assert "Call 09:30 from" in owner_sms_summary(c, "Acme Plumbing", "UTC")
+    assert "Call 10:30 from" in owner_sms_summary(c, "Acme Plumbing", "Not/AZone")
     assert "Burst pipe" in s and "URGENT" in s
     assert "Call back: +447000000001" in s and "M20 2AB" in s
     # callback == caller number is not repeated
@@ -115,7 +120,7 @@ def test_owner_sms_summary_content() -> None:
     # missed call / withheld number / long summary truncation
     c3 = call(caller=None, answered_at=None, summary="x" * 400)
     s3 = owner_sms_summary(c3, "Acme")
-    assert "Missed call 09:30 from Withheld" in s3 and "..." in s3 and len(s3) < 260
+    assert "Missed call 10:30 from Withheld" in s3 and "..." in s3 and len(s3) < 260
     assert "Caller hung up before speaking" in owner_sms_summary(call(answered_at=None), "Acme")
 
 
@@ -133,7 +138,7 @@ async def test_owner_sms_rule_delivers_and_respects_gating(
             "name": "Owner SMS",
             "channel": "sms",
             "target": OWNER,
-            "events": ["call.completed"],
+            "events": ["call.completed", "call.missed"],
         },
     )
     assert r.status_code == 201, r.text
@@ -164,6 +169,23 @@ async def test_owner_sms_rule_delivers_and_respects_gating(
     assert r.status_code == 200, r.text
     before = len(prov.sent)
     await run_call("own-2")
+    assert not [m for m in prov.sent[before:] if m[1] == OWNER]
+
+    # screened-out / blocked calls never text the owner, even with the rule back on
+    r = await client.put(
+        f"/v1/notifications/rules/{rule['id']}",
+        params={"tenant_id": "demo"},
+        json={**rule, "enabled": True},
+    )
+    assert r.status_code == 200, r.text
+    before = len(prov.sent)
+    for e in (
+        ev(CallEventType.CALL_STARTED, "own-3", {"caller": "anonymous", "dialed": "+440"}),
+        ev(CallEventType.CALL_ENDED, "own-3", {"reason": "screened", "duration_s": 0}),
+    ):
+        rr = await client.post("/v1/worker/events", json=e, headers=HEADERS)
+        assert rr.status_code in (200, 202), rr.text
+    await app.state.postcall.drain()
     assert not [m for m in prov.sent[before:] if m[1] == OWNER]
 
 
@@ -264,6 +286,43 @@ async def test_reminders_scheduled_sent_and_confirmed() -> None:
     assert await h.svc.sweep(now + timedelta(days=2, hours=-1)) == 1
 
 
+async def test_booking_confirmation_sms_sent_immediately() -> None:
+    h = _Reminders()
+    now = datetime(2026, 9, 21, 9, 21, tzinfo=UTC)
+    bk = _booking(now + timedelta(hours=1, minutes=9))
+    bk.call_id = "SCL_1"
+    # on by default, independent of reminders (which are off and would not fire for 69 min out)
+    assert await h.svc.on_booking(bk, now) == []
+    assert len(h.prov.sent) == 1
+    sent = h.prov.sent[-1]
+    assert sent[1] == CALLER
+    assert sent[2].startswith("Acme Plumbing: your appointment is booked for")
+    assert "11:30" in sent[2]  # 10:30 UTC shown in Europe/London
+    msgs = await h.sms.recent("demo")
+    assert msgs[0].trigger == SmsTrigger.BOOKING_CONFIRMATION
+    assert msgs[0].call_id == "SCL_1"
+    assert msgs[0].status == MessageStatus.SENT
+
+    # no phone -> nothing; disabled -> nothing (reminders still scheduled)
+    assert (
+        await h.svc.on_booking(_booking(now + timedelta(days=1), phone=None, bid="b2"), now) == []
+    )
+    assert len(h.prov.sent) == 1
+    await h.svc.set_policy(
+        ReminderPolicy(tenant_id="demo", enabled=True, hours_before=[1], confirmation_enabled=False)
+    )
+    rs = await h.svc.on_booking(_booking(now + timedelta(days=1), bid="b3"), now)
+    assert len(rs) == 1 and len(h.prov.sent) == 1
+
+    # STOP suppresses the confirmation but not the booking flow
+    await h.svc.set_policy(ReminderPolicy(tenant_id="demo", enabled=True, hours_before=[1]))
+    await h.sms.set_opt_out("demo", CALLER, True)
+    rs = await h.svc.on_booking(_booking(now + timedelta(days=1), bid="b4"), now)
+    assert len(rs) == 1 and len(h.prov.sent) == 1
+    msgs = await h.sms.recent("demo")
+    assert msgs[0].status == MessageStatus.SKIPPED and "STOP" in (msgs[0].error or "")
+
+
 async def test_reminder_reschedule_creates_ticket_and_cancels_rest() -> None:
     h = _Reminders()
     now = datetime(2026, 9, 11, 9, 0, tzinfo=UTC)
@@ -301,7 +360,7 @@ async def test_reminder_skipped_when_booking_cancelled_or_reply_too_late() -> No
     b.status = "cancelled"
     await h.store.put_doc(b.to_doc())
     assert await h.svc.sweep(now + timedelta(days=1)) == 0
-    assert h.prov.sent == []
+    assert [m for m in h.prov.sent if "reminder" in m[2]] == []
     rs = await h.svc.list_for("demo")
     assert rs[0].status == ReminderStatus.CANCELLED
 
@@ -709,3 +768,24 @@ async def test_sms_stop_opts_out_and_start_opts_back_in(client: AsyncClient, app
     assert not await sms.opted_out("demo", CALLER)
     assert "opted back in" in prov.sent[-1][2]
     assert (await sms.send("demo", "demo", CALLER, "hello")).status == MessageStatus.SENT
+
+
+async def test_reschedule_ticket_does_not_send_a_second_sms() -> None:
+    store = MemoryStore(None)
+    prov = LogSmsProvider()
+    sms = MessageService(store, prov, "+442046206823")
+    t = Ticket(
+        id="tk-1",
+        tenant_id="demo",
+        company_id="demo",
+        caller_name="Sam",
+        caller_number=CALLER,
+        reason="Wants to reschedule",
+        source="sms_reminder",
+    )
+    assert await sms.on_ticket_created(t, DEMO_CONFIG) is None
+    assert prov.sent == []
+    t.source = "ai_intake"
+    m = await sms.on_ticket_created(t, DEMO_CONFIG)
+    assert m is not None and m.status == MessageStatus.SENT
+    assert "engineer" not in prov.sent[-1][2].lower()

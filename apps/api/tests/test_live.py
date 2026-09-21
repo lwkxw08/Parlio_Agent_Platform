@@ -395,3 +395,18 @@ async def test_approval_notification_goes_through_rules(client: AsyncClient) -> 
     assert r.status_code == 200
     hits = [n for n in r.json() if n["event"] == "approval.requested"]
     assert hits and "/approve/" in hits[0]["body"] and "1,800.00" in hits[0]["body"]
+
+
+async def test_hangup_closes_a_ghost_call(client: AsyncClient, app: FastAPI) -> None:
+    """Room already gone (worker died mid-shutdown) but the record is still open."""
+    await _start_call(client, "c-ghost")
+    _hub(app)._calls.pop("c-ghost")  # API restarted: nothing in memory, DB still in_progress
+    r = await client.post("/v1/live/calls/c-ghost/command", params=Q, json={"cmd": "hangup"})
+    assert r.status_code == 200, r.text
+    rec = await app.state.store.get_call("c-ghost")
+    assert rec is not None and rec.status == "completed"
+    assert rec.end_reason == "supervisor_hangup"
+    assert len(rec.transcript) == 2
+    # a genuinely unknown call is still a 404
+    r = await client.post("/v1/live/calls/nope/command", params=Q, json={"cmd": "hangup"})
+    assert r.status_code == 404

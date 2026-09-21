@@ -65,10 +65,11 @@ The calendar here is the tenant's **primary** calendar; the booking rules and se
 
 Appointments the assistant has made, with the caller's name, phone, address, details of the job, status (confirmed, rescheduled, cancelled, no-show) and a link to the call. Statuses update automatically when a customer replies to a reminder text.
 
-## SMS appointment reminders
+## SMS booking confirmation & reminders
 
-Automatic texts before each booking.
+Automatic texts when a booking is made and before it.
 
+- **Text a confirmation straight after booking** – on by default; the customer gets a confirmation text with the date and time as soon as the assistant books. **Confirmation text** is editable (placeholders `{business}`, `{when}`, `{name}`).
 - **Enabled** – switch reminders on for all bookings.
 - **Offsets** – how long before the appointment to send (for example 24 hours and 1 hour). Add as many as you need.
 - **Reminder text** – the message. Placeholders: `{business}`, `{when}`, `{name}`. Keep the "Reply 1 to confirm or 2 to reschedule" line so customers can respond.

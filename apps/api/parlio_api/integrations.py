@@ -124,12 +124,21 @@ class IntegrationHub:
                 log.warning("inbox call thread failed for %s", call.call_id, exc_info=True)
         try:
             cfg = await self.store.get_assistant(call.assistant_id)
-            ev = call_completed_event(call, cfg.business_name if cfg else "")
-            await self.notifications.dispatch(ev)
-            if is_qualified_lead(call):
-                await self.notifications.dispatch(
-                    ev.model_copy(update={"event": NotifyEvent.LEAD_QUALIFIED, "qualified": True})
+            if call.kind == "blocked":
+                log.info("no owner notification for screened call %s", call.call_id)
+            else:
+                ev = call_completed_event(
+                    call,
+                    cfg.business_name if cfg else "",
+                    cfg.hours.timezone if cfg else "Europe/London",
                 )
+                await self.notifications.dispatch(ev)
+                if is_qualified_lead(call):
+                    await self.notifications.dispatch(
+                        ev.model_copy(
+                            update={"event": NotifyEvent.LEAD_QUALIFIED, "qualified": True}
+                        )
+                    )
         except Exception:
             log.warning("post-call notifications failed for %s", call.call_id, exc_info=True)
         if self.connectors is not None and call.kind != "blocked":
@@ -194,7 +203,9 @@ class IntegrationHub:
             try:
                 await self.reminders.on_booking(booking)
             except Exception:
-                log.warning("SMS reminder scheduling failed for %s", booking.id, exc_info=True)
+                log.warning(
+                    "booking SMS (confirmation/reminders) failed for %s", booking.id, exc_info=True
+                )
         if self.outbound is not None:
             try:
                 await self.outbound.on_booking(

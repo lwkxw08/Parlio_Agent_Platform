@@ -20,6 +20,7 @@ from parlio_voice.models import (
     AfterHoursBehaviour,
     AssistantConfig,
     CallEventType,
+    Destination,
     SmsTrigger,
     TicketIntake,
     TicketPriority,
@@ -127,8 +128,38 @@ def caller_id_instruction(caller: str | None) -> str:
     )
 
 
+_CALLBACK_PHRASES = re.compile(
+    r"\b(call ?back|call me back|ring me back|phone me back|get back to me"
+    r"|someone (to )?(call|ring|phone) me|leave a message|take a message)\b",
+    re.IGNORECASE,
+)
+_TRANSFER_REQUEST_PHRASES = re.compile(
+    r"\b(put me through|transfer me|speak to (someone|somebody|a person|a human)"
+    r"|talk to (someone|somebody|a person|a human)|speak to (a|the) (person|human)"
+    r"|connect me|(speak|talk) to (someone|somebody) now)\b",
+    re.IGNORECASE,
+)
+_TRANSFER_DECLINE_PHRASES = re.compile(
+    r"^\s*(no|nope|don't|do not|not)\b|\b(don't|do not|no need to|rather not|not) "
+    r"(transfer|put me through|connect)\b|\b(just|please|rather) (a )?call( me)? back\b",
+    re.IGNORECASE,
+)
+
+
 def mentions_connecting(text: str) -> bool:
     return bool(_CONNECT_PHRASES.search(text))
+
+
+def asks_for_callback(text: str) -> bool:
+    return bool(_CALLBACK_PHRASES.search(text))
+
+
+def asks_for_transfer(text: str) -> bool:
+    return bool(_TRANSFER_REQUEST_PHRASES.search(text))
+
+
+def declines_transfer(text: str) -> bool:
+    return bool(_TRANSFER_DECLINE_PHRASES.search(text))
 
 
 def guess_department(text: str, departments: list[str]) -> str | None:
@@ -278,6 +309,11 @@ class ReceptionistTools:
         self.urgent_hit: str | None = None
         self.transferred = False
         self.transfer_attempted = False
+        self.callback_requested = False
+        self.transfer_requested = False
+        self.transfer_declined_at: int = 0
+        self.caller_gone = False
+        self.user_turns = 0
         self.connected_transfer_id: str | None = None
         self.ticket_id: str | None = None
         self.booking_id: str | None = None
@@ -313,6 +349,8 @@ class ReceptionistTools:
 
     # -- urgent keyword detection (called from transcript hook) -----------------------------
     def observe_user_text(self, text: str) -> str | None:
+        self.user_turns += 1
+        self._observe_intent(text)
         if self.urgent_hit:
             return None
         hit = self.cfg.transfer.matches_urgent(text)
@@ -321,6 +359,30 @@ class ReceptionistTools:
             self.emit(CallEventType.ESCALATION, {"keyword": hit, "text": text})
             log.info("urgent keyword '%s' on call %s", hit, self.call_id)
         return hit
+
+    def _observe_intent(self, text: str) -> None:
+        """Track what the caller actually asked for, so a callback in progress is never turned
+        into a transfer on the strength of the assistant's wording alone."""
+        if declines_transfer(text):
+            self.transfer_declined_at = self.user_turns
+            self.transfer_requested = False
+        if asks_for_callback(text):
+            self.callback_requested = True
+            self.transfer_requested = False
+            log.info("caller asked for a callback on call %s", self.call_id)
+        elif asks_for_transfer(text) and not declines_transfer(text):
+            self.transfer_requested = True
+            if self.callback_requested:
+                log.info("caller switched from callback to transfer on call %s", self.call_id)
+                self.callback_requested = False
+
+    def transfer_allowed_without_tool_call(self) -> bool:
+        """Whether the transfer safety-net may dial on the assistant's promise alone."""
+        if self.transfer_attempted or self.callback_requested:
+            return False
+        if self.transfer_declined_at and self.transfer_declined_at >= self.user_turns:
+            return False
+        return self.transfer_requested
 
     # -- availability -------------------------------------------------------------------------
     def availability(self, department: str | None = None) -> dict[str, Any]:
@@ -378,7 +440,15 @@ class ReceptionistTools:
         )
         self.transfer_attempted = True
         await self.say(self.holding_line(department))
-        res = await self.engine.run(department, urgent=urgent)
+
+        async def _brief(dest: Destination) -> None:
+            await self.say(self.briefing(dest.name, reason))
+
+        res = await self.engine.run(
+            department,
+            urgent=urgent,
+            on_answered=_brief if self.cfg.transfer.mode == TransferMode.WARM else None,
+        )
         for a in res.attempts:
             self.emit(
                 CallEventType.TRANSFER_COMPLETED,
@@ -394,11 +464,20 @@ class ReceptionistTools:
                     "reason": reason,
                 },
             )
+        if self.caller_gone and res.succeeded:
+            log.info("caller left call %s during transfer; not bridging", self.call_id)
+            if res.attempts:
+                a = res.attempts[-1]
+                await self.engine.bridge.drop(f"human-{a.destination.id}-{a.transfer_id}")
+            res.outcome, res.connected = TransferOutcome.NO_ANSWER, None
         self.transferred = res.succeeded
+        if res.succeeded:
+            self.callback_requested = False
         if res.succeeded and res.attempts:
             self.connected_transfer_id = res.attempts[-1].transfer_id
         if res.succeeded and res.connected and self.cfg.transfer.mode == TransferMode.WARM:
-            await self.say(self.briefing(res.connected.name, reason))
+            if self.cfg.transfer.accept_key:
+                await self.say("Thank you, putting them through now.")
             await self.engine.bridge.leave()
         return res
 
@@ -410,9 +489,14 @@ class ReceptionistTools:
         num = spoken_number(self.caller) if self.caller else None
         who = f"a caller on {num}" if num else "a caller"
         urgent = " This is flagged as urgent." if self.urgent_hit else ""
+        close = (
+            "Press any key to take the call."
+            if self.cfg.transfer.accept_key
+            else "Putting them through now."
+        )
         return (
             f"Hi, this is {self.cfg.name} from {self.cfg.business_name}. "
-            f"I have {who} on the line about: {reason}.{urgent} Putting them through now."
+            f"I have {who} on the line about: {reason}.{urgent} {close}"
         )
 
     # -- tickets ------------------------------------------------------------------------------
@@ -715,30 +799,54 @@ def build_tools(t: ReceptionistTools) -> list[Any]:
     @function_tool(
         name="transfer_to_human",
         description=(
-            "Transfer the caller to a human. Call it immediately when the caller asks for a "
-            "person, agrees to be put through, or when you cannot help - in the same turn, "
-            "without announcing it first (the tool tells the caller it is connecting them). "
-            "An urgent-sounding problem is not by itself a request to be transferred: if the "
-            "caller asked for an appointment or a callback, offer the choice (put them through "
-            "now, or book/arrange the earliest slot) and only transfer if they choose it. "
+            "Transfer the caller to a human. Call it immediately when the caller explicitly asks "
+            "to be put through to a person now, agrees to be put through, or when you cannot "
+            "help - in the same turn, without announcing it first (the tool tells the caller it "
+            "is connecting them). Never call it while you are collecting callback details: once "
+            "the caller has asked for a callback, finish with create_ticket. Saying they want "
+            "advice from, or to speak to, a team member as the reason for the callback is NOT a "
+            "request to be transferred. Only switch to a transfer if the caller clearly changes "
+            "their mind and asks to be connected now. An urgent-sounding problem is not by "
+            "itself a request to be transferred: if the caller asked for an appointment, offer "
+            "the choice (put them through now, or book the earliest slot) and only transfer if "
+            "they choose it. "
             f"Departments: {depts}. Returns the outcome; if not 'answered', tell the caller "
             "nobody could pick up and offer to take a message (create_ticket)."
         ),
     )
     async def transfer_to_human(reason: str, department: str | None = None) -> dict[str, Any]:
+        if t.callback_requested and not t.transfer_requested:
+            log.info("transfer refused on call %s: caller asked for a callback", t.call_id)
+            return {
+                "outcome": "not_transferred",
+                "connected_to": None,
+                "attempts": 0,
+                "note": (
+                    "The caller asked for a callback and has not asked to be put through. "
+                    "Do not transfer; finish collecting the details and call create_ticket."
+                ),
+            }
         res = await t.transfer(department, reason)
-        return {
+        out: dict[str, Any] = {
             "outcome": res.outcome,
             "connected_to": res.connected.name if res.connected else None,
             "attempts": len(res.attempts),
         }
+        if not res.succeeded:
+            out["note"] = (
+                "Nobody picked up (a voicemail does not count). Tell the caller no one could "
+                "take the call right now and offer to arrange a callback via create_ticket."
+            )
+        return out
 
     @function_tool(
         name="create_ticket",
         description=(
-            "Log a callback ticket for the team when no human is available, the caller prefers a "
-            "callback, or after a failed transfer. Collect these first: "
-            f"{intake_desc}. Confirm the details back to the caller before calling this."
+            "Log a callback ticket for the team when the caller asks for a callback, no human is "
+            "available, or after a failed transfer. Collect these first: "
+            f"{intake_desc}. Confirm the details back to the caller before calling this. "
+            "Once the caller has asked for a callback, this is how the call ends - do not "
+            "transfer them instead."
         ),
     )
     async def create_ticket(

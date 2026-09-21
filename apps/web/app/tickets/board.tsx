@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { fetchTickets, post, secs, ticketRef, type OutboundCall, type Ticket, type TicketStatus } from "@/lib/api";
+import { fetchTickets, post, secs, ticketRef, type Ticket, type TicketStatus } from "@/lib/api";
 import { humanize } from "@/app/breakdown";
 
 const COLUMNS: { status: TicketStatus; title: string }[] = [
@@ -24,7 +24,6 @@ export default function TicketBoard({ initial }: { initial: Ticket[] }) {
   const [tickets, setTickets] = useState<Ticket[]>(initial);
   const [actor, setActor] = useState("me");
   const [now, setNow] = useState(() => Date.now());
-  const [notice, setNotice] = useState<string | null>(null);
 
   useEffect(() => {
     const tick = setInterval(() => setNow(Date.now()), 10_000);
@@ -41,21 +40,12 @@ export default function TicketBoard({ initial }: { initial: Ticket[] }) {
     const fresh = await fetchTickets();
     if (fresh) setTickets(fresh);
   };
-  const aiCallback = async (t: Ticket) => {
-    const r = await post<OutboundCall>(`/v1/outbound/calls?tenant_id=${t.tenant_id}`, {
-      purpose: "ticket_callback", to: t.caller_number, name: t.caller_name, ticket_id: t.id,
-      context: { reason: t.reason, callback_window: t.callback_window ?? "" },
-    });
-    setNotice(r ? `AI will call ${t.caller_number} at ${new Date(r.scheduled_at).toLocaleString("en-GB", { dateStyle: "short", timeStyle: "short" })}` : "Could not schedule (outbound disabled, outside calling hours or number on do-not-call list)");
-    setTimeout(() => setNotice(null), 6000);
-  };
 
   return (
     <>
       <p className="muted">
         Acting as <input value={actor} onChange={(e) => setActor(e.target.value)} className="inline" />
       </p>
-      {notice && <p className="muted small">{notice}</p>}
       <div className="board">
         {COLUMNS.map(({ status, title }) => {
           const col = tickets
@@ -93,7 +83,7 @@ export default function TicketBoard({ initial }: { initial: Ticket[] }) {
                       <button onClick={() => act(t.id, "callback")}>Call back</button>
                     )}
                     {status !== "resolved" && t.caller_number && (
-                      <button onClick={() => aiCallback(t)} title="Schedule the assistant to ring them back (Outbound policy applies)">AI call back</button>
+                      <Link href={`/tickets/${t.id}?ai=1`} className="btn" title="The assistant rings them back with your answer, a person ready to talk, or a booking to make">AI call back</Link>
                     )}
                     {status !== "resolved" && <button onClick={() => act(t.id, "resolve")}>Resolve</button>}
                   </div>
