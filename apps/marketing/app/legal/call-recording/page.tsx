@@ -6,7 +6,7 @@ export const metadata: Metadata = { title: "Call recording notice" };
 
 export default function CallRecordingPage() {
   return (
-    <LegalPage title="Call recording & AI assistant notice" updated="September 2026 (draft)" current="/legal/call-recording/">
+    <LegalPage title="Call recording & AI assistant notice" updated="September 2026" current="/legal/call-recording/">
       <p>
         This notice explains what happens when you speak to a business that uses ParlioTec, and what businesses using ParlioTec
         must tell their callers. It supplements our <Link href="/legal/privacy/">Privacy Policy</Link>.

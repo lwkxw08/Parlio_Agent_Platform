@@ -5,7 +5,7 @@ export const metadata: Metadata = { title: "Cookie policy" };
 
 export default function CookiesPage() {
   return (
-    <LegalPage title="Cookie policy" updated="September 2026 (draft)" current="/legal/cookies/">
+    <LegalPage title="Cookie policy" updated="September 2026" current="/legal/cookies/">
       <p>
         This policy explains how parliotec.com and the ParlioTec dashboard use cookies and similar technologies (including
         local storage), in line with the Privacy and Electronic Communications Regulations (PECR) and UK GDPR.

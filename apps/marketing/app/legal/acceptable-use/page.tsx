@@ -6,7 +6,7 @@ export const metadata: Metadata = { title: "Acceptable use policy" };
 
 export default function AupPage() {
   return (
-    <LegalPage title="Acceptable use policy" updated="September 2026 (draft)" current="/legal/acceptable-use/">
+    <LegalPage title="Acceptable use policy" updated="September 2026" current="/legal/acceptable-use/">
       <p>
         This policy forms part of our <Link href="/legal/terms/">Terms of Service</Link>. It sets out what you may not do with
         ParlioTec. Because the Service places calls and sends messages on your behalf, misuse can harm members of the public and

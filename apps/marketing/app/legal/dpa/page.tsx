@@ -6,7 +6,7 @@ export const metadata: Metadata = { title: "Data processing agreement" };
 
 export default function DpaPage() {
   return (
-    <LegalPage title="Data processing agreement" updated="September 2026 (draft)" current="/legal/dpa/">
+    <LegalPage title="Data processing agreement" updated="September 2026" current="/legal/dpa/">
       <p>
         This Data Processing Agreement (&ldquo;DPA&rdquo;) is incorporated into the <Link href="/legal/terms/">Terms of Service</Link>{" "}
         between <P>Legal entity name</P> (&ldquo;Processor&rdquo;, &ldquo;ParlioTec&rdquo;) and the Customer

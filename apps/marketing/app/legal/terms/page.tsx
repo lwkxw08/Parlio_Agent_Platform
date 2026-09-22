@@ -6,7 +6,7 @@ export const metadata: Metadata = { title: "Terms of service" };
 
 export default function TermsPage() {
   return (
-    <LegalPage title="Terms of service" updated="September 2026 (draft)" current="/legal/terms/">
+    <LegalPage title="Terms of service" updated="September 2026" current="/legal/terms/">
       <p>
         These Terms of Service (&ldquo;Terms&rdquo;) govern access to and use of the ParlioTec intelligent AI-powered business phone system,
         dashboard, APIs, telephone numbers and related services (the &ldquo;Service&rdquo;) provided by <P>Legal entity name</P>,
