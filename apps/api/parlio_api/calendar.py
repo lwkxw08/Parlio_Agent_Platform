@@ -945,7 +945,7 @@ class CalendarService:
                 connection_id=conn.id, provider=conn.provider, error="calendar not connected"
             )
         service = conn.rules.service(service_id)
-        if service_id and service is None:
+        if service_id and service is None and conn.rules.services:
             return AvailabilityResult(
                 connection_id=conn.id,
                 provider=conn.provider,
@@ -1049,7 +1049,7 @@ class CalendarService:
         assert self.scheduler is not None
         rules = conn.rules if conn else BookingRules()
         service = rules.service(service_id)
-        if service_id and service is None:
+        if service_id and service is None and rules.services:
             return AvailabilityResult(
                 connection_id=None,
                 provider=None,
@@ -1096,7 +1096,7 @@ class CalendarService:
         if be is None:
             raise ValueError(f"{conn.provider} backend not configured")
         service = conn.rules.service(req.service_id)
-        if req.service_id and service is None:
+        if req.service_id and service is None and conn.rules.services:
             raise ValueError(f"unknown service '{req.service_id}'")
         now = datetime.now(UTC)
         hours = await self.booking_hours(conn)
@@ -1245,7 +1245,7 @@ class CalendarService:
         assert self.scheduler is not None
         rules = conn.rules if conn else BookingRules()
         service = rules.service(req.service_id)
-        if req.service_id and service is None:
+        if req.service_id and service is None and rules.services:
             raise ValueError(f"unknown service '{req.service_id}'")
         minutes = service.minutes if service else (req.duration_minutes or sched.default_minutes)
         now = datetime.now(UTC)
