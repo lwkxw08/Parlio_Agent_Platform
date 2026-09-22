@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { LegalPage, P } from "@/components/legal";
+import { LegalPage } from "@/components/legal";
 
 export const metadata: Metadata = { title: "Cookie policy" };
 
@@ -17,7 +17,7 @@ export default function CookiesPage() {
         <thead><tr><th>Name</th><th>Set by</th><th>Purpose</th><th>Duration</th></tr></thead>
         <tbody>
           <tr><td>parliotec-demo-visitor</td><td>parliotec.com (local storage)</td><td>Anonymous identifier so the &ldquo;Hear it live&rdquo; demo can apply fair-use limits and reconnect a dropped call</td><td>Until cleared</td></tr>
-          <tr><td>Session / auth cookies</td><td>app.parliotec.com</td><td>Keep you signed in to the dashboard and protect against cross-site request forgery</td><td>Session / up to <P>30 days</P></td></tr>
+          <tr><td>Session / auth cookies</td><td>app.parliotec.com</td><td>Keep you signed in to the dashboard and protect against cross-site request forgery</td><td>Session / up to 30 days</td></tr>
           <tr><td>parlio-theme, sidebar state</td><td>app.parliotec.com (local storage)</td><td>Remember display preferences</td><td>Until cleared</td></tr>
           <tr><td>__cf_bm and similar</td><td>Cloudflare</td><td>Bot protection and security for the hosting network</td><td>Up to 30 minutes</td></tr>
         </tbody>
@@ -25,14 +25,14 @@ export default function CookiesPage() {
 
       <h2>2. Analytics (consent required)</h2>
       <p>
-        <P>If analytics is enabled:</P> we use <P>privacy-friendly analytics provider</P> to understand which pages are useful.
+        If we enable analytics in future, we will use a privacy-friendly, cookie-consent-gated provider to understand which pages are useful.
         These cookies are set only after you accept them in the banner and can be withdrawn at any time via
         &ldquo;Cookie settings&rdquo; in the footer. At launch the marketing site sets <b>no analytics or advertising cookies</b>.
       </p>
 
       <h2>3. Third-party embeds</h2>
       <p>
-        The &ldquo;Hear it live&rdquo; demo connects your browser to our real-time voice infrastructure (LiveKit, hosted by us)
+        The &ldquo;Hear it live&rdquo; demo connects your browser to our real-time voice infrastructure (hosted by us)
         only when you press the button. No third-party advertising or social-media trackers are embedded.
       </p>
 

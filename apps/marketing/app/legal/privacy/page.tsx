@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { LegalPage, P } from "@/components/legal";
+import { LegalPage } from "@/components/legal";
 
 export const metadata: Metadata = { title: "Privacy policy" };
 
@@ -35,10 +35,10 @@ export default function PrivacyPage() {
 
       <h2>3. How long we keep it</h2>
       <ul>
-        <li>Contact-form enquiries: <P>24 months</P> from last contact.</li>
-        <li>Demo recordings and transcripts: <P>30 days</P>, then deleted.</li>
-        <li>Account data: for the life of the account plus <P>30 days</P>; billing records 6 years (HMRC).</li>
-        <li>Server and security logs: <P>90 days</P>.</li>
+        <li>Contact-form enquiries: 24 months from last contact.</li>
+        <li>Demo recordings and transcripts: 30 days, then deleted.</li>
+        <li>Account data: for the life of the account plus 30 days; billing records 6 years (HMRC).</li>
+        <li>Server and security logs: 90 days.</li>
       </ul>
 
       <h2>4. Who we share it with</h2>

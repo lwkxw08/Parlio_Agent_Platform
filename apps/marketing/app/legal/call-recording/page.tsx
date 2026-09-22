@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { LegalPage, P } from "@/components/legal";
+import { LegalPage } from "@/components/legal";
 
 export const metadata: Metadata = { title: "Call recording notice" };
 
@@ -32,7 +32,7 @@ export default function CallRecordingPage() {
       </p>
       <h3>Demo calls on this website</h3>
       <p>
-        Calls to the &ldquo;Hear it live&rdquo; demo are recorded by ParlioTec, kept for <P>30 days</P> and used only to
+        Calls to the &ldquo;Hear it live&rdquo; demo are recorded by ParlioTec, kept for 30 days and used only to
         operate and improve the demo. Please do not share real personal details.
       </p>
 
@@ -47,7 +47,7 @@ export default function CallRecordingPage() {
         <li>Where you record the human leg of a transfer, ensure your staff are informed.</li>
       </ul>
       <p>
-        Suggested announcement: &ldquo;Thanks for calling <P>Business</P>. Calls are recorded for quality and to help us with your
+        Suggested announcement: &ldquo;Thanks for calling [your business name]. Calls are recorded for quality and to help us with your
         request. You&rsquo;re speaking with our virtual assistant &mdash; ask for a person at any time.&rdquo;
       </p>
       <p>Questions: privacy@parliotec.co.uk.</p>

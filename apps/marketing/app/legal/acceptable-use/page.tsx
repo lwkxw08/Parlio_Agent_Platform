@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { LegalPage, P } from "@/components/legal";
+import { LegalPage } from "@/components/legal";
 
 export const metadata: Metadata = { title: "Acceptable use policy" };
 
@@ -54,7 +54,7 @@ export default function AupPage() {
       <p>
         We may warn, suspend or terminate accounts that breach this policy, and remove content or configuration causing harm,
         without refund. We cooperate with carriers, regulators and law enforcement where required. Report abuse to{" "}
-        privacy@parliotec.co.uk.
+        legal@parliotec.co.uk.
       </p>
     </LegalPage>
   );

@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { LegalPage, P } from "@/components/legal";
+import { LegalPage } from "@/components/legal";
 
 export const metadata: Metadata = { title: "Data processing agreement" };
 
@@ -55,23 +55,21 @@ export default function DpaPage() {
 
       <h2>7. Sub-processors</h2>
       <p>
-        The Controller gives general authorisation to the sub-processors listed below. We will give at least 30 days&rsquo; notice
-        of additions or replacements by email or dashboard announcement; the Controller may object on reasonable grounds and,
-        if unresolved, terminate the affected service.
+        The Controller gives general authorisation to the categories of sub-processor below. The current named list, with
+        locations and transfer safeguards, is available on request from legal@parliotec.co.uk. We will give at least 30
+        days&rsquo; notice of additions or replacements by email or dashboard announcement; the Controller may object on
+        reasonable grounds and, if unresolved, terminate the affected service.
       </p>
       <table>
-        <thead><tr><th>Provider</th><th>Role</th><th>Location</th></tr></thead>
+        <thead><tr><th>Category</th><th>Role</th><th>Location</th></tr></thead>
         <tbody>
-          <tr><td><P>Cloud host, e.g. DigitalOcean / AWS</P></td><td>Compute, database, backups</td><td>London, UK</td></tr>
-          <tr><td>Cloudflare</td><td>Content delivery, website hosting, object storage (recordings)</td><td>UK / EU with UK jurisdiction setting</td></tr>
-          <tr><td>Telnyx</td><td>Telephony carrier, SMS, numbers</td><td>UK / EU</td></tr>
-          <tr><td>LiveKit (self-hosted)</td><td>Real-time media</td><td>UK</td></tr>
-          <tr><td>Deepgram</td><td>Speech-to-text</td><td><P>region</P></td></tr>
-          <tr><td>OpenAI / Anthropic / <P>as configured</P></td><td>Language model (no training on Customer Data)</td><td><P>region</P></td></tr>
-          <tr><td>Cartesia / ElevenLabs</td><td>Text-to-speech</td><td><P>region</P></td></tr>
-          <tr><td>Resend</td><td>Transactional email</td><td><P>region</P></td></tr>
-          <tr><td>Meta (WhatsApp Business)</td><td>WhatsApp channel, where enabled by Controller</td><td>Global</td></tr>
-          <tr><td>Stripe</td><td>Payments and billing</td><td>UK / EU / US</td></tr>
+          <tr><td>Cloud hosting</td><td>Compute, database, backups, real-time media</td><td>UK</td></tr>
+          <tr><td>Content delivery and security</td><td>Website hosting, DDoS protection, object storage (recordings)</td><td>UK / EU</td></tr>
+          <tr><td>Telephony carrier</td><td>Numbers, calls, SMS</td><td>UK / EU</td></tr>
+          <tr><td>Speech and language providers</td><td>Speech-to-text, language model, text-to-speech (no training on Customer Data)</td><td>UK / EU / US with UK IDTA or SCCs</td></tr>
+          <tr><td>Transactional email</td><td>Notifications and digests</td><td>UK / EU / US with UK IDTA or SCCs</td></tr>
+          <tr><td>Messaging channels</td><td>WhatsApp Business, where enabled by the Controller</td><td>Global</td></tr>
+          <tr><td>Payments</td><td>Billing and card processing</td><td>UK / EU / US</td></tr>
         </tbody>
       </table>
       <p>Integrations the Controller connects itself (Google, Microsoft, ServiceM8, CRMs) are independent controllers/processors under the Controller&rsquo;s own agreements with them.</p>
@@ -80,7 +78,7 @@ export default function DpaPage() {
       <p>Personal data is hosted in the UK. Where a sub-processor processes data outside the UK, transfers rely on UK adequacy regulations or the UK IDTA / Addendum with supplementary measures. Controllers requiring no international transfers may select UK-only providers on Enterprise.</p>
 
       <h2>9. Deletion and return</h2>
-      <p>The Controller can export data at any time. On termination the Controller has <P>30 days</P> to export, after which personal data is deleted from live systems within 30 days and from backups within <P>90 days</P>, save where retention is required by law.</p>
+      <p>The Controller can export data at any time. On termination the Controller has 30 days to export, after which personal data is deleted from live systems within 30 days and from backups within 90 days, save where retention is required by law.</p>
 
       <h2>10. Assistance</h2>
       <p>The Processor will assist the Controller with data subject requests (through built-in export/erasure tools), DPIAs, and consultations with the ICO, and will make available information needed to demonstrate compliance, including permitting audits on reasonable notice no more than once a year, or on a regulator&rsquo;s request.</p>
@@ -92,7 +90,7 @@ export default function DpaPage() {
       <p>Liability under this DPA is subject to the limits in the Terms. In case of conflict, this DPA prevails over the Terms with respect to data protection.</p>
 
       <h2>Signature</h2>
-      <p>This DPA is accepted electronically when the Controller accepts the Terms. A countersigned copy is available on request from privacy@parliotec.co.uk.</p>
+      <p>This DPA is accepted electronically when the Controller accepts the Terms. A countersigned copy is available on request from legal@parliotec.co.uk.</p>
     </LegalPage>
   );
 }
