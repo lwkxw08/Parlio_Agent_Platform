@@ -55,23 +55,21 @@ export default function DpaPage() {
 
       <h2>7. Sub-processors</h2>
       <p>
-        The Controller gives general authorisation to the sub-processors listed below. We will give at least 30 days&rsquo; notice
-        of additions or replacements by email or dashboard announcement; the Controller may object on reasonable grounds and,
-        if unresolved, terminate the affected service.
+        The Controller gives general authorisation to the categories of sub-processor below. The current named list, with
+        locations and transfer safeguards, is available on request from legal@parliotec.co.uk. We will give at least 30
+        days&rsquo; notice of additions or replacements by email or dashboard announcement; the Controller may object on
+        reasonable grounds and, if unresolved, terminate the affected service.
       </p>
       <table>
-        <thead><tr><th>Provider</th><th>Role</th><th>Location</th></tr></thead>
+        <thead><tr><th>Category</th><th>Role</th><th>Location</th></tr></thead>
         <tbody>
-          <tr><td>DigitalOcean</td><td>Compute, database, backups</td><td>London, UK</td></tr>
-          <tr><td>Cloudflare</td><td>Content delivery, website hosting, object storage (recordings)</td><td>UK / EU with UK jurisdiction setting</td></tr>
-          <tr><td>Telnyx</td><td>Telephony carrier, SMS, numbers</td><td>UK / EU</td></tr>
-          <tr><td>LiveKit (self-hosted)</td><td>Real-time media</td><td>UK</td></tr>
-          <tr><td>Deepgram</td><td>Speech-to-text</td><td>US (UK IDTA / SCCs)</td></tr>
-          <tr><td>OpenAI</td><td>Language model (no training on Customer Data)</td><td>US (UK IDTA / SCCs)</td></tr>
-          <tr><td>Cartesia / ElevenLabs</td><td>Text-to-speech</td><td>US (UK IDTA / SCCs)</td></tr>
-          <tr><td>Resend</td><td>Transactional email</td><td>US (UK IDTA / SCCs)</td></tr>
-          <tr><td>Meta (WhatsApp Business)</td><td>WhatsApp channel, where enabled by Controller</td><td>Global</td></tr>
-          <tr><td>Stripe</td><td>Payments and billing</td><td>UK / EU / US</td></tr>
+          <tr><td>Cloud hosting</td><td>Compute, database, backups, real-time media</td><td>UK</td></tr>
+          <tr><td>Content delivery and security</td><td>Website hosting, DDoS protection, object storage (recordings)</td><td>UK / EU</td></tr>
+          <tr><td>Telephony carrier</td><td>Numbers, calls, SMS</td><td>UK / EU</td></tr>
+          <tr><td>Speech and language providers</td><td>Speech-to-text, language model, text-to-speech (no training on Customer Data)</td><td>UK / EU / US with UK IDTA or SCCs</td></tr>
+          <tr><td>Transactional email</td><td>Notifications and digests</td><td>UK / EU / US with UK IDTA or SCCs</td></tr>
+          <tr><td>Messaging channels</td><td>WhatsApp Business, where enabled by the Controller</td><td>Global</td></tr>
+          <tr><td>Payments</td><td>Billing and card processing</td><td>UK / EU / US</td></tr>
         </tbody>
       </table>
       <p>Integrations the Controller connects itself (Google, Microsoft, ServiceM8, CRMs) are independent controllers/processors under the Controller&rsquo;s own agreements with them.</p>

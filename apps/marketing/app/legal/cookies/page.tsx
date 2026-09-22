@@ -32,7 +32,7 @@ export default function CookiesPage() {
 
       <h2>3. Third-party embeds</h2>
       <p>
-        The &ldquo;Hear it live&rdquo; demo connects your browser to our real-time voice infrastructure (LiveKit, hosted by us)
+        The &ldquo;Hear it live&rdquo; demo connects your browser to our real-time voice infrastructure (hosted by us)
         only when you press the button. No third-party advertising or social-media trackers are embedded.
       </p>
 
