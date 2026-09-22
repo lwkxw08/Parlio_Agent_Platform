@@ -27,13 +27,28 @@ function smoothPath(pts: [number, number][]): string {
 
 export type Series = { values: number[]; color?: string; label?: string; dashed?: boolean };
 
+/** Round axis: 1/2/2.5/5 × 10ⁿ steps, ~4 intervals, integer steps when the data is integer. */
+function niceTicks(max: number, integer: boolean): number[] {
+  const raw = Math.max(max, 1) / 4;
+  const mag = 10 ** Math.floor(Math.log10(raw));
+  let step = [1, 2, 2.5, 5, 10].map((m) => m * mag).find((s) => s >= raw && (!integer || Number.isInteger(s))) ?? 10 * mag;
+  if (integer) step = Math.max(1, Math.round(step));
+  const top = Math.max(step, Math.ceil(max / step) * step);
+  const ticks: number[] = [];
+  for (let v = 0; v <= top + step / 1e6; v += step) ticks.push(Math.round(v * 1e6) / 1e6);
+  return ticks;
+}
+
 export function AreaLine({ series, labels, height = 180, format = fmtNum, id = "al" }: { series: Series[]; labels: string[]; height?: number; format?: (v: number) => string; id?: string }) {
   const w = 600, h = height, padL = 34, padR = 12, padT = 12, padB = 24;
   const n = Math.max(2, ...series.map((s) => s.values.length));
-  const max = Math.max(1, ...series.flatMap((s) => s.values));
+  const all = series.flatMap((s) => s.values);
+  const ticks = niceTicks(Math.max(1, ...all), all.every(Number.isInteger));
+  const max = ticks[ticks.length - 1];
   const x = (i: number) => padL + (i * (w - padL - padR)) / (n - 1);
   const y = (v: number) => padT + (h - padT - padB) * (1 - v / max);
   const step = Math.max(1, Math.ceil(n / 8));
+  const showLabel = (i: number) => i === labels.length - 1 || (i % step === 0 && labels.length - 1 - i >= step / 2);
   return (
     <svg viewBox={`0 0 ${w} ${h}`} className="chart area" preserveAspectRatio="none" role="img">
       <defs>
@@ -44,10 +59,10 @@ export function AreaLine({ series, labels, height = 180, format = fmtNum, id = "
           </linearGradient>
         ))}
       </defs>
-      {[0, 0.25, 0.5, 0.75, 1].map((t) => (
+      {ticks.map((t) => (
         <g key={t}>
-          <line x1={padL} x2={w - padR} y1={y(max * t)} y2={y(max * t)} stroke="var(--line)" strokeDasharray={t ? "3 4" : undefined} />
-          <text x={padL - 6} y={y(max * t) + 3.5} fontSize="9.5" fill="var(--muted)" textAnchor="end">{format(Math.round(max * t * 10) / 10)}</text>
+          <line x1={padL} x2={w - padR} y1={y(t)} y2={y(t)} stroke="var(--line)" strokeDasharray={t ? "3 4" : undefined} />
+          <text x={padL - 6} y={y(t) + 3.5} fontSize="9.5" fill="var(--muted)" textAnchor="end">{format(t)}</text>
         </g>
       ))}
       {series.map((s, k) => {
@@ -66,7 +81,7 @@ export function AreaLine({ series, labels, height = 180, format = fmtNum, id = "
           </g>
         );
       })}
-      {labels.map((l, i) => (i % step === 0 || i === labels.length - 1 ? <text key={i} x={x(i)} y={h - 7} fontSize="9.5" fill="var(--muted)" textAnchor={i === 0 ? "start" : i === labels.length - 1 ? "end" : "middle"}>{l}</text> : null))}
+      {labels.map((l, i) => (showLabel(i) ? <text key={i} x={x(i)} y={h - 7} fontSize="9.5" fill="var(--muted)" textAnchor={i === 0 ? "start" : i === labels.length - 1 ? "end" : "middle"}>{l}</text> : null))}
     </svg>
   );
 }

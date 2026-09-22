@@ -147,8 +147,15 @@ function DemandTab({ d }: { d: InsightsReport }) {
             series={[{ values: fc.map((f) => f.high), color: colorAt(1), label: "High", dashed: true }, { values: fc.map((f) => f.expected_calls), color: colorAt(0), label: "Expected" }]}
             labels={fc.map((f) => `${f.weekday} ${f.day.slice(8)}`)}
           />
-          <div className="small muted" style={{ display: "flex", gap: "1rem", flexWrap: "wrap", marginTop: 4 }}>
-            {fc.map((f) => <span key={f.day}><b>{f.weekday}</b> {n1(f.expected_calls)}{f.busiest_hours.length ? ` · busy ${f.busiest_hours.map((h) => `${String(h).padStart(2, "0")}:00`).join(", ")}` : ""}</span>)}
+          <div className="forecast-days" style={{ gridTemplateColumns: `repeat(${Math.max(1, fc.length)}, 1fr)` }}>
+            {fc.map((f) => (
+              <div key={f.day}>
+                <div className="label">{f.weekday} {f.day.slice(8)}</div>
+                <div className="value">{Math.round(f.expected_calls)}</div>
+                <div className="small muted">{Math.round(f.low)}–{Math.round(f.high)} calls</div>
+                <div className="small muted">{f.busiest_hours.length ? `Busy ${f.busiest_hours.slice(0, 2).map((h) => `${h}:00`).join(", ")}` : "Quiet"}</div>
+              </div>
+            ))}
           </div>
         </Card>
         <Card title="Staffing guide" sub={`Busiest and quietest hours · calls in the last ${d.days} days`}>
