@@ -444,7 +444,10 @@ class GoogleCalendarBackend:
     AUTH = "https://accounts.google.com/o/oauth2/v2/auth"
     TOKEN = "https://oauth2.googleapis.com/token"
     API = "https://www.googleapis.com/calendar/v3"
-    SCOPES = "https://www.googleapis.com/auth/calendar openid email"
+    SCOPES = (
+        "https://www.googleapis.com/auth/calendar.readonly "
+        "https://www.googleapis.com/auth/calendar.events openid email"
+    )
 
     def __init__(
         self,

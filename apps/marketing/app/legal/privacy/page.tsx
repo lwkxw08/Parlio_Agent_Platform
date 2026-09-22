@@ -73,6 +73,40 @@ export default function PrivacyPage() {
         audit trail.
       </p>
 
+      <h2 id="calendar">7a. Google and Microsoft calendar data</h2>
+      <p>
+        Customers can connect a Google Calendar or Microsoft 365 / Outlook calendar so that ParlioTec can offer appointment
+        times to callers and book them. When you connect a calendar we request the minimum access needed:
+      </p>
+      <ul>
+        <li><b>Google</b> &mdash; the <code>calendar.readonly</code> and <code>calendar.events</code> scopes (Google Calendar API), together with your email address to label the connection.</li>
+        <li><b>Microsoft</b> &mdash; the <code>Calendars.ReadWrite</code> and <code>User.Read</code> permissions (Microsoft Graph).</li>
+      </ul>
+      <p>
+        <b>What we access:</b> free/busy times on the calendar you choose, within the booking window you configure, and the
+        events ParlioTec itself creates. <b>What we do with it:</b> calculate available slots, create, update or cancel
+        appointment events when a caller books, and show those bookings in your dashboard. Event titles and descriptions
+        of your other appointments are not stored; only start and end times are read to determine availability.
+        <b>What we store:</b> an encrypted OAuth refresh token, the connected account email, the calendar identifier you
+        choose, and the events we created (their IDs, times and the caller details you asked us to capture).
+      </p>
+      <p>
+        We do not share calendar data with third parties except the sub-processors needed to run the Service, we do not
+        sell it, we do not use it for advertising, and we do not use it to train general AI or machine-learning models.
+        Humans at ParlioTec read calendar data only with your permission for support, to comply with law, or for security
+        investigations. Our use of information received from Google APIs adheres to the{" "}
+        <a href="https://developers.google.com/terms/api-services-user-data-policy" target="_blank" rel="noreferrer">
+          Google API Services User Data Policy
+        </a>
+        , including the Limited Use requirements.
+      </p>
+      <p>
+        You can disconnect a calendar at any time from Integrations &rarr; Calendar in the dashboard, or revoke access at{" "}
+        <a href="https://myaccount.google.com/permissions" target="_blank" rel="noreferrer">myaccount.google.com/permissions</a>{" "}
+        or your Microsoft account settings. Disconnecting deletes the stored token immediately; created events remain in
+        your calendar. Calendar data is deleted with the rest of your account data under section 3.
+      </p>
+
       <h2>8. Cookies</h2>
       <p>See our <Link href="/legal/cookies/">Cookie Policy</Link>.</p>
 
