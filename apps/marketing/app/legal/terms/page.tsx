@@ -101,7 +101,7 @@ export default function TermsPage() {
         8.1 We aim for high availability and publish live status at our status page. Planned maintenance will be notified in
         advance where practicable. Service-level commitments and credits, where applicable, are set out in your plan or order.
       </p>
-      <p>8.2 Support is provided through the dashboard help and support desk during <P>support hours</P>; Priority support is included on eligible plans.</p>
+      <p>8.2 Support is provided through the dashboard help and support desk — we respond within 48 hours; Priority support is included on eligible plans.</p>
 
       <h2>9. Intellectual property</h2>
       <p>
@@ -146,7 +146,7 @@ export default function TermsPage() {
       <p>
         These Terms are governed by the laws of England and Wales and the courts of England and Wales have exclusive
         jurisdiction. They form the entire agreement between us regarding the Service. Neither party may assign without
-        consent, except to an affiliate or successor. Notices to us: privacy@parliotec.co.uk.
+        consent, except to an affiliate or successor. Notices to us: legal@parliotec.co.uk.
       </p>
     </LegalPage>
   );
