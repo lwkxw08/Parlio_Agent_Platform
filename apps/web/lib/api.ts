@@ -466,6 +466,7 @@ export type Me = {
   view_as: string | null;
   mfa_verified: boolean;
   organisations: Record<string, string>;
+  theme: "light" | "dark" | null;
 };
 
 export type WebsiteAnalysis = {
@@ -911,6 +912,7 @@ const qs = (params: Record<string, string | number | undefined | null>) => {
 
 export const fetchHealth = () => get<{ status: string; env: string }>("/healthz");
 export const fetchMe = () => request<Me>("/v1/me");
+export const saveTheme = (theme: "light" | "dark") => patch<{ theme: string | null }>("/v1/me/preferences", { theme });
 /** UK numbers in national form (+447930934098 -> 07930 934098, +442046206823 -> 020 4620 6823). */
 export function phone(e164: string | null | undefined): string {
   if (!e164) return "—";

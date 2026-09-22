@@ -14,8 +14,12 @@ export const metadata: Metadata = {
 
 export const dynamic = "force-dynamic";
 
-// Applies the saved theme before first paint to avoid a light/dark flash.
-const THEME_INIT = `try{var t=localStorage.getItem("parlio-theme");if(t==="dark"||t==="light")document.documentElement.dataset.theme=t}catch(e){}`;
+// Applies the saved theme before first paint to avoid a light/dark flash. The account preference
+// (rendered server-side) wins over the browser's remembered value.
+const themeInit = (account: string | null) =>
+  account
+    ? `try{localStorage.setItem("parlio-theme",${JSON.stringify(account)})}catch(e){}`
+    : `try{var t=localStorage.getItem("parlio-theme");if(t==="dark"||t==="light")document.documentElement.dataset.theme=t}catch(e){}`;
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   const [me, status] = await Promise.all([fetchMe(), fetchPublicStatus()]);
@@ -32,10 +36,11 @@ export default async function RootLayout({ children }: { children: React.ReactNo
     : me.status === 401
       ? { kind: "signin" }
       : { kind: "offline" };
+  const theme = me.ok ? me.data.theme : null;
   return (
-    <html lang="en" data-theme="light" suppressHydrationWarning>
+    <html lang="en" data-theme={theme ?? "light"} suppressHydrationWarning>
       <head>
-        <script dangerouslySetInnerHTML={{ __html: THEME_INIT }} />
+        <script dangerouslySetInnerHTML={{ __html: themeInit(theme) }} />
       </head>
       <body>
         <Sidebar account={account} />

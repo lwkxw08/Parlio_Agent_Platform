@@ -4,6 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
+import { saveTheme } from "@/lib/api";
 import { ActivityAlerts, BADGE_FOR_HREF, useActivity } from "./activity";
 
 type Item = { href: string; label: string; icon: React.ReactNode };
@@ -120,6 +121,7 @@ function ThemeToggle() {
     document.documentElement.dataset.theme = next;
     localStorage.setItem(THEME_KEY, next);
     setTheme(next);
+    void saveTheme(next);
   };
   return (
     <button type="button" className="nav-item" onClick={toggle} title={theme === "dark" ? "Switch to day mode" : "Switch to night mode"}>
