@@ -66,6 +66,11 @@ a.card.stat:hover { border-color: var(--accent); }
 .card .value.ok { color: var(--ok-fg); }
 .card .value.warn { color: var(--warn-fg); }
 .card .value.bad { color: var(--bad-fg); }
+.forecast-days { display: grid; gap: 0.5rem; margin-top: 0.75rem; }
+.forecast-days > div { border-top: 2px solid var(--line); padding-top: 0.5rem; min-width: 0; }
+.forecast-days .label { font-size: 0.72rem; white-space: nowrap; }
+.forecast-days .value { font-size: 1.25rem; line-height: 1.2; }
+.forecast-days .small { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 table { width: 100%; border-collapse: collapse; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; box-shadow: var(--shadow); }
 th, td { text-align: left; padding: 0.6rem 0.8rem; border-bottom: 1px solid var(--line); font-size: 0.9rem; }
 th { color: var(--muted); font-weight: 500; }
