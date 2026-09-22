@@ -1,8 +1,9 @@
 import type { Metadata } from "next";
+import { pageMeta } from "@/lib/seo";
 import Link from "next/link";
 import { LegalPage } from "@/components/legal";
 
-export const metadata: Metadata = { title: "Call recording notice" };
+export const metadata: Metadata = pageMeta("/legal/call-recording/", "Call recording notice", "How ParlioTec records calls, the announcement callers hear, and sample wording customers can use.");
 
 export default function CallRecordingPage() {
   return (

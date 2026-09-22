@@ -1,12 +1,12 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { CtaBand, PageHero } from "@/components/blocks";
+import { JsonLd } from "@/components/json-ld";
 import { Pricing } from "@/components/pricing";
+import { fetchSiteInfo } from "@/lib/api";
+import { breadcrumbLd, faqLd, pageMeta, softwareLd } from "@/lib/seo";
 
-export const metadata: Metadata = {
-  title: "Pricing",
-  description: "Simple monthly plans for UK businesses: AI minutes, SMS and numbers included, team scheduling from Growth, scheduling-tool integration on Scale, Enterprise for UK-sovereign deployment.",
-};
+export const metadata: Metadata = pageMeta("/pricing/", "Pricing for the AI business phone system", "Simple monthly plans for UK businesses with AI minutes, SMS and numbers included, free trial on every plan, team scheduling from Growth and Enterprise for UK-sovereign deployment.");
 
 const FAQ = [
   ["What counts as an AI minute?", "Time the assistant spends on a phone call or a browser click-to-talk conversation, rounded up per call. Text channels are metered separately as messages and each plan includes a bundle."],
@@ -18,9 +18,12 @@ const FAQ = [
   ["Where is my data stored?", "In the UK. Enterprise customers can have a dedicated UK-sovereign deployment. See the Trust page and our DPA."],
 ] as const;
 
-export default function PricingPage() {
+export default async function PricingPage() {
+  const site = await fetchSiteInfo("build");
+  const offers = (site?.plans ?? []).filter((p) => !p.enterprise && p.monthly_pence > 0).map((p) => ({ name: p.name, monthly_pence: p.monthly_pence }));
   return (
     <>
+      <JsonLd data={[softwareLd(offers), faqLd(FAQ), breadcrumbLd([["Home", "/"], ["Pricing", "/pricing/"]])]} />
       <PageHero
         eyebrow="Pricing"
         title="Plans that grow with your team"

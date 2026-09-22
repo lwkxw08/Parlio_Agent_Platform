@@ -2,15 +2,15 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { CtaBand } from "@/components/blocks";
 import { HearItLive } from "@/components/demo";
+import { JsonLd } from "@/components/json-ld";
+import { breadcrumbLd, pageMeta } from "@/lib/seo";
 
-export const metadata: Metadata = {
-  title: "Hear it live",
-  description: "Talk to a real ParlioTec AI assistant in your browser — no phone, no sign-up. Ask it to book a boiler service and hear how it handles emergencies.",
-};
+export const metadata: Metadata = pageMeta("/demo/", "Hear the AI business phone system live", "Listen to a real ParlioTec call or talk to the assistant in your browser: no phone, no sign-up. Hear how it answers, books an appointment and handles an emergency.");
 
 export default function DemoPage() {
   return (
     <>
+      <JsonLd data={breadcrumbLd([["Home", "/"], ["Hear it live", "/demo/"]])} />
       <section className="page-hero">
         <div className="wrap">
           <div className="eyebrow">Hear it live</div>

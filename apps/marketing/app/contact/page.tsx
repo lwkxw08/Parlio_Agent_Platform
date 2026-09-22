@@ -2,15 +2,15 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { PageHero } from "@/components/blocks";
 import { ContactForm } from "@/components/contact-form";
+import { JsonLd } from "@/components/json-ld";
+import { breadcrumbLd, pageMeta } from "@/lib/seo";
 
-export const metadata: Metadata = {
-  title: "Contact",
-  description: "Book a personal demo, ask about plans, or talk to us about agency and enterprise deployments.",
-};
+export const metadata: Metadata = pageMeta("/contact/", "Contact ParlioTec", "Book a personal demo of the ParlioTec AI business phone system, ask about plans, or talk to us about agency, reseller and enterprise deployments.");
 
 export default function ContactPage() {
   return (
     <>
+      <JsonLd data={breadcrumbLd([["Home", "/"], ["Contact", "/contact/"]])} />
       <PageHero
         eyebrow="Contact"
         title="Talk to a person"

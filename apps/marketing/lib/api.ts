@@ -35,9 +35,10 @@ export type VoiceSession = {
   simulated: boolean;
 };
 
-export async function fetchSiteInfo(): Promise<SiteInfo | null> {
+/** `build` = fetched once at export time (server components); default = always fresh (client). */
+export async function fetchSiteInfo(mode: "live" | "build" = "live"): Promise<SiteInfo | null> {
   try {
-    const r = await fetch(`${API_URL}/v1/public/site`, { cache: "no-store" });
+    const r = await fetch(`${API_URL}/v1/public/site`, mode === "build" ? { cache: "force-cache" } : { cache: "no-store" });
     if (!r.ok) return null;
     return (await r.json()) as SiteInfo;
   } catch {
