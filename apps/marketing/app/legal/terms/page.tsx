@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { LegalPage, P } from "@/components/legal";
+import { LegalPage } from "@/components/legal";
 
 export const metadata: Metadata = { title: "Terms of service" };
 
@@ -46,7 +46,7 @@ export default function TermsPage() {
       <h2>3. Telephone numbers and telephony</h2>
       <p>
         3.1 Numbers we provide remain allocated to our carrier partners and are licensed to you for the duration of your
-        subscription. On termination we may reclaim numbers after <P>30</P> days; porting out is supported where the carrier
+        subscription. On termination we may reclaim numbers after 30 days; porting out is supported where the carrier
         permits.
       </p>
       <p>
@@ -64,7 +64,7 @@ export default function TermsPage() {
         in advance for the plan and monthly in arrears for usage above the included allowances (minutes, messages, numbers).
       </p>
       <p>
-        4.2 Payment is by card or direct debit through our payment provider. Invoices not paid within <P>14</P> days may result
+        4.2 Payment is by card or direct debit through our payment provider. Invoices not paid within 14 days may result
         in suspension. We may change fees with at least 30 days&rsquo; notice; changes apply from your next billing period.
       </p>
       <p>4.3 Usage caps and feature entitlements for each plan are described in the dashboard and may be adjusted with notice.</p>
@@ -129,14 +129,14 @@ export default function TermsPage() {
       <p>
         12.2 Subject to 12.1, neither party is liable for indirect or consequential loss, loss of profit, revenue, business or
         goodwill, and each party&rsquo;s total liability in any 12-month period is limited to the fees paid by you in that
-        period (or &pound;<P>amount</P> if greater).
+        period (or &pound;1,000 if greater).
       </p>
 
       <h2>13. Term and termination</h2>
       <p>
         13.1 Subscriptions renew monthly until cancelled from the dashboard; cancellation takes effect at the end of the current
         period. 13.2 Either party may terminate for material breach not remedied within 30 days of notice. 13.3 On termination
-        you may export Customer Data for <P>30</P> days, after which it is deleted in line with our retention schedule.
+        you may export Customer Data for 30 days, after which it is deleted in line with our retention schedule.
       </p>
 
       <h2>14. Changes to these Terms</h2>
