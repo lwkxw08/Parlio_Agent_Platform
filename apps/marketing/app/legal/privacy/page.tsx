@@ -10,7 +10,7 @@ export default function PrivacyPage() {
       <p>
         This policy explains how KMDR Holdings Ltd (&ldquo;ParlioTec&rdquo;, &ldquo;we&rdquo;) collects and uses personal
         data. We are registered with the Information Commissioner&rsquo;s Office (ICO) under registration number <strong>00015465911</strong>.
-        Contact: <P>privacy@parliotec.com</P>, 124-128 City Road, London, England, EC1V 2NX.
+        Contact: privacy@parliotec.co.uk, 124-128 City Road, London, England, EC1V 2NX.
       </p>
 
       <h2>1. Who this policy covers</h2>
@@ -58,7 +58,7 @@ export default function PrivacyPage() {
       <h2>6. Your rights</h2>
       <p>
         You can ask for access to, correction or erasure of your data, object to or restrict processing, request portability,
-        and withdraw consent at any time by emailing <P>privacy@parliotec.com</P>. You can complain to the ICO
+        and withdraw consent at any time by emailing privacy@parliotec.co.uk. You can complain to the ICO
         (ico.org.uk, 0303 123 1113), but we would appreciate the chance to resolve concerns first.
       </p>
 
@@ -145,7 +145,7 @@ export default function PrivacyPage() {
         <a href="https://myaccount.google.com/permissions" target="_blank" rel="noreferrer">myaccount.google.com/permissions</a>.
         Events ParlioTec created remain in the customer&rsquo;s Google Calendar unless they delete them. To have all stored
         booking records deleted, customers can use the account-deletion option in Settings &rarr; Compliance or email{" "}
-        <P>privacy@parliotec.com</P>; we complete deletion within 30 days.
+        privacy@parliotec.co.uk; we complete deletion within 30 days.
       </p>
 
       <h2 id="microsoft">9. Microsoft 365 / Outlook calendar data</h2>

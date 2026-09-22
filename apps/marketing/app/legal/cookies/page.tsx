@@ -43,7 +43,7 @@ export default function CookiesPage() {
       </p>
 
       <h2>5. Contact</h2>
-      <p>Questions: <P>privacy@parliotec.com</P>.</p>
+      <p>Questions: privacy@parliotec.co.uk.</p>
     </LegalPage>
   );
 }

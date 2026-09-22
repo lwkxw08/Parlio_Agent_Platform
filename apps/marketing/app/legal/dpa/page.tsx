@@ -92,7 +92,7 @@ export default function DpaPage() {
       <p>Liability under this DPA is subject to the limits in the Terms. In case of conflict, this DPA prevails over the Terms with respect to data protection.</p>
 
       <h2>Signature</h2>
-      <p>This DPA is accepted electronically when the Controller accepts the Terms. A countersigned copy is available on request from <P>legal@parliotec.com</P>.</p>
+      <p>This DPA is accepted electronically when the Controller accepts the Terms. A countersigned copy is available on request from privacy@parliotec.co.uk.</p>
     </LegalPage>
   );
 }
