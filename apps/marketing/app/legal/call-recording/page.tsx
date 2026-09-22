@@ -6,7 +6,7 @@ export const metadata: Metadata = { title: "Call recording notice" };
 
 export default function CallRecordingPage() {
   return (
-    <LegalPage title="Call recording & AI assistant notice" updated="September 2026 (draft)" current="/legal/call-recording/">
+    <LegalPage title="Call recording & AI assistant notice" updated="September 2026" current="/legal/call-recording/">
       <p>
         This notice explains what happens when you speak to a business that uses ParlioTec, and what businesses using ParlioTec
         must tell their callers. It supplements our <Link href="/legal/privacy/">Privacy Policy</Link>.
@@ -50,7 +50,7 @@ export default function CallRecordingPage() {
         Suggested announcement: &ldquo;Thanks for calling <P>Business</P>. Calls are recorded for quality and to help us with your
         request. You&rsquo;re speaking with our virtual assistant &mdash; ask for a person at any time.&rdquo;
       </p>
-      <p>Questions: <P>privacy@parliotec.com</P>.</p>
+      <p>Questions: privacy@parliotec.co.uk.</p>
     </LegalPage>
   );
 }

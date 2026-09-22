@@ -32,8 +32,8 @@ export default function ContactPage() {
               </ul>
               <div className="notice" style={{ marginTop: "1.6rem" }}>
                 <b>Company details</b><br />
-                <span className="placeholder">[Legal entity name]</span>, registered in England &amp; Wales, company no.{" "}
-                <span className="placeholder">[number]</span>. Registered office: <span className="placeholder">[address]</span>.
+                KMDR Holdings Ltd, registered in England &amp; Wales, company no.{" "}
+                15822421. Registered office: 124-128 City Road, London, England, EC1V 2NX.
                 ICO registration: <strong>00015465911</strong>.
               </div>
             </div>

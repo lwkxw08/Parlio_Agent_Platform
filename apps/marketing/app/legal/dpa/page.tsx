@@ -6,10 +6,10 @@ export const metadata: Metadata = { title: "Data processing agreement" };
 
 export default function DpaPage() {
   return (
-    <LegalPage title="Data processing agreement" updated="September 2026 (draft)" current="/legal/dpa/">
+    <LegalPage title="Data processing agreement" updated="September 2026" current="/legal/dpa/">
       <p>
         This Data Processing Agreement (&ldquo;DPA&rdquo;) is incorporated into the <Link href="/legal/terms/">Terms of Service</Link>{" "}
-        between <P>Legal entity name</P> (&ldquo;Processor&rdquo;, &ldquo;ParlioTec&rdquo;) and the Customer
+        between KMDR Holdings Ltd (&ldquo;Processor&rdquo;, &ldquo;ParlioTec&rdquo;) and the Customer
         (&ldquo;Controller&rdquo;), and reflects Article 28 of the UK GDPR and the Data Protection Act 2018.
       </p>
 
@@ -92,7 +92,7 @@ export default function DpaPage() {
       <p>Liability under this DPA is subject to the limits in the Terms. In case of conflict, this DPA prevails over the Terms with respect to data protection.</p>
 
       <h2>Signature</h2>
-      <p>This DPA is accepted electronically when the Controller accepts the Terms. A countersigned copy is available on request from <P>legal@parliotec.com</P>.</p>
+      <p>This DPA is accepted electronically when the Controller accepts the Terms. A countersigned copy is available on request from privacy@parliotec.co.uk.</p>
     </LegalPage>
   );
 }

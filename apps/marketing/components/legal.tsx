@@ -33,11 +33,6 @@ export function LegalPage({ title, updated, children, current }: { title: string
             ))}
           </nav>
           <article className="legal">
-            <div className="notice">
-              <b>Draft for review.</b> This document has been prepared as a launch-ready draft and must be reviewed by a
-              qualified UK solicitor before publication. Items shown <span className="placeholder">[like this]</span> must
-              be completed with the company&apos;s details.
-            </div>
             {children}
           </article>
         </div>
