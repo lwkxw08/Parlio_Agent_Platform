@@ -72,4 +72,8 @@ roll_worker() {
 }
 roll_worker
 
+# Every deploy leaves a ~2GB image pair behind; without this the disk fills within weeks.
+docker image prune -af --filter "until=72h" >/dev/null 2>&1 || true
+docker builder prune -af >/dev/null 2>&1 || true
+
 dc ps

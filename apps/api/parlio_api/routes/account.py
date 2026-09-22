@@ -11,6 +11,7 @@ from uuid import uuid4
 from fastapi import APIRouter, HTTPException, Request, status
 from pydantic import BaseModel, Field
 
+from parlio_api.admin import PLATFORM_TENANT
 from parlio_api.auth import UserDep
 from parlio_api.billing import PLAN_BY_ID
 from parlio_api.contacts import ContactRules
@@ -31,13 +32,15 @@ from parlio_api.onboarding import (
     config_patch_from_analysis,
     search_places,
 )
-from parlio_api.store import Contact, ContactUpdate, Member, TenantDoc
+from parlio_api.store import CallStore, Contact, ContactUpdate, Member, TenantDoc
 from parlio_voice.models import AssistantConfig, BusinessInfo, Faq, Schedule
 
 router = APIRouter(prefix="/v1", tags=["account"])
 public = APIRouter(prefix="/v1/public", tags=["public"])
 
 ROLES = ("owner", "admin", "member", "viewer")
+PREFS_KIND = "user_prefs"
+THEMES = ("light", "dark")
 
 
 class Me(BaseModel):
@@ -51,10 +54,21 @@ class Me(BaseModel):
     view_as: str | None = None
     mfa_verified: bool = False
     organisations: dict[str, str] = {}
+    theme: str | None = None
+
+
+class Preferences(BaseModel):
+    theme: str | None = None
+
+
+async def _prefs(store: CallStore, user_id: str) -> Preferences:
+    doc = await store.get_doc(PREFS_KIND, user_id)
+    return Preferences.model_validate(doc.data) if doc else Preferences()
 
 
 @router.get("/me", response_model=Me)
 async def me(user: UserDep, settings: SettingsDep, store: StoreDep) -> Me:
+    prefs = await _prefs(store, user.user_id)
     names: dict[str, str] = {}
     for m in user.tenant_memberships:
         if m.tenant_id in names:
@@ -72,7 +86,23 @@ async def me(user: UserDep, settings: SettingsDep, store: StoreDep) -> Me:
         view_as=user.view_as,
         mfa_verified=user.mfa_verified,
         organisations=names,
+        theme=prefs.theme,
     )
+
+
+@router.patch("/me/preferences", response_model=Preferences)
+async def update_preferences(body: Preferences, user: UserDep, store: StoreDep) -> Preferences:
+    """Per-user dashboard preferences (theme) that follow the account across browsers."""
+    if body.theme is not None and body.theme not in THEMES:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "invalid theme")
+    prefs = await _prefs(store, user.user_id)
+    merged = prefs.model_copy(update=body.model_dump(exclude_unset=True))
+    await store.put_doc(
+        TenantDoc(
+            kind=PREFS_KIND, id=user.user_id, tenant_id=PLATFORM_TENANT, data=merged.model_dump()
+        )
+    )
+    return merged
 
 
 # -- members -----------------------------------------------------------------------------------

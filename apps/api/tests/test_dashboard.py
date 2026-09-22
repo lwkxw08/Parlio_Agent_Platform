@@ -68,6 +68,14 @@ async def test_dev_mode_me_is_seeded_owner(client: AsyncClient) -> None:
     assert body["memberships"][0]["role"] == "owner"
 
 
+async def test_theme_preference_follows_account(client: AsyncClient) -> None:
+    assert (await client.get("/v1/me")).json()["theme"] is None
+    r = await client.patch("/v1/me/preferences", json={"theme": "dark"})
+    assert r.status_code == 200 and r.json()["theme"] == "dark"
+    assert (await client.get("/v1/me")).json()["theme"] == "dark"
+    assert (await client.patch("/v1/me/preferences", json={"theme": "sepia"})).status_code == 400
+
+
 @pytest.mark.parametrize("backend", ["memory"], indirect=True)
 async def test_supabase_mode_requires_valid_token(
     client: AsyncClient, monkeypatch: pytest.MonkeyPatch
