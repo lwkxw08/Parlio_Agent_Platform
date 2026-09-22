@@ -1,8 +1,9 @@
 import type { Metadata } from "next";
+import { pageMeta } from "@/lib/seo";
 import Link from "next/link";
 import { LegalPage } from "@/components/legal";
 
-export const metadata: Metadata = { title: "Data processing agreement" };
+export const metadata: Metadata = pageMeta("/legal/dpa/", "Data processing agreement", "ParlioTec's UK GDPR data processing agreement for customers: roles, security measures, sub-processor categories and international transfers.");
 
 export default function DpaPage() {
   return (

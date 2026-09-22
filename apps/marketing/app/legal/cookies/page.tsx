@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
+import { pageMeta } from "@/lib/seo";
 import { LegalPage } from "@/components/legal";
 
-export const metadata: Metadata = { title: "Cookie policy" };
+export const metadata: Metadata = pageMeta("/legal/cookies/", "Cookie policy", "The cookies ParlioTec's website and dashboard use, what they do and how long they last.");
 
 export default function CookiesPage() {
   return (

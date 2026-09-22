@@ -1,11 +1,10 @@
 import type { Metadata } from "next";
 import { CtaBand, FeatureGrid, PageHero } from "@/components/blocks";
 import { PILLARS } from "@/lib/content";
+import { JsonLd } from "@/components/json-ld";
+import { breadcrumbLd, pageMeta } from "@/lib/seo";
 
-export const metadata: Metadata = {
-  title: "Platform",
-  description: "Everything ParlioTec does: AI phone answering, rules-based booking, team scheduling, scheduling-tool integration, warm transfers, omnichannel inbox, analytics, QA and UK-first compliance.",
-};
+export const metadata: Metadata = pageMeta("/features/", "AI phone answering & booking platform features", "Everything ParlioTec does: AI phone answering, rules-based appointment booking, team scheduling, warm transfers to humans, SMS/WhatsApp/web chat inbox, analytics, QA and UK-first compliance.");
 
 const GROUPS: { id: string; title: string; blurb: string; idx: number[] }[] = [
   { id: "answer", title: "Answer & resolve", blurb: "The conversation itself — voice, understanding, transfers and follow-through.", idx: [0, 4, 5, 6, 7] },
@@ -17,6 +16,7 @@ const GROUPS: { id: string; title: string; blurb: string; idx: number[] }[] = [
 export default function FeaturesPage() {
   return (
     <>
+      <JsonLd data={breadcrumbLd([["Home", "/"], ["Platform", "/features/"]])} />
       <PageHero
         eyebrow="Platform"
         title="One assistant. The whole front office."

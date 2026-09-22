@@ -1,8 +1,9 @@
 import type { Metadata } from "next";
+import { pageMeta } from "@/lib/seo";
 import Link from "next/link";
 import { LegalPage } from "@/components/legal";
 
-export const metadata: Metadata = { title: "Privacy policy" };
+export const metadata: Metadata = pageMeta("/legal/privacy/", "Privacy policy", "How KMDR Holdings Ltd (ParlioTec) collects, uses and protects personal data, including caller data, Google and Microsoft calendar data and your rights under UK GDPR.");
 
 export default function PrivacyPage() {
   return (

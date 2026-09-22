@@ -1,8 +1,9 @@
 import type { Metadata } from "next";
+import { pageMeta } from "@/lib/seo";
 import Link from "next/link";
 import { LegalPage } from "@/components/legal";
 
-export const metadata: Metadata = { title: "Terms of service" };
+export const metadata: Metadata = pageMeta("/legal/terms/", "Terms of service", "The terms governing use of the ParlioTec AI business phone system: plans, billing, numbers, acceptable use, liability and termination.");
 
 export default function TermsPage() {
   return (

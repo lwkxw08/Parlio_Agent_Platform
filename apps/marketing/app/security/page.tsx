@@ -1,11 +1,10 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { CtaBand, PageHero } from "@/components/blocks";
+import { JsonLd } from "@/components/json-ld";
+import { breadcrumbLd, pageMeta } from "@/lib/seo";
 
-export const metadata: Metadata = {
-  title: "Trust & security",
-  description: "How ParlioTec handles caller data: UK hosting, consent, redaction, retention, GDPR rights, access control and audit.",
-};
+export const metadata: Metadata = pageMeta("/security/", "Trust & security", "How ParlioTec handles caller data: UK hosting, call-recording consent, redaction, retention, GDPR rights, access control and audit.");
 
 const ITEMS = [
   ["UK hosting", "Voice processing, the API, database and recordings run in UK regions. Enterprise customers can take a dedicated, UK-sovereign deployment with UK-only AI providers."],
@@ -23,6 +22,7 @@ const ITEMS = [
 export default function SecurityPage() {
   return (
     <>
+      <JsonLd data={breadcrumbLd([["Home", "/"], ["Trust & security", "/security/"]])} />
       <PageHero
         eyebrow="Trust & security"
         title="Your callers trust you. We take that seriously."

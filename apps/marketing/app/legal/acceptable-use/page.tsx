@@ -1,8 +1,9 @@
 import type { Metadata } from "next";
+import { pageMeta } from "@/lib/seo";
 import Link from "next/link";
 import { LegalPage } from "@/components/legal";
 
-export const metadata: Metadata = { title: "Acceptable use policy" };
+export const metadata: Metadata = pageMeta("/legal/acceptable-use/", "Acceptable use policy", "What you may and may not do with the ParlioTec service, including outbound calling, messaging and recording rules.");
 
 export default function AupPage() {
   return (

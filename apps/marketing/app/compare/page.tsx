@@ -1,11 +1,10 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { CompareTable, CtaBand, PageHero } from "@/components/blocks";
+import { JsonLd } from "@/components/json-ld";
+import { breadcrumbLd, pageMeta } from "@/lib/seo";
 
-export const metadata: Metadata = {
-  title: "Why ParlioTec",
-  description: "How ParlioTec compares with answering services, IVR phone systems, chatbot-only AI answering products and booking-link tools.",
-};
+export const metadata: Metadata = pageMeta("/compare/", "ParlioTec vs answering services, IVR and chatbots", "How an AI business phone system compares with call answering services, IVR menus, chatbot-only AI products and booking-link tools for UK businesses losing revenue to missed calls.");
 
 const DIFFS = [
   { t: "Booking rules the tenant owns", b: "Slot length, on-the-hour or half-past grid, business hours with finish-by-close, travel gap, notice period, horizon and an emergency exception — set in the dashboard, enforced on every call. Booking-link tools give you fixed slots; message-taking AI doesn't book at all." },
@@ -25,6 +24,7 @@ const DIFFS = [
 export default function ComparePage() {
   return (
     <>
+      <JsonLd data={breadcrumbLd([["Home", "/"], ["Why ParlioTec", "/compare/"]])} />
       <PageHero
         eyebrow="Why ParlioTec"
         title="Built to do the things other “AI answering” products hand back to you"

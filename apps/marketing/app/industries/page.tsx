@@ -1,14 +1,14 @@
 import type { Metadata } from "next";
 import { CtaBand, Industries, PageHero } from "@/components/blocks";
+import { JsonLd } from "@/components/json-ld";
+import { breadcrumbLd, pageMeta } from "@/lib/seo";
 
-export const metadata: Metadata = {
-  title: "Industries",
-  description: "ParlioTec for trades and field service, clinics, estate agents, professional services and agencies.",
-};
+export const metadata: Metadata = pageMeta("/industries/", "AI phone answering for trades, clinics, agents & services", "ParlioTec for trades and field service, clinics, estate agents, professional services and agencies: stop missed calls costing you jobs, patients and instructions.");
 
 export default function IndustriesPage() {
   return (
     <>
+      <JsonLd data={breadcrumbLd([["Home", "/"], ["Industries", "/industries/"]])} />
       <PageHero
         eyebrow="Industries"
         title="Whose phone never stops"
