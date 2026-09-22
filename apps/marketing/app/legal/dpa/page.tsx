@@ -9,7 +9,7 @@ export default function DpaPage() {
     <LegalPage title="Data processing agreement" updated="September 2026" current="/legal/dpa/">
       <p>
         This Data Processing Agreement (&ldquo;DPA&rdquo;) is incorporated into the <Link href="/legal/terms/">Terms of Service</Link>{" "}
-        between <P>Legal entity name</P> (&ldquo;Processor&rdquo;, &ldquo;ParlioTec&rdquo;) and the Customer
+        between KMDR Holdings Ltd (&ldquo;Processor&rdquo;, &ldquo;ParlioTec&rdquo;) and the Customer
         (&ldquo;Controller&rdquo;), and reflects Article 28 of the UK GDPR and the Data Protection Act 2018.
       </p>
 

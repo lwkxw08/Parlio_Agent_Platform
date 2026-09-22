@@ -8,9 +8,9 @@ export default function PrivacyPage() {
   return (
     <LegalPage title="Privacy policy" updated="September 2026" current="/legal/privacy/">
       <p>
-        This policy explains how <P>Legal entity name</P> (&ldquo;ParlioTec&rdquo;, &ldquo;we&rdquo;) collects and uses personal
+        This policy explains how KMDR Holdings Ltd (&ldquo;ParlioTec&rdquo;, &ldquo;we&rdquo;) collects and uses personal
         data. We are registered with the Information Commissioner&rsquo;s Office (ICO) under registration number <strong>00015465911</strong>.
-        Contact: <P>privacy@parliotec.com</P>, <P>registered office address</P>.
+        Contact: <P>privacy@parliotec.com</P>, 124-128 City Road, London, England, EC1V 2NX.
       </p>
 
       <h2>1. Who this policy covers</h2>

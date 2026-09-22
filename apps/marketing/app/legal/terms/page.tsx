@@ -9,8 +9,8 @@ export default function TermsPage() {
     <LegalPage title="Terms of service" updated="September 2026" current="/legal/terms/">
       <p>
         These Terms of Service (&ldquo;Terms&rdquo;) govern access to and use of the ParlioTec intelligent AI-powered business phone system,
-        dashboard, APIs, telephone numbers and related services (the &ldquo;Service&rdquo;) provided by <P>Legal entity name</P>,
-        a company registered in England and Wales (company number <P>number</P>) with its registered office at <P>address</P>{" "}
+        dashboard, APIs, telephone numbers and related services (the &ldquo;Service&rdquo;) provided by KMDR Holdings Ltd,
+        a company registered in England and Wales (company number 15822421) with its registered office at 124-128 City Road, London, England, EC1V 2NX{" "}
         (&ldquo;ParlioTec&rdquo;, &ldquo;we&rdquo;, &ldquo;us&rdquo;). By creating an account or using the Service you
         (&ldquo;Customer&rdquo;, &ldquo;you&rdquo;) agree to these Terms. The Service is offered to businesses only, not to
         consumers.
