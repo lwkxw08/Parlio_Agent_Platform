@@ -6,7 +6,7 @@ export const metadata: Metadata = { title: "Privacy policy" };
 
 export default function PrivacyPage() {
   return (
-    <LegalPage title="Privacy policy" updated="September 2026 (draft)" current="/legal/privacy/">
+    <LegalPage title="Privacy policy" updated="September 2026" current="/legal/privacy/">
       <p>
         This policy explains how <P>Legal entity name</P> (&ldquo;ParlioTec&rdquo;, &ldquo;we&rdquo;) collects and uses personal
         data. We are registered with the Information Commissioner&rsquo;s Office (ICO) under registration number <strong>00015465911</strong>.
@@ -73,54 +73,104 @@ export default function PrivacyPage() {
         audit trail.
       </p>
 
-      <h2 id="calendar">7a. Google and Microsoft calendar data</h2>
+      <h2 id="google">8. Google user data (Google Calendar integration)</h2>
       <p>
-        Customers can connect a Google Calendar or Microsoft 365 / Outlook calendar so that ParlioTec can offer appointment
-        times to callers and book them. When you connect a calendar we request the minimum access needed:
+        The ParlioTec application (the dashboard at app.parliotec.com) offers an optional connection to Google Calendar
+        through Google Sign-In / OAuth 2.0. This section describes, for the purposes of the Google API Services User Data
+        Policy, exactly what Google user data ParlioTec accesses, how it is used, stored, shared and deleted. Nothing in
+        this section applies until a customer chooses to click &ldquo;Connect Google Calendar&rdquo; and grants consent on
+        Google&rsquo;s consent screen.
       </p>
+      <h3>8.1 What Google user data we request</h3>
+      <table>
+        <thead><tr><th>Google scope</th><th>Data it gives access to</th><th>Why ParlioTec needs it</th></tr></thead>
+        <tbody>
+          <tr><td><code>https://www.googleapis.com/auth/calendar.readonly</code></td><td>The list of calendars on the account and the free/busy status of events on the calendar the customer selects</td><td>To let the customer choose which calendar to book into, and to work out which appointment slots are free when a caller asks to book</td></tr>
+          <tr><td><code>https://www.googleapis.com/auth/calendar.events</code></td><td>Create, update and delete events</td><td>To create the appointment event when a caller books, and to move or cancel that event if the caller reschedules or cancels</td></tr>
+          <tr><td><code>openid</code>, <code>email</code></td><td>The Google account&rsquo;s email address and account identifier</td><td>To label the connection in the dashboard (&ldquo;Connected as name@example.com&rdquo;) and to match a refreshed token to the right connection</td></tr>
+        </tbody>
+      </table>
+      <h3>8.2 How we use it</h3>
       <ul>
-        <li><b>Google</b> &mdash; the <code>calendar.readonly</code> and <code>calendar.events</code> scopes (Google Calendar API), together with your email address to label the connection.</li>
-        <li><b>Microsoft</b> &mdash; the <code>Calendars.ReadWrite</code> and <code>User.Read</code> permissions (Microsoft Graph).</li>
+        <li><b>Availability:</b> when a caller asks for an appointment, ParlioTec queries the Google Calendar free/busy endpoint for the selected calendar within the customer&rsquo;s configured booking window (for example the next 14 days) and offers only the free slots that fit the customer&rsquo;s booking rules.</li>
+        <li><b>Booking:</b> when the caller accepts a slot, ParlioTec creates a calendar event on that calendar containing the appointment time, the service requested, and the caller details the customer has asked us to capture (typically name, phone number, address and a short description of the request).</li>
+        <li><b>Changes:</b> if the caller reschedules or cancels through ParlioTec, we update or delete that same event. We never modify events that ParlioTec did not create.</li>
+        <li><b>Dashboard:</b> bookings ParlioTec created are shown to the customer&rsquo;s team in the Bookings and Schedule screens of the dashboard.</li>
       </ul>
       <p>
-        <b>What we access:</b> free/busy times on the calendar you choose, within the booking window you configure, and the
-        events ParlioTec itself creates. <b>What we do with it:</b> calculate available slots, create, update or cancel
-        appointment events when a caller books, and show those bookings in your dashboard. Event titles and descriptions
-        of your other appointments are not stored; only start and end times are read to determine availability.
-        <b>What we store:</b> an encrypted OAuth refresh token, the connected account email, the calendar identifier you
-        choose, and the events we created (their IDs, times and the caller details you asked us to capture).
+        We read only the start and end times and the free/busy status of the customer&rsquo;s existing events. We do not read,
+        display or store the titles, descriptions, attendees, locations or attachments of any event that ParlioTec did not
+        itself create.
       </p>
+      <h3>8.3 What we store, and for how long</h3>
+      <ul>
+        <li>The OAuth refresh token and short-lived access token, encrypted at rest (authenticated AES encryption) in our UK-hosted database, used solely to make the calendar requests above on the customer&rsquo;s behalf.</li>
+        <li>The connected Google account email address and the identifier of the calendar the customer selected.</li>
+        <li>The identifiers, times and booking details of events that ParlioTec created, so they can be shown in the dashboard and updated or cancelled later.</li>
+        <li>Free/busy results are used in memory to calculate available slots and are not retained after the call or booking session ends.</li>
+      </ul>
       <p>
-        We do not share calendar data with third parties except the sub-processors needed to run the Service, we do not
-        sell it, we do not use it for advertising, and we do not use it to train general AI or machine-learning models.
-        Humans at ParlioTec read calendar data only with your permission for support, to comply with law, or for security
-        investigations. Our use of information received from Google APIs adheres to the{" "}
-        <a href="https://developers.google.com/terms/api-services-user-data-policy" target="_blank" rel="noreferrer">
+        Tokens are deleted immediately when the customer disconnects the calendar or when the account is closed. Booking
+        records are kept for the life of the customer&rsquo;s account plus 30 days (section 3), or for the retention period
+        the customer configures, whichever is shorter.
+      </p>
+      <h3>8.4 Sharing of Google user data</h3>
+      <p>
+        We do not sell Google user data. We do not share it with advertisers, data brokers or any other third party. Google
+        user data is transmitted only between ParlioTec&rsquo;s servers and Google&rsquo;s APIs, except that appointment details
+        (time, service, caller details) are, on the customer&rsquo;s instruction, sent to the customer&rsquo;s own connected
+        tools (for example a CRM or field-service system) and stored by our UK cloud hosting provider as part of
+        running the Service. We do not use Google user data for advertising, for profiling, for market research, or to
+        develop, improve or train generalised artificial-intelligence or machine-learning models.
+      </p>
+      <h3>8.5 Human access</h3>
+      <p>
+        ParlioTec staff do not read Google user data except (a) with the customer&rsquo;s explicit permission to resolve a
+        support request, (b) where necessary for security purposes such as investigating abuse, (c) to comply with
+        applicable law, or (d) where the data has been aggregated and anonymised for internal operations. All staff access
+        is recorded in an audit log the customer can view.
+      </p>
+      <h3>8.6 Limited Use disclosure</h3>
+      <p>
+        ParlioTec&rsquo;s use and transfer to any other app of information received from Google APIs will adhere to the{" "}
+        <a href="https://developers.google.com/terms/api-services-user-data-policy#additional_requirements_for_specific_api_scopes" target="_blank" rel="noreferrer">
           Google API Services User Data Policy
         </a>
         , including the Limited Use requirements.
       </p>
+      <h3>8.7 Revoking access and deleting your data</h3>
       <p>
-        You can disconnect a calendar at any time from Integrations &rarr; Calendar in the dashboard, or revoke access at{" "}
-        <a href="https://myaccount.google.com/permissions" target="_blank" rel="noreferrer">myaccount.google.com/permissions</a>{" "}
-        or your Microsoft account settings. Disconnecting deletes the stored token immediately; created events remain in
-        your calendar. Calendar data is deleted with the rest of your account data under section 3.
+        Customers can disconnect Google Calendar at any time from <b>Integrations &rarr; Calendar &rarr; Disconnect</b> in the
+        dashboard, which deletes the stored tokens immediately, or revoke ParlioTec&rsquo;s access from their Google Account at{" "}
+        <a href="https://myaccount.google.com/permissions" target="_blank" rel="noreferrer">myaccount.google.com/permissions</a>.
+        Events ParlioTec created remain in the customer&rsquo;s Google Calendar unless they delete them. To have all stored
+        booking records deleted, customers can use the account-deletion option in Settings &rarr; Compliance or email{" "}
+        <P>privacy@parliotec.com</P>; we complete deletion within 30 days.
       </p>
 
-      <h2>8. Cookies</h2>
+      <h2 id="microsoft">9. Microsoft 365 / Outlook calendar data</h2>
+      <p>
+        Customers may alternatively connect a Microsoft 365 or Outlook.com calendar. We request the Microsoft Graph
+        permissions <code>Calendars.ReadWrite</code> (read free/busy and create, update or delete the appointments we book)
+        and <code>User.Read</code> (the account email address, to label the connection). The same use, storage, sharing,
+        human-access and deletion commitments in section 8 apply. Access can be revoked from the dashboard or from the
+        customer&rsquo;s Microsoft account settings.
+      </p>
+
+      <h2>10. Cookies</h2>
       <p>See our <Link href="/legal/cookies/">Cookie Policy</Link>.</p>
 
-      <h2>9. Security</h2>
+      <h2>11. Security</h2>
       <p>
         Encryption in transit and at rest, role-based access with two-factor authentication, audit logging, PII redaction
         options, tested backups and a documented incident process. We will notify affected customers and, where required, the
         ICO within 72 hours of becoming aware of a personal data breach.
       </p>
 
-      <h2>10. Children</h2>
+      <h2>12. Children</h2>
       <p>The Service and website are for businesses and are not directed at children under 16.</p>
 
-      <h2>11. Changes</h2>
+      <h2>13. Changes</h2>
       <p>We will post updates here and, for material changes, notify account holders by email.</p>
     </LegalPage>
   );
