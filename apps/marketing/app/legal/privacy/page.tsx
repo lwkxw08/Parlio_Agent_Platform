@@ -124,14 +124,30 @@ export default function PrivacyPage() {
         running the Service. We do not use Google user data for advertising, for profiling, for market research, or to
         develop, improve or train generalised artificial-intelligence or machine-learning models.
       </p>
-      <h3>8.5 Human access</h3>
+      <h3 id="google-ai">8.5 AI and machine-learning services</h3>
+      <p>
+        ParlioTec uses third-party AI services (speech recognition, large language models and text-to-speech) to hold the
+        conversation with a caller. Google user data is not sent to these services in raw form. The only Google-derived
+        data an AI model ever receives is the list of free appointment slots computed from the free/busy query (dates and
+        times), so the assistant can offer them to the caller. Event titles, descriptions, attendees, the connected account
+        email and OAuth tokens are never passed to any AI service. The appointment the caller agrees to is created in
+        Google Calendar by ParlioTec&rsquo;s own servers, not by an AI provider.
+      </p>
+      <p>
+        We use these providers only through their business API tiers, under terms that prohibit the use of API inputs and
+        outputs to train or improve their generalised models, and we do not use aggregators, gateways or model hubs. We do
+        not use raw, aggregated or anonymised Google user data to develop, improve or train any AI or machine-learning
+        model, whether our own or a third party&rsquo;s. The current list of AI providers is available on request from
+        privacy@parliotec.co.uk.
+      </p>
+      <h3>8.6 Human access</h3>
       <p>
         ParlioTec staff do not read Google user data except (a) with the customer&rsquo;s explicit permission to resolve a
         support request, (b) where necessary for security purposes such as investigating abuse, (c) to comply with
         applicable law, or (d) where the data has been aggregated and anonymised for internal operations. All staff access
         is recorded in an audit log the customer can view.
       </p>
-      <h3>8.6 Limited Use disclosure</h3>
+      <h3 id="limited-use">8.7 Limited Use disclosure</h3>
       <p>
         ParlioTec&rsquo;s use and transfer to any other app of information received from Google APIs will adhere to the{" "}
         <a href="https://developers.google.com/terms/api-services-user-data-policy#additional_requirements_for_specific_api_scopes" target="_blank" rel="noreferrer">
@@ -139,7 +155,7 @@ export default function PrivacyPage() {
         </a>
         , including the Limited Use requirements.
       </p>
-      <h3>8.7 Revoking access and deleting your data</h3>
+      <h3>8.8 Revoking access and deleting your data</h3>
       <p>
         Customers can disconnect Google Calendar at any time from <b>Integrations &rarr; Calendar &rarr; Disconnect</b> in the
         dashboard, which deletes the stored tokens immediately, or revoke ParlioTec&rsquo;s access from their Google Account at{" "}
