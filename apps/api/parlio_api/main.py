@@ -10,7 +10,7 @@ import httpx
 import uvicorn
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, PlainTextResponse, RedirectResponse
 from livekit import api
 from redis.asyncio import Redis
 from redis.exceptions import ResponseError
@@ -852,6 +852,14 @@ def create_app() -> FastAPI:
         resp = await call_next(request)
         resp.headers["X-RateLimit-Remaining"] = str(remaining)
         return resp
+
+    @app.get("/", include_in_schema=False)
+    async def root() -> RedirectResponse:
+        return RedirectResponse(get_settings().site_url, status_code=301)
+
+    @app.get("/robots.txt", include_in_schema=False)
+    async def robots() -> PlainTextResponse:
+        return PlainTextResponse("User-agent: *\nDisallow: /\n")
 
     @app.get("/healthz", tags=["ops"])
     async def healthz() -> dict[str, str]:
