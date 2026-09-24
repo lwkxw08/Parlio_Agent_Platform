@@ -134,11 +134,13 @@ export default function PrivacyPage() {
         Google Calendar by ParlioTec&rsquo;s own servers, not by an AI provider.
       </p>
       <p>
-        We use these providers only through their business API tiers, under terms that prohibit the use of API inputs and
-        outputs to train or improve their generalised models, and we do not use aggregators, gateways or model hubs. We do
-        not use raw, aggregated or anonymised Google user data to develop, improve or train any AI or machine-learning
-        model, whether our own or a third party&rsquo;s. The current list of AI providers is available on request from
-        privacy@parliotec.co.uk.
+        The AI providers we use are OpenAI (OpenAI API platform, for the language model), Deepgram (Deepgram API, for
+        speech recognition) and Cartesia (Cartesia API, for text-to-speech). We access each directly through its paid
+        business API, under terms that prohibit the use of API inputs and outputs to train or improve their generalised
+        models, with no opt-in to data sharing; we do not use aggregators, gateways or model hubs, and we do not operate
+        self-hosted or offline models. We do not use raw, aggregated or anonymised Google user data to develop, improve or
+        train any AI or machine-learning model, whether our own or a third party&rsquo;s. We will update this list before
+        adding or replacing a provider.
       </p>
       <h3>8.6 Human access</h3>
       <p>
@@ -153,7 +155,8 @@ export default function PrivacyPage() {
         <a href="https://developers.google.com/terms/api-services-user-data-policy#additional_requirements_for_specific_api_scopes" target="_blank" rel="noreferrer">
           Google API Services User Data Policy
         </a>
-        , including the Limited Use requirements.
+        , including the Limited Use requirements. The use of raw or derived user data received from Workspace APIs will
+        adhere to the Google User Data Policy, including the Limited Use requirements.
       </p>
       <h3>8.8 Revoking access and deleting your data</h3>
       <p>
