@@ -52,6 +52,99 @@ const prettyUk = (e164: string) => {
   return `${n.slice(0, 5)} ${n.slice(5)}`;
 };
 
+type Operator = { id: string; name: string; kind: "mobile" | "landline"; ring?: boolean; note?: string };
+const OPERATORS: Operator[] = [
+  { id: "ee", name: "EE", kind: "mobile", ring: true },
+  { id: "o2", name: "O2", kind: "mobile", ring: true },
+  { id: "vodafone", name: "Vodafone", kind: "mobile", ring: true },
+  { id: "three", name: "Three", kind: "mobile", ring: true },
+  { id: "giffgaff", name: "giffgaff / Tesco / Sky Mobile / other UK mobile", kind: "mobile", ring: true },
+  { id: "bt", name: "BT landline / Digital Voice", kind: "landline", note: "Call Diversion must be enabled on the line (free on most BT plans)." },
+  { id: "virgin", name: "Virgin Media", kind: "landline" },
+  { id: "sky", name: "Sky Talk", kind: "landline" },
+  { id: "talktalk", name: "TalkTalk", kind: "landline", note: "Enable Call Divert in My Account first." },
+  { id: "other", name: "Other UK landline", kind: "landline" },
+];
+type Scenario = "all" | "no_answer" | "busy" | "unreachable" | "cancel";
+const SCENARIOS: [Scenario, string, string][] = [
+  ["no_answer", "When I don't answer", "You still answer calls yourself; the assistant picks up when you can't."],
+  ["all", "All calls", "Every call goes straight to the assistant."],
+  ["busy", "When I'm on another call", "Engaged callers reach the assistant instead of a busy tone."],
+  ["unreachable", "When my phone is off / no signal", "Mobile only."],
+  ["cancel", "Cancel all diverts", "Turns every divert off."],
+];
+const RING_SECONDS = [5, 10, 15, 20, 25, 30];
+
+/** GSM / BT supplementary-service codes: mobiles use the ** / ## form, landlines the single * / # form. */
+function divertCodes(op: Operator, scenario: Scenario, number: string, ring: number): string[] {
+  const n = number.replace(/^\+44/, "0");
+  const m = op.kind === "mobile";
+  const on = (code: string, tail = "") => (m ? `**${code}*${n}${tail}#` : `*${code}*${n}#`);
+  switch (scenario) {
+    case "all": return [on("21")];
+    case "no_answer": return [on("61", m && op.ring ? `*11*${ring}` : "")];
+    case "busy": return [on("67")];
+    case "unreachable": return m ? [on("62")] : [];
+    case "cancel": return m ? ["##002#"] : ["#21#", "#61#", "#67#"];
+  }
+}
+
+function DivertCodes({ numbers }: { numbers: TenantNumber[] }) {
+  const live = numbers.filter((n) => n.status !== "failed");
+  const [operator, setOperator] = useState(OPERATORS[0].id);
+  const [scenario, setScenario] = useState<Scenario>("no_answer");
+  const [ring, setRing] = useState(20);
+  const [target, setTarget] = useState(live[0]?.e164 ?? "");
+  const [copied, setCopied] = useState<string | null>(null);
+  const op = OPERATORS.find((o) => o.id === operator) ?? OPERATORS[0];
+  const e164 = live.some((n) => n.e164 === target) ? target : live[0]?.e164 ?? "";
+  const codes = divertCodes(op, scenario, e164, ring);
+  const copy = async (c: string) => {
+    try { await navigator.clipboard.writeText(c); setCopied(c); setTimeout(() => setCopied(null), 2000); } catch { /* clipboard unavailable */ }
+  };
+  return (
+    <div className="card form" style={{ marginTop: "1rem" }}>
+      <h3 style={{ margin: 0 }}>Get your divert code</h3>
+      <p className="small muted">Pick your provider and when the assistant should answer; dial the code from the phone you&apos;re diverting. Mobile codes work on any UK network.</p>
+      <div className="two">
+        <label>Your provider
+          <select value={operator} onChange={(e) => setOperator(e.target.value)}>
+            <optgroup label="Mobile">{OPERATORS.filter((o) => o.kind === "mobile").map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}</optgroup>
+            <optgroup label="Landline">{OPERATORS.filter((o) => o.kind === "landline").map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}</optgroup>
+          </select>
+        </label>
+        <label>Divert calls…
+          <select value={scenario} onChange={(e) => setScenario(e.target.value as Scenario)}>
+            {SCENARIOS.filter(([s]) => s !== "unreachable" || op.kind === "mobile").map(([s, l]) => <option key={s} value={s}>{l}</option>)}
+          </select>
+        </label>
+        {live.length > 1 && (
+          <label>To ParlioTec number
+            <select value={e164} onChange={(e) => setTarget(e.target.value)}>{live.map((n) => <option key={n.id} value={n.e164}>{prettyUk(n.e164)}{n.label ? ` · ${n.label}` : ""}</option>)}</select>
+          </label>
+        )}
+        {scenario === "no_answer" && op.kind === "mobile" && (
+          <label>Ring for
+            <select value={ring} onChange={(e) => setRing(Number(e.target.value))}>{RING_SECONDS.map((s) => <option key={s} value={s}>{s} seconds</option>)}</select>
+          </label>
+        )}
+      </div>
+      <p className="small muted">{SCENARIOS.find(([s]) => s === scenario)?.[2]}{scenario === "no_answer" && op.kind === "landline" ? " Landlines ring for about 15 seconds before diverting; change this in your provider's account settings." : ""}</p>
+      {codes.map((c) => (
+        <div key={c} className="row" style={{ alignItems: "center", gap: 12 }}>
+          <code style={{ fontSize: "1.4rem", fontWeight: 600, letterSpacing: ".05em" }}>{c}</code>
+          <button type="button" onClick={() => copy(c)}>{copied === c ? "Copied" : "Copy"}</button>
+          <a className="btn small" href={`tel:${encodeURIComponent(c)}`}>Dial on this phone</a>
+        </div>
+      ))}
+      <p className="small muted">
+        {op.note ? `${op.note} ` : ""}Test it: ring your own number from another phone{scenario === "no_answer" ? " and don't answer" : ""} — the assistant should pick up. To undo, choose &ldquo;Cancel all diverts&rdquo;.
+        {op.kind === "landline" ? " Some providers (VoIP, Teams, PBX) set diverts in their app or portal instead of by dial code." : ""}
+      </p>
+    </div>
+  );
+}
+
 /** Forwarding mode: the ParlioTec number(s) the customer diverts their existing line to. */
 function DivertTo({ numbers, asstName, canManage }: { numbers: TenantNumber[]; asstName: (id: string) => string; canManage: boolean }) {
   const [copied, setCopied] = useState<string | null>(null);
@@ -63,7 +156,7 @@ function DivertTo({ numbers, asstName, canManage }: { numbers: TenantNumber[]; a
       <h2>Divert your calls to this number</h2>
       {numbers.length ? (
         <>
-          <p className="hint">Set a divert (always, or on no-answer / busy) from your existing landline or mobile to your ParlioTec number below. Divert codes for BT, Virgin, Vodafone, EE, O2, Three and Microsoft Teams are on the <Link href="/launch">Launch guide</Link>.</p>
+          <p className="hint">Set a divert (always, or on no-answer / busy) from your existing landline or mobile to your ParlioTec number below. Microsoft Teams, VoIP and PBX instructions are on the <Link href="/launch">Launch guide</Link>.</p>
           <div className="grid">
             {numbers.map((n) => (
               <div key={n.id} className="card">
@@ -75,6 +168,7 @@ function DivertTo({ numbers, asstName, canManage }: { numbers: TenantNumber[]; a
               </div>
             ))}
           </div>
+          {numbers.some((n) => n.status !== "failed") && <DivertCodes numbers={numbers} />}
         </>
       ) : (
         <p className="hint">You don&apos;t have a ParlioTec number yet. {canManage ? <>Choose one on <Link href="/billing">Billing → Your numbers</Link>, then divert your existing line to it.</> : "Ask an owner or admin to add one under Billing → Your numbers."}</p>

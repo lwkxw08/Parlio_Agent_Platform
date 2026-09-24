@@ -81,9 +81,10 @@ async def questionnaire(tenant_id: str, user: UserDep, store: StoreDep) -> Quest
     doc = await store.get_doc(QUESTIONNAIRE_KIND, tenant_id)
     if doc is None:
         return QuestionnaireOut(tenant_id=tenant_id, questionnaire=None, recommended_plan_id=None)
+    raw = doc.data.get("questionnaire")
     return QuestionnaireOut(
         tenant_id=tenant_id,
-        questionnaire=Questionnaire.model_validate(doc.data.get("questionnaire") or {}),
+        questionnaire=Questionnaire.model_validate(raw) if raw else None,
         recommended_plan_id=doc.data.get("recommended_plan_id"),
     )
 
