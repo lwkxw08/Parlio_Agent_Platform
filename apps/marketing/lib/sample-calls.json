@@ -1,0 +1,254 @@
+[
+ {
+  "id": "heating",
+  "title": "Boiler repair booking",
+  "business": "Northside Heating",
+  "ai": "Gemma",
+  "src": "/audio/sample-heating.mp3",
+  "duration": 67284,
+  "cues": [
+   {
+    "who": "ai",
+    "text": "Good morning, Northside Heating, this is Gemma. How can I help you today?",
+    "start": 400,
+    "end": 3790
+   },
+   {
+    "who": "caller",
+    "text": "Oh hi. My boiler's stopped working this morning and there's no hot water. Can someone come out this week?",
+    "start": 4340,
+    "end": 9912
+   },
+   {
+    "who": "ai",
+    "text": "Sorry to hear that, I can sort that for you. Is anyone in the house vulnerable, or is there any smell of gas?",
+    "start": 10612,
+    "end": 16370
+   },
+   {
+    "who": "caller",
+    "text": "No, nothing like that. It's just not firing up.",
+    "start": 16920,
+    "end": 20356
+   },
+   {
+    "who": "ai",
+    "text": "Okay, that's a repair visit, which is booked as an hour. Tom's free on Thursday at ten, or Friday at two. Which suits you better?",
+    "start": 21056,
+    "end": 28765
+   },
+   {
+    "who": "caller",
+    "text": "Thursday at ten would be great.",
+    "start": 29315,
+    "end": 31822
+   },
+   {
+    "who": "ai",
+    "text": "Lovely. Can I take your name and the postcode for the property?",
+    "start": 32522,
+    "end": 35819
+   },
+   {
+    "who": "caller",
+    "text": "It's Sarah Bennett, and the postcode is M20 4XY.",
+    "start": 36369,
+    "end": 40362
+   },
+   {
+    "who": "ai",
+    "text": "Thank you Sarah. And is the number you're calling from, ending nine one two three, the best one to text a confirmation to?",
+    "start": 41062,
+    "end": 47099
+   },
+   {
+    "who": "caller",
+    "text": "Yes, that's fine.",
+    "start": 47649,
+    "end": 48717
+   },
+   {
+    "who": "ai",
+    "text": "Perfect. You're booked with Tom on Thursday from ten till eleven for a boiler repair. I've sent you a text confirmation, and Tom will message when he's on his way. Is there anything else I can help with?",
+    "start": 49417,
+    "end": 59540
+   },
+   {
+    "who": "caller",
+    "text": "No, that's everything. Thanks so much.",
+    "start": 60090,
+    "end": 63480
+   },
+   {
+    "who": "ai",
+    "text": "You're welcome, Sarah. Have a good day, bye for now.",
+    "start": 64180,
+    "end": 66734
+   }
+  ]
+ },
+ {
+  "id": "estate",
+  "title": "Property viewing",
+  "business": "Harbourside Estates",
+  "ai": "Oliver",
+  "src": "/audio/sample-estate.mp3",
+  "duration": 70767,
+  "cues": [
+   {
+    "who": "ai",
+    "text": "Good afternoon, Harbourside Estates, Oliver speaking. How can I help?",
+    "start": 400,
+    "end": 4904
+   },
+   {
+    "who": "caller",
+    "text": "Hi, I've seen the two-bedroom flat on Marine Parade on your website. Is it still available, and could I book a viewing?",
+    "start": 5454,
+    "end": 11073
+   },
+   {
+    "who": "ai",
+    "text": "It is still available, yes. That's the second-floor flat listed at two hundred and eighty-five thousand. I can book you in with Priya, who's handling that property. Were you thinking this week or the weekend?",
+    "start": 11773,
+    "end": 20178
+   },
+   {
+    "who": "caller",
+    "text": "Saturday morning if possible.",
+    "start": 20728,
+    "end": 22539
+   },
+   {
+    "who": "ai",
+    "text": "Priya has Saturday at ten thirty or eleven fifteen free. Which would you prefer?",
+    "start": 23239,
+    "end": 27186
+   },
+   {
+    "who": "caller",
+    "text": "Eleven fifteen, please.",
+    "start": 27736,
+    "end": 29175
+   },
+   {
+    "who": "ai",
+    "text": "Lovely. Can I take your name, and are you currently in a position to proceed, for example first-time buyer or selling a property?",
+    "start": 29875,
+    "end": 38141
+   },
+   {
+    "who": "caller",
+    "text": "It's James Whitfield. I'm a first-time buyer with a mortgage agreed in principle.",
+    "start": 38691,
+    "end": 42406
+   },
+   {
+    "who": "ai",
+    "text": "Thanks James, that's really helpful. And is the mobile you're calling from, ending four four seven eight, the best number for a confirmation text?",
+    "start": 43106,
+    "end": 48910
+   },
+   {
+    "who": "caller",
+    "text": "Yes, that's fine.",
+    "start": 49460,
+    "end": 50760
+   },
+   {
+    "who": "ai",
+    "text": "You're all set. Saturday at eleven fifteen at Marine Parade with Priya, and I've texted you the details and the parking note. Would you also like to hear about the similar flat that's just come on nearby?",
+    "start": 51460,
+    "end": 62048
+   },
+   {
+    "who": "caller",
+    "text": "Oh, go on then, send me the details.",
+    "start": 62598,
+    "end": 65152
+   },
+   {
+    "who": "ai",
+    "text": "Will do, I'll text the link across now. Thanks for calling James, see you Saturday. Bye for now.",
+    "start": 65852,
+    "end": 70217
+   }
+  ]
+ },
+ {
+  "id": "recruitment",
+  "title": "Candidate interview slot",
+  "business": "Brightpath Recruitment",
+  "ai": "Victoria",
+  "src": "/audio/sample-recruitment.mp3",
+  "duration": 67009,
+  "cues": [
+   {
+    "who": "ai",
+    "text": "Hello, Brightpath Recruitment, this is Victoria. How can I help you today?",
+    "start": 400,
+    "end": 4254
+   },
+   {
+    "who": "caller",
+    "text": "Hi there. I applied for the warehouse team leader role in Leeds last week and got an email asking me to call to arrange an interview.",
+    "start": 4804,
+    "end": 11259
+   },
+   {
+    "who": "ai",
+    "text": "Great, thank you for calling back. Can I take your name so I can find your application?",
+    "start": 11959,
+    "end": 15952
+   },
+   {
+    "who": "caller",
+    "text": "Yeah, it's Daniel Okafor.",
+    "start": 16502,
+    "end": 19149
+   },
+   {
+    "who": "ai",
+    "text": "Thanks Daniel, I have you here for the team leader role. Rachel is running those interviews on Tuesday and Wednesday next week. She has Tuesday at two, Wednesday at nine thirty, or Wednesday at four.",
+    "start": 19849,
+    "end": 30390
+   },
+   {
+    "who": "caller",
+    "text": "Wednesday at nine thirty would suit me best.",
+    "start": 30940,
+    "end": 34283
+   },
+   {
+    "who": "ai",
+    "text": "Wednesday at nine thirty it is. It's a video interview, about forty-five minutes, and Rachel will ask about your shift management experience. Is the email on your application still the best one for the invitation?",
+    "start": 34983,
+    "end": 47010
+   },
+   {
+    "who": "caller",
+    "text": "Yes, that's right. Do I need to bring anything, or send anything over first?",
+    "start": 47560,
+    "end": 51553
+   },
+   {
+    "who": "ai",
+    "text": "Just have your right-to-work documents to hand so we can verify them on the call. I've also sent you a text with the time and the video link. Is there anything else I can help with?",
+    "start": 52253,
+    "end": 60287
+   },
+   {
+    "who": "caller",
+    "text": "No, that's great, thank you.",
+    "start": 60837,
+    "end": 62648
+   },
+   {
+    "who": "ai",
+    "text": "You're welcome, Daniel. Good luck on Wednesday, bye for now.",
+    "start": 63348,
+    "end": 66459
+   }
+  ]
+ }
+]
