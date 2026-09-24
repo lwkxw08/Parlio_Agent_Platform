@@ -291,7 +291,7 @@ async def test_plan_and_coupon_catalogue(client: AsyncClient, app: FastAPI) -> N
     )
     assert r.status_code == 200
     assert (await client.delete("/v1/admin/plans/growth", headers=OWNER)).status_code == 200
-    assert PLAN_BY_ID["growth"].monthly_pence == 19900
+    assert PLAN_BY_ID["growth"].monthly_pence == 23900
 
 
 async def test_flags_notes_status_and_view_as(client: AsyncClient, app: FastAPI) -> None:

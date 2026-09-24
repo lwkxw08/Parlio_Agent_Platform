@@ -343,9 +343,9 @@ Today: white-label branding + custom domain, agency parent accounts (one login o
 - Team to ~50 customers: founder + one part-time support/success person + Devin for engineering fixes and releases.
 
 ## Suggested pricing
-- Starter GBP 79/mo — 1 number, 350 min, 75 SMS, recordings, analytics, SMS scenarios; overage 12p/min, 6p/SMS
-- Growth GBP 199/mo — 3 numbers, 1,500 min, 400 SMS, human transfer, calendar booking, Ask AI, connectors; overage 10p/min, 5p/SMS
-- Scale GBP 499/mo — 10 numbers, 4,000 min, 1,000 SMS, outbound, BYO SIP, simulation, white-label; overage 8p/min, 5p/SMS
+- Starter GBP 79/mo — 1 number, 500 min, 75 SMS, recordings, analytics, SMS scenarios; overage 12p/min, 6p/SMS
+- Growth GBP 239/mo — 3 numbers, 2,000 min, 400 SMS, human transfer, calendar booking, Ask AI, connectors; overage 10p/min, 5p/SMS
+- Scale GBP 559/mo — 10 numbers, 5,000 min, 1,000 SMS, outbound, BYO SIP, simulation, white-label; overage 8p/min, 5p/SMS
 - SMS pools are deliberately tight (texts are the unbounded cost); sell extra texts as an add-on bundle rather than raising pools
 - Enterprise (ServiceNow/Workday, white-label, 24/7 P1 SLA, release windows) from GBP 500+/mo platform fee + 14p/min, 5p/SMS
 - UK Sovereign add-on +50-100% or from GBP 499/mo; strict/private-cloud priced per deployment

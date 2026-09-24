@@ -54,7 +54,7 @@ Vertical = Literal[
 ]
 
 # Midpoint call volume x a conservative 2.5 min average handle time.
-_VOLUME_MINUTES: dict[str, int] = {"0-50": 75, "50-200": 320, "200-500": 900, "500+": 2000}
+_VOLUME_MINUTES: dict[str, int] = {"0-50": 75, "50-200": 320, "200-500": 900, "500+": 3000}
 _TASK_ENTITLEMENTS: dict[str, list[str]] = {
     "book": ["calendar_booking"],
     "transfer": ["warm_transfers", "departments"],
