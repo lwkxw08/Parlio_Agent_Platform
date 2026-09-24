@@ -5,7 +5,6 @@ from __future__ import annotations
 from datetime import UTC, date, datetime, time
 from typing import Any
 
-import pytest
 from httpx import AsyncClient
 
 from parlio_api.auth import DEV_TENANT
@@ -300,7 +299,6 @@ async def _post_call(
         assert r.status_code == 202, r.text
 
 
-@pytest.mark.anyio
 async def test_sites_api_and_isolation(client: AsyncClient) -> None:
     r = await client.get("/v1/sites")
     assert r.status_code == 200 and r.json() == []
@@ -348,7 +346,6 @@ async def test_sites_api_and_isolation(client: AsyncClient) -> None:
     assert r.status_code == 200 and r.json()["current"]["total_calls"] == 1
 
 
-@pytest.mark.anyio
 async def test_transcript_search_api(client: AsyncClient) -> None:
     await client.put(
         f"/v1/assistants/{DEV_TENANT}/sites",

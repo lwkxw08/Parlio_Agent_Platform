@@ -5,7 +5,6 @@ from __future__ import annotations
 
 from typing import Any
 
-import pytest
 from fastapi import FastAPI
 from httpx import AsyncClient
 
@@ -14,8 +13,6 @@ from parlio_api.billing import PLAN_BY_ID, BillingService, SubscriptionStatus
 
 from .test_admin import OWNER
 from .test_team_scheduling import _res
-
-pytestmark = pytest.mark.anyio
 
 Q = {"tenant_id": DEV_TENANT}
 

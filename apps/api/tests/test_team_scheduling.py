@@ -39,8 +39,6 @@ from parlio_voice.models import DayHours, Schedule
 
 from .test_api import HEADERS
 
-pytestmark = pytest.mark.anyio
-
 T = {"tenant_id": "demo"}
 
 

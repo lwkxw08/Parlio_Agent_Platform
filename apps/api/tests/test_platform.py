@@ -32,8 +32,6 @@ from parlio_voice.models import CallEventType
 
 from .test_api import HEADERS, ev
 
-pytestmark = pytest.mark.anyio
-
 DEMO = {"tenant_id": "demo"}
 STRANGER = {"X-Parlio-User": "who@example.com"}
 
