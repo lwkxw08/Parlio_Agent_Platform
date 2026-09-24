@@ -314,7 +314,7 @@ class OnboardingRequest(BaseModel):
     numbers: list[str] = Field(default_factory=list)
     vertical: Vertical = "general"
     questionnaire: Questionnaire | None = None
-    plan_id: str | None = None  # from the recommendation step; trial starts on this plan
+    plan_id: str | None = None  # optional; without it the trial starts on the default plan
 
 
 class OnboardingResult(BaseModel):
@@ -361,25 +361,25 @@ async def complete_onboarding(
         cfg.greeting = body.greeting
     cfg = apply_playbook(cfg, body.vertical)
     await store.upsert_assistant(cfg, body.numbers)
-    plan_id: str | None = None
-    trial_ends: datetime | None = None
     if body.plan_id and body.plan_id in PLAN_BY_ID and not PLAN_BY_ID[body.plan_id].enterprise:
         sub = await billing.change_plan(tenant_id, body.plan_id)
-        plan_id, trial_ends = sub.plan_id, sub.trial_ends_at
-    if body.questionnaire is not None:
-        await store.put_doc(
-            TenantDoc(
-                kind=QUESTIONNAIRE_KIND,
-                id=tenant_id,
-                tenant_id=tenant_id,
-                data={
-                    "questionnaire": body.questionnaire.model_dump(mode="json"),
-                    "recommended_plan_id": body.plan_id,
-                    "vertical": body.vertical,
-                    "signed_up_at": datetime.now(UTC).isoformat(),
-                },
-            )
+    else:
+        sub = await billing.subscription(tenant_id)
+    plan_id, trial_ends = sub.plan_id, sub.trial_ends_at
+    q = body.questionnaire
+    await store.put_doc(
+        TenantDoc(
+            kind=QUESTIONNAIRE_KIND,
+            id=tenant_id,
+            tenant_id=tenant_id,
+            data={
+                "questionnaire": q.model_dump(mode="json") if q else None,
+                "recommended_plan_id": body.plan_id,
+                "vertical": body.vertical,
+                "signed_up_at": datetime.now(UTC).isoformat(),
+            },
         )
+    )
     return OnboardingResult(
         tenant_id=tenant_id,
         assistant=cfg,

@@ -285,6 +285,19 @@ Today booking is one calendar per tenant (the primary `CalendarConnection`, with
 
 **22e Plan caps & entitlements for Phase 20-22 features — done** — every plan (Platform admin → Plans, per-tenant overrides on the tenant page) now carries caps for active engineers / bookable calendars (Starter 1 / Growth 5 / Scale 25 / Enterprise unlimited), locations (1 / 3 / 10 / unlimited) and dashboard users (2 / 5 / 15 / unlimited; 0 = unlimited), plus entitlements `team_scheduling`, `multi_location`, `after_hours_personas`, `transcript_search` (Growth+) and `scheduling_tool` (Scale+). Enforced server-side at the add points with an upgrade message; tenants over a lowered cap keep what they have but cannot add more; Billing shows used / cap.
 
+### Phase 23 — Competitive follow-ups from the Fonio review (Sept 2026) ~2.5 sessions
+Source: `fonio-vs-parliotec` comparison. Fonio (Vienna, $17M seed, 7k+ customers, entering the UK) wins on onboarding simplicity and a few knowledge features; we lead on warm transfers, team scheduling, live supervision, QA/advisor/revenue analytics and payments.
+- **23a Simplified sign-up — done**: wizard collapsed to Find your business → Confirm details (hours, services, FAQs, assistant name/greeting) → Done; trial starts on the default plan with every feature unlocked, plan choice moves to Billing. Optional questionnaire/`plan_id` still accepted by `POST /v1/onboarding` for the recommendation engine.
+- **23b Divert-code generator — done**: Telephony → Divert panel: provider (EE/O2/Vodafone/Three/other mobile; BT/Virgin/Sky/TalkTalk/other landline) × scenario (all / no-answer with ring seconds / busy / unreachable / cancel) → dial codes with copy and `tel:` dial.
+- **23c Small Studio/Calls exposures (0.3)**: `allow_interruptions` toggle in Studio; glossary/pronunciation list (terms → prompt + TTS hints); one-click "Block this caller" on Call detail and Contact card.
+- **23d Knowledge sources (1)**: PDF/document upload → suggested FAQs through the existing import flow; live website search tool in the worker, domain-locked to the tenant's site, with filler phrase while fetching.
+- **23e Call detail "Extraction" panel (0.2)**: fields captured on the call (name, number, address, service, urgency, booking) shown as a card, mirroring what buyers see in competitor demos.
+- **23f Longer term**: inbound email as an Inbox channel; Cal.com/Calendly booking-link adapters; DTMF *sending* for transfers into IVR-fronted lines; sell "Setup & Care" as a paid service tier (Fonio charges €99–€899/mo for this).
+- **Not copying**: generic horizontal positioning, 8-language marketing, per-minute test-call charging.
+
+### Phase 24 — Partner / reseller portal (deferred until the first reseller signs; ~1 session)
+Today: white-label branding + custom domain, agency parent accounts (one login owning several tenants), reseller entitlements. Missing for a real channel: partner self-signup and approval; partner-level billing (wholesale price list, one consolidated invoice or commission statement, Stripe Connect or manual); "create a tenant for my customer" with partner-set plan and co-branded onboarding invite; partner-scoped analytics/health/alerts across their tenants; partner support view with view-as; deal registration + lead hand-off from the marketing site. Build when there is a signed reseller so the billing model matches their contract.
+
 ---
 
 ## Part G — Enterprise-scale step-up (deferred; ~1-2 sessions when triggered)

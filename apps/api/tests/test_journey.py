@@ -150,9 +150,20 @@ async def test_enterprise_plan_not_self_served(client: AsyncClient) -> None:
         "/v1/onboarding", json={"organisation_name": "Big Corp", "plan_id": "enterprise"}
     )
     assert r.status_code == 201
-    assert r.json()["plan_id"] is None
+    assert r.json()["plan_id"] == "starter"
+    assert r.json()["trial_ends_at"] is not None
     r = await client.get("/v1/billing/subscription", params={"tenant_id": r.json()["tenant_id"]})
     assert r.json()["plan_id"] == "starter"
+
+
+async def test_onboarding_without_plan_or_questionnaire_starts_trial(client: AsyncClient) -> None:
+    r = await client.post("/v1/onboarding", json={"organisation_name": "Quick Co"})
+    assert r.status_code == 201, r.text
+    body = r.json()
+    assert body["plan_id"] == "starter" and body["trial_ends_at"] is not None
+    r = await client.get("/v1/setup/questionnaire", params={"tenant_id": body["tenant_id"]})
+    assert r.status_code == 200
+    assert r.json()["questionnaire"] is None
 
 
 async def test_checklist_and_explain_are_tenant_scoped(client: AsyncClient) -> None:
