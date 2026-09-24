@@ -61,8 +61,6 @@ from parlio_voice.models import (
 
 from .test_api import HEADERS, ev
 
-pytestmark = pytest.mark.anyio
-
 
 def cfg(**over: Any) -> AssistantConfig:
     return AssistantConfig(

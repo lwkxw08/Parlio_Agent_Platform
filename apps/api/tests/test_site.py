@@ -7,8 +7,6 @@ from httpx import AsyncClient
 
 from parlio_api.billing import PLAN_BY_ID
 
-pytestmark = pytest.mark.anyio
-
 
 async def test_site_info_exposes_plans_and_demo(client: AsyncClient) -> None:
     r = await client.get("/v1/public/site")
