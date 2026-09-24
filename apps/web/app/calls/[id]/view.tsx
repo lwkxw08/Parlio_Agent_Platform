@@ -31,6 +31,8 @@ export default function CallView({ initial, initialTab, seek = null }: { initial
   const [shareUrl, setShareUrl] = useState<string | null>(null);
   const [why, setWhy] = useState<CallExplanation | null>(null);
   const [whyError, setWhyError] = useState<string | null>(null);
+  const [blocked, setBlocked] = useState<boolean>(call.kind === "blocked");
+  const [blocking, setBlocking] = useState(false);
 
   useEffect(() => {
     if (!call.read) post<CallRecord>(`/v1/calls/${call.call_id}/read`, { read: true }).then((c) => c && setCall(c));
@@ -65,6 +67,18 @@ export default function CallView({ initial, initialTab, seek = null }: { initial
     }
   };
 
+  const toggleBlock = async () => {
+    if (!call.party) return;
+    const next = !blocked;
+    if (next && !confirm(`Block ${phone(call.party)}? Future calls from this number will be rejected before the assistant answers.`)) return;
+    setBlocking(true);
+    const r = await request<{ number: string; blocked: boolean }>(`/v1/calls/${call.call_id}/block?block=${next}`, { method: "POST" });
+    setBlocking(false);
+    if (!r.ok) return setToast(`Could not ${next ? "block" : "unblock"}: ${r.error}`);
+    setBlocked(r.data.blocked);
+    setToast(r.data.blocked ? `${phone(r.data.number)} blocked — applies from the next call` : `${phone(r.data.number)} unblocked`);
+  };
+
   const toggleRead = async () => {
     const c = await post<CallRecord>(`/v1/calls/${call.call_id}/read`, { read: !call.read });
     if (c) setCall(c);
@@ -93,6 +107,11 @@ export default function CallView({ initial, initialTab, seek = null }: { initial
         <span style={{ marginLeft: "auto", display: "flex", gap: "0.4rem" }}>
           <button className="ghost" onClick={toggleRead}>{call.read ? "Mark unread" : "Mark read"}</button>
           <button className="ghost" onClick={share}>Share summary</button>
+          {call.party && call.direction !== "outbound" && (
+            <button className={blocked ? "ghost" : "danger"} disabled={blocking} title="Adds this number to the assistant's blocked list (Studio → Blocked numbers)" onClick={toggleBlock}>
+              {blocked ? "Unblock caller" : "Block caller"}
+            </button>
+          )}
           <button className="ghost" title="Replay this caller's words against every future Studio change" onClick={keepAsTest}>Save as regression test</button>
           {call.contact_id && <Link className="btn" href={`/contacts/${call.contact_id}`}>Contact</Link>}
         </span>
@@ -125,21 +144,12 @@ export default function CallView({ initial, initialTab, seek = null }: { initial
           <div className="section">
             <h2>Summary</h2>
             <p>{call.summary ?? <span className="muted">No summary yet.</span>}</p>
-            {Object.keys(call.extracted).length > 0 && (
-              <dl className="kv">
-                {Object.entries(call.extracted).map(([k, v]) => (
-                  <div key={k} style={{ display: "contents" }}><dt>{k.replaceAll("_", " ")}</dt><dd>{String(v)}</dd></div>
-                ))}
-              </dl>
-            )}
-            {call.missed_fields.length > 0 && (
-              <p className="small muted">Not captured: {call.missed_fields.join(", ")}</p>
-            )}
             {call.ticket_ids.length > 0 && (
               <p className="small">Tickets: {call.ticket_ids.map((t) => <Link key={t} href={`/tickets/${t}`} style={{ marginRight: 6 }}>{t.slice(0, 8)}</Link>)}</p>
             )}
             {call.end_reason && <p className="small muted">Ended: {call.end_reason}</p>}
           </div>
+          <ExtractedDetails extracted={call.extracted} missed={call.missed_fields} />
           <div className="section">
             <h2>Was something wrong?</h2>
             <p className="hint">Flag issues so the assistant can be tuned. Feedback is reviewed alongside the transcript.</p>
@@ -229,5 +239,49 @@ export default function CallView({ initial, initialTab, seek = null }: { initial
 
       {toast && <div className="toast">{toast}</div>}
     </>
+  );
+}
+
+const fieldValue = (v: unknown): string => {
+  if (v == null || v === "") return "";
+  if (Array.isArray(v)) return v.map(fieldValue).filter(Boolean).join(", ");
+  if (typeof v === "object") return JSON.stringify(v);
+  return String(v);
+};
+
+/** Post-call extraction: every detail the assistant captured, then the required ones it did not. */
+function ExtractedDetails({ extracted, missed }: { extracted: Record<string, unknown>; missed: string[] }) {
+  const captured = Object.entries(extracted)
+    .map(([k, v]) => [k, fieldValue(v)] as const)
+    .filter(([, v]) => v !== "");
+  const missing = missed.filter((m) => !(m in extracted) || fieldValue(extracted[m]) === "");
+  if (captured.length === 0 && missing.length === 0) return null;
+  const total = captured.length + missing.length;
+  return (
+    <div className="section" id="extracted-details">
+      <h2 style={{ display: "flex", alignItems: "center", gap: "0.6rem" }}>
+        Extracted details
+        <span className={`pill ${missing.length === 0 ? "ok" : "bad"}`}>{captured.length} of {total} captured</span>
+      </h2>
+      {captured.length > 0 && (
+        <dl className="kv">
+          {captured.map(([k, v]) => (
+            <div key={k} style={{ display: "contents" }}>
+              <dt>{humanize(k)}</dt>
+              <dd>{v}</dd>
+            </div>
+          ))}
+        </dl>
+      )}
+      {missing.length > 0 && (
+        <div style={{ marginTop: captured.length ? "0.8rem" : 0 }}>
+          <div className="label">Not captured</div>
+          <div className="row" style={{ flexWrap: "wrap", gap: "0.4rem", marginTop: "0.3rem" }}>
+            {missing.map((m) => <span key={m} className="pill bad">{humanize(m)}</span>)}
+          </div>
+          <p className="small muted" style={{ marginTop: "0.5rem" }}>Required fields the caller did not give. Adjust the prompt under Studio → Required fields if these are asked for too late or too rarely.</p>
+        </div>
+      )}
+    </div>
   );
 }

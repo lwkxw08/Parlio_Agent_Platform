@@ -47,3 +47,12 @@ async def test_stream_flushes_at_sentence_boundaries() -> None:
     out = "".join([s async for s in speakable_stream(chunks())])
     assert "0 7 9 3 0, 9 3 4, 0 9 8" in out
     assert out.strip().endswith("Is that right?")
+
+
+def test_glossary_pronunciations_swap_whole_words_only() -> None:
+    pron = [("Saoirse", "Seer-sha"), ("KMDR", "K M D R")]
+    out = speakable("Saoirse from KMDR will call; saoirse's desk is KMDRx.", pronunciations=pron)
+    assert out.startswith("Seer-sha from K M D R will call")
+    assert "Seer-sha's desk" in out  # case-insensitive, apostrophe is a word boundary
+    assert "KMDRx" in out  # not a whole-word match, left alone
+    assert speakable("Hello there", pronunciations=[("", "x"), ("Hello", "")]) == "Hello there."

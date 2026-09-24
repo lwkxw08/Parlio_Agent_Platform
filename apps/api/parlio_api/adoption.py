@@ -12,14 +12,19 @@
 
 from __future__ import annotations
 
+import base64
 import csv
 import io
 import re
+import zipfile
 from datetime import UTC, datetime
+from html import unescape
 from typing import Literal
 from uuid import uuid4
 
 from pydantic import BaseModel, Field
+from pypdf import PdfReader
+from pypdf.errors import PdfReadError
 
 from parlio_api.admin import PLATFORM_TENANT
 from parlio_api.billing import BillingService
@@ -329,7 +334,63 @@ def render_first_week(rep: FirstWeekReport, business: str) -> str:
 
 # -- guided FAQ import ----------------------------------------------------------------------------
 
-FaqSource = Literal["text", "csv", "url"]
+FaqSource = Literal["text", "csv", "url", "document"]
+
+_DOC_MAX_BYTES = 10 * 1024 * 1024
+_DOCX_TAG = re.compile(r"<[^>]+>")
+_DOCX_PARA_END = re.compile(r"</w:p>")
+
+
+def document_text(filename: str, data: bytes) -> str:
+    """Plain text from an uploaded PDF / DOCX / TXT / MD / CSV, paragraphs separated by blank
+    lines so `parse_faq_text` can find Q/A pairs and heading + body blocks."""
+    if len(data) > _DOC_MAX_BYTES:
+        raise ValueError("file is larger than 10 MB")
+    ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+    if ext == "pdf" or data[:5] == b"%PDF-":
+        try:
+            reader = PdfReader(io.BytesIO(data))
+            if reader.is_encrypted:
+                raise ValueError("the PDF is password-protected")
+            pages = [(p.extract_text() or "") for p in reader.pages[:200]]
+        except PdfReadError as e:
+            raise ValueError("not a readable PDF file") from e
+        text = "\n\n".join(pages)
+        if not text.strip():
+            raise ValueError("no text found - the PDF looks like a scan; paste the text instead")
+        return _tidy_pdf(text)
+    if ext == "docx" or data[:2] == b"PK":
+        try:
+            with zipfile.ZipFile(io.BytesIO(data)) as z:
+                xml = z.read("word/document.xml").decode("utf-8", "ignore")
+        except (zipfile.BadZipFile, KeyError) as e:
+            raise ValueError("not a readable Word (.docx) file") from e
+        xml = _DOCX_PARA_END.sub("\n\n", xml).replace("<w:tab/>", " ").replace("<w:br/>", "\n")
+        return unescape(_DOCX_TAG.sub("", xml))
+    if ext in ("txt", "md", "csv", ""):
+        return data.decode("utf-8-sig", "ignore")
+    raise ValueError(f"unsupported file type .{ext} - use PDF, Word (.docx), text or CSV")
+
+
+def _tidy_pdf(text: str) -> str:
+    """PDF extraction breaks lines mid-sentence; join wrapped lines, keep blank-line paragraph
+    breaks and lines that look like questions or headings on their own."""
+    out: list[str] = []
+    for raw in text.replace("\r", "").split("\n"):
+        line = raw.strip()
+        if not line:
+            out.append("")
+            continue
+        prev = out[-1] if out else ""
+        if prev and not prev.endswith((".", "?", "!", ":")) and not line[0].isupper():
+            out[-1] = prev + " " + line
+        elif prev.endswith("?"):
+            out.append("")
+            out.append(line)
+        else:
+            out.append(line)
+    return "\n".join(out)
+
 
 _Q_PREFIX = re.compile(r"^\s*(?:q(?:uestion)?\s*[:.\-)]|\d+[.)]|[-*•]|#+)\s*", re.I)
 _A_PREFIX = re.compile(r"^\s*a(?:nswer)?\s*[:.\-)]\s*", re.I)
@@ -361,6 +422,8 @@ def parse_faq_text(text: str, category: str = "imported") -> list[Faq]:
                     q = _strip_q(ln) if q is None else f"{q} {_strip_q(ln)}"
                 else:
                     a.append(ln.strip())
+            if q is None:
+                q, pending_q = pending_q, None
             if q and a:
                 out.append(Faq(category=category, question=q, answer=" ".join(a), source="import"))
             continue
@@ -457,8 +520,15 @@ def _dedupe(faqs: list[Faq]) -> list[Faq]:
 
 class FaqImportIn(BaseModel):
     source: FaqSource
-    content: str = Field(min_length=1, max_length=200_000)
+    content: str = Field(min_length=1, max_length=14_000_000)  # document: base64 file body
     category: str = Field(default="imported", max_length=40)
+    filename: str = Field(default="", max_length=200)
+
+    def document_bytes(self) -> bytes:
+        try:
+            return base64.b64decode(self.content, validate=True)
+        except ValueError as e:
+            raise ValueError("file upload was not valid base64") from e
 
 
 class FaqImportResult(BaseModel):

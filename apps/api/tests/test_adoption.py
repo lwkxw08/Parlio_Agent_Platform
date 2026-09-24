@@ -2,11 +2,23 @@
 
 from __future__ import annotations
 
+import base64
+import io
+import zipfile
 from datetime import UTC, datetime, timedelta
 
+import pytest
 from httpx import AsyncClient
+from pypdf import PdfWriter
+from pypdf.generic import DecodedStreamObject, DictionaryObject, NameObject
 
-from parlio_api.adoption import merge_faqs, parse_faq_csv, parse_faq_text, review_import
+from parlio_api.adoption import (
+    document_text,
+    merge_faqs,
+    parse_faq_csv,
+    parse_faq_text,
+    review_import,
+)
 from parlio_api.auth import DEV_TENANT
 from parlio_api.billing import SubscriptionStatus
 from parlio_api.journey import CHECKIN_KIND, QUESTIONNAIRE_KIND, CheckInLoop
@@ -267,3 +279,118 @@ async def test_announcements_roadmap_feedback(client: AsyncClient) -> None:
     r = await client.patch(f"/v1/admin/feedback/{fb}", headers=OWNER, json={"status": "planned"})
     assert r.json()["status"] == "planned"
     assert (await client.delete(f"/v1/admin/roadmap/{item}", headers=OWNER)).status_code == 204
+
+
+# -- document upload (Fonio #4) ------------------------------------------------------------------
+
+
+def _pdf_bytes(text: str) -> bytes:
+    """Single-page PDF with a hand-written Helvetica content stream (pypdf can't draw text)."""
+    w = PdfWriter()
+    page = w.add_blank_page(width=300, height=300)
+    font = DictionaryObject(
+        {
+            NameObject("/Type"): NameObject("/Font"),
+            NameObject("/Subtype"): NameObject("/Type1"),
+            NameObject("/BaseFont"): NameObject("/Helvetica"),
+        }
+    )
+    page[NameObject("/Resources")] = DictionaryObject(
+        {NameObject("/Font"): DictionaryObject({NameObject("/F1"): w._add_object(font)})}
+    )
+    lines = " ".join(f"({line}) Tj T*" for line in text.splitlines())
+    stream = DecodedStreamObject()
+    stream.set_data(f"BT /F1 12 Tf 14 TL 20 280 Td {lines} ET".encode())
+    page[NameObject("/Contents")] = w._add_object(stream)
+    buf = io.BytesIO()
+    w.write(buf)
+    return buf.getvalue()
+
+
+def _b64(data: bytes) -> str:
+    return base64.b64encode(data).decode()
+
+
+def _docx_bytes(paragraphs: list[str]) -> bytes:
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as z:
+        z.writestr("[Content_Types].xml", "<Types/>")
+        body = "".join(f"<w:p><w:r><w:t>{p}</w:t></w:r></w:p>" for p in paragraphs)
+        z.writestr(
+            "word/document.xml",
+            '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">'
+            f"<w:body>{body}</w:body></w:document>",
+        )
+    return buf.getvalue()
+
+
+def test_document_text_pdf_docx_and_rejections() -> None:
+    pdf = _pdf_bytes("Q: Do you deliver?\nA: Yes, within 10 miles.")
+    text = document_text("faqs.PDF", pdf)
+    assert "Do you deliver?" in text and "within 10 miles" in text
+
+    docx = _docx_bytes(["Do you deliver?", "Yes, within 10 miles."])
+    text = document_text("faqs.docx", docx)
+    assert [ln for ln in text.splitlines() if ln] == ["Do you deliver?", "Yes, within 10 miles."]
+
+    assert document_text("notes.md", b"Q: A?\nA: B") == "Q: A?\nA: B"
+    with pytest.raises(ValueError, match="unsupported file type"):
+        document_text("slides.pptx", b"x")
+    with pytest.raises(ValueError, match="10 MB"):
+        document_text("big.txt", b"x" * (10 * 1024 * 1024 + 1))
+    with pytest.raises(ValueError):
+        document_text("broken.pdf", b"%PDF-1.4 not really")
+    with pytest.raises(ValueError, match="no text found"):
+        w = PdfWriter()
+        w.add_blank_page(width=10, height=10)
+        buf = io.BytesIO()
+        w.write(buf)
+        document_text("blank.pdf", buf.getvalue())
+
+
+async def test_faq_import_from_uploaded_document(client: AsyncClient) -> None:
+    aid = (await client.get("/v1/assistants", params=Q)).json()[0]["assistant_id"]
+    docx = _docx_bytes(
+        ["Q: Do you deliver?", "A: Yes, within 10 miles.", "Q: Card payments?", "A: Yes."]
+    )
+    r = await client.post(
+        f"/v1/assistants/{aid}/faqs/import",
+        params=Q,
+        json={
+            "source": "document",
+            "filename": "faqs.docx",
+            "content": base64.b64encode(docx).decode(),
+        },
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["source"] == "document"
+    assert [f["question"] for f in r.json()["suggested"]] == ["Do you deliver?", "Card payments?"]
+
+    csv = b"question,answer\nDo you deliver?,Yes\n"
+    r = await client.post(
+        f"/v1/assistants/{aid}/faqs/import",
+        params=Q,
+        json={
+            "source": "document",
+            "filename": "faqs.csv",
+            "content": base64.b64encode(csv).decode(),
+        },
+    )
+    assert r.status_code == 200 and len(r.json()["suggested"]) == 1
+
+    r = await client.post(
+        f"/v1/assistants/{aid}/faqs/import",
+        params=Q,
+        json={
+            "source": "document",
+            "filename": "x.pptx",
+            "content": base64.b64encode(b"x").decode(),
+        },
+    )
+    assert r.status_code == 400 and "unsupported file type" in r.json()["detail"]
+    r = await client.post(
+        f"/v1/assistants/{aid}/faqs/import",
+        params=Q,
+        json={"source": "document", "filename": "x.txt", "content": "@@not base64@@"},
+    )
+    assert r.status_code == 400

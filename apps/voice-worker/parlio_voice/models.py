@@ -362,6 +362,30 @@ class SpeakingStyle(BaseModel):
         return "Speaking style on the phone:\n" + "\n".join(f"- {line}" for line in lines)
 
 
+class GlossaryTerm(BaseModel):
+    """A word the assistant must say (and hear) correctly: a brand, product, place or person."""
+
+    term: str
+    say_as: str = ""  # how to pronounce it, e.g. "Loo-shum" for Lewisham; empty = as written
+    meaning: str = ""  # optional one-line explanation the assistant can use
+
+    def prompt(self) -> str:
+        bits = [f"'{self.term}'"]
+        if self.say_as:
+            bits.append(f"pronounced '{self.say_as}'")
+        if self.meaning:
+            bits.append(self.meaning)
+        return " - ".join(bits) if len(bits) > 1 else bits[0]
+
+
+class WebsiteSearchConfig(BaseModel):
+    """Live look-ups on the business's own website mid-call (domain-locked)."""
+
+    enabled: bool = False
+    extra_urls: list[str] = Field(default_factory=list)  # deeper pages worth indexing
+    max_pages: int = 12
+
+
 class TransferWhenClosed(StrEnum):
     NORMAL = "normal"  # whoever is on their own schedule
     ON_CALL_ONLY = "on_call_only"  # only urgent calls to on-call staff
@@ -520,6 +544,8 @@ class AssistantConfig(BaseModel):
     faqs: list[Faq] = Field(default_factory=list)
     sms_scenarios: list[SmsScenario] = Field(default_factory=list)
     blocked_numbers: list[str] = Field(default_factory=list)
+    glossary: list[GlossaryTerm] = Field(default_factory=list)
+    website_search: WebsiteSearchConfig = Field(default_factory=WebsiteSearchConfig)
     greeting: str = "Hi, thanks for calling {business_name}. How can I help you today?"
     instructions: str = (
         "You are {name}, the friendly and efficient phone receptionist for {business_name}. "
@@ -622,6 +648,12 @@ class AssistantConfig(BaseModel):
         ]
         if any(facts):
             out.append("\n".join(f for f in facts if f))
+        if self.glossary:
+            out.append(
+                "Glossary - names and terms to recognise and say exactly like this (spell them "
+                "as written if asked):\n"
+                + "\n".join(f"- {g.prompt()}" for g in self.glossary if g.term.strip())
+            )
         if self.hours.always:
             out.append("Opening hours: open 24 hours.")
         else:

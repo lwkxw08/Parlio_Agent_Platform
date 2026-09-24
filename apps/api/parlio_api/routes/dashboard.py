@@ -506,6 +506,40 @@ async def mark_read(call_id: str, store: StoreDep, user: UserDep, read: bool = T
     return call
 
 
+class BlockCallerResult(BaseModel):
+    number: str
+    blocked: bool
+    blocked_numbers: list[str]
+    assistant_version: int
+
+
+@router.post("/calls/{call_id}/block", response_model=BlockCallerResult)
+async def block_caller(
+    call_id: str, store: StoreDep, user: UserDep, block: bool = True
+) -> BlockCallerResult:
+    """Add (or remove) the other party's number on the assistant's blocked list; publishes a new
+    Studio version so the change is live for the next call."""
+    call = await _owned_call(store, user, call_id)
+    user.require_admin(call.tenant_id)
+    number = call.party
+    if not number:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "this call has no caller number to block")
+    cfg = await _owned_assistant(store, user, call.assistant_id)
+    digits = number.lstrip("+")
+    kept = [b for b in cfg.blocked_numbers if b.lstrip("+") != digits]
+    if block:
+        kept.append(number)
+    if kept != cfg.blocked_numbers:
+        cfg = cfg.model_copy(update={"blocked_numbers": kept})
+        await store.upsert_assistant(cfg, [])
+    return BlockCallerResult(
+        number=number,
+        blocked=block,
+        blocked_numbers=cfg.blocked_numbers,
+        assistant_version=cfg.assistant_version,
+    )
+
+
 @router.post("/calls/{call_id}/feedback", response_model=CallRecord)
 async def call_feedback(
     call_id: str, body: CallFeedback, store: StoreDep, user: UserDep

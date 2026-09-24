@@ -321,6 +321,16 @@ export type SpeakingStyle = {
   extra_rules: string[];
 };
 
+export type GlossaryTerm = { term: string; say_as: string; meaning: string };
+export type WebsiteSearchConfig = { enabled: boolean; extra_urls: string[]; max_pages: number };
+export type TurnTuning = {
+  min_endpointing_delay: number;
+  max_endpointing_delay: number;
+  allow_interruptions: boolean;
+  min_interruption_duration: number;
+  preemptive_generation: boolean;
+};
+
 export type Assistant = {
   tenant_id: string;
   company_id: string;
@@ -334,6 +344,8 @@ export type Assistant = {
   hours: Schedule;
   persona: Persona;
   speaking: SpeakingStyle;
+  glossary: GlossaryTerm[];
+  website_search: WebsiteSearchConfig;
   rules: BusinessRule[];
   faqs: Faq[];
   sms_scenarios: SmsScenario[];
@@ -344,7 +356,7 @@ export type Assistant = {
   providers: Record<string, unknown>;
   llm_model: string | null;
   voice: VoiceConfig;
-  turn: Record<string, unknown>;
+  turn: TurnTuning;
   recording: RecordingConfig;
   screening: ScreeningConfig;
   transfer: TransferConfig;
@@ -1620,9 +1632,10 @@ export type FirstWeekReport = {
 };
 export const fetchFirstWeek = (tenant_id: string) => get<FirstWeekReport>(`/v1/setup/first-week${qs({ tenant_id })}`);
 
-export type FaqSource = "text" | "csv" | "url";
+export type FaqSource = "text" | "csv" | "url" | "document";
 export type FaqImportResult = { source: FaqSource; suggested: Faq[]; duplicates: Faq[] };
-export const importFaqs = (assistant_id: string, body: { source: FaqSource; content: string; category?: string }) =>
+/** For `document`, `content` is the file base64-encoded and `filename` carries its extension. */
+export const importFaqs = (assistant_id: string, body: { source: FaqSource; content: string; category?: string; filename?: string }) =>
   request<FaqImportResult>(`/v1/assistants/${assistant_id}/faqs/import`, { method: "POST", body: JSON.stringify(body) });
 export const applyFaqs = (assistant_id: string, faqs: Faq[]) =>
   request<{ added: number; total: number; config: Assistant }>(`/v1/assistants/${assistant_id}/faqs/apply`, { method: "POST", body: JSON.stringify({ faqs }) });

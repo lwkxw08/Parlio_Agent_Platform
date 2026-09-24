@@ -30,6 +30,14 @@ Controls how the assistant reads details back so nothing is misheard:
 - **Final confirmation question** – asked once everything is collected.
 - **Your own read-back rules** – one per line, e.g. "Read postcodes as two groups" or "Say phone numbers in pairs".
 
+## Interruptions
+
+**Let callers interrupt the assistant** is on by default: the assistant stops talking the moment the caller speaks. Turn it off for noisy lines or callers who talk over announcements – the assistant then finishes each sentence before listening.
+
+## Glossary & pronunciations
+
+A list of words the assistant should know: brand names, product codes, staff names, local place names. For each term you can give **Say as** (how it should be pronounced, e.g. "Saoirse" → "Seer-sha") and **Meaning** (what it is, e.g. "our premium boiler-care plan"). The pronunciation is applied to everything the assistant says; the meaning is added to its instructions so it understands the term when callers use it.
+
 ## Business hours
 
 Set the opening times for each day. Inside these hours the assistant uses the main greeting and transfers to your team; outside them the *Closed-hours persona* applies. **Holidays & closures** lets you add dates (Christmas Day, a training day) that are treated as closed even on a normal weekday.
@@ -40,7 +48,11 @@ Plain-English instructions the assistant must always follow, one per line. Good 
 
 ## FAQs
 
-Question-and-answer pairs the assistant can answer directly. Group them with a category so the list stays manageable. **Suggest from recent calls** shows questions callers actually asked that the assistant couldn't answer, ready to add. **Import FAQs** accepts pasted text, a web page URL or a CSV and drafts FAQs from it.
+Question-and-answer pairs the assistant can answer directly. Group them with a category so the list stays manageable. **Suggest from recent calls** shows questions callers actually asked that the assistant couldn't answer, ready to add. **Import FAQs** accepts pasted text, a web page URL, a CSV or an uploaded document (PDF, Word .docx, text or Markdown, up to 10 MB – a brochure, price list or FAQ sheet) and drafts FAQs from it. Nothing is added until you review the suggestions and click **Apply**; duplicates of existing FAQs are flagged.
+
+## Live website search
+
+When enabled (and your **Website** is set under Identity & personality), the assistant can look up an answer on your own website during the call – opening hours, prices, service areas – and reads the relevant snippet back. It only ever reads pages on your website's domain (plus any **Extra pages** you list on that domain, up to the page limit you set); it never browses the wider web, and if nothing on the site matches it says so rather than guessing.
 
 ## Information to collect
 

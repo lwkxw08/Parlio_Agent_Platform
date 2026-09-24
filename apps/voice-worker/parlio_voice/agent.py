@@ -123,7 +123,12 @@ class Receptionist(Agent):
         s = self.cfg.speaking
         return Agent.default.tts_node(
             self,
-            speakable_stream(text, digits=s.digits_individually, postcodes=s.spell_postcodes),
+            speakable_stream(
+                text,
+                digits=s.digits_individually,
+                postcodes=s.spell_postcodes,
+                pronunciations=[(g.term, g.say_as) for g in self.cfg.glossary if g.say_as],
+            ),
             model_settings,
         )
 
@@ -495,6 +500,8 @@ async def entrypoint(ctx: JobContext) -> None:
         )
 
     background: list[asyncio.Task[None]] = []
+    if tools.site is not None:
+        background.append(asyncio.create_task(tools.warm_website()))
 
     @ctx.room.on("participant_disconnected")
     def _on_participant_gone(p: rtc.RemoteParticipant) -> None:

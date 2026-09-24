@@ -44,9 +44,29 @@ def _postcode(m: re.Match[str]) -> str:
     return f"{' '.join(m.group(1))}, {' '.join(m.group(2))}"
 
 
-def speakable(text: str, *, digits: bool = True, postcodes: bool = True) -> str:
+Pronunciations = list[tuple[str, str]]
+
+
+def pronounce(text: str, pronunciations: Pronunciations) -> str:
+    """Swap glossary terms for their phonetic spelling (whole words, case-insensitive)."""
+    for term, say_as in pronunciations:
+        if term.strip() and say_as.strip():
+            pattern = rf"(?<!\w){re.escape(term.strip())}(?!\w)"
+            text = re.sub(pattern, say_as.strip(), text, flags=re.I)
+    return text
+
+
+def speakable(
+    text: str,
+    *,
+    digits: bool = True,
+    postcodes: bool = True,
+    pronunciations: Pronunciations | None = None,
+) -> str:
     """One paragraph -> short, separately-paused sentences with numbers spelt out."""
     text = _MARKDOWN.sub("", text)
+    if pronunciations:
+        text = pronounce(text, pronunciations)
     out: list[str] = []
     for raw in text.split("\n"):
         line = _BULLET.sub("", raw).strip()
@@ -69,14 +89,21 @@ def speakable(text: str, *, digits: bool = True, postcodes: bool = True) -> str:
 
 
 async def speakable_stream(
-    text: AsyncIterable[str], *, digits: bool = True, postcodes: bool = True
+    text: AsyncIterable[str],
+    *,
+    digits: bool = True,
+    postcodes: bool = True,
+    pronunciations: Pronunciations | None = None,
 ) -> AsyncIterator[str]:
     """Buffer streamed LLM chunks to sentence/line boundaries, then rewrite each segment."""
     buf = ""
     async for chunk in text:
         buf += chunk
         if _FLUSH_AT.search(buf) or len(buf) > 240:
-            yield speakable(buf, digits=digits, postcodes=postcodes) + " "
+            yield (
+                speakable(buf, digits=digits, postcodes=postcodes, pronunciations=pronunciations)
+                + " "
+            )
             buf = ""
     if buf.strip():
-        yield speakable(buf, digits=digits, postcodes=postcodes)
+        yield speakable(buf, digits=digits, postcodes=postcodes, pronunciations=pronunciations)
