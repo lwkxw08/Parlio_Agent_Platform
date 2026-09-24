@@ -225,6 +225,10 @@ button { font: inherit; }
 .demo-tabs button:disabled { cursor: not-allowed; opacity: 0.6; }
 .linkish { border: 0; background: none; font: inherit; color: var(--blue); font-weight: 600; cursor: pointer; padding: 0; }
 .sample-call { border: 1px solid var(--line); border-radius: 18px; padding: 1rem 1.1rem; background: var(--panel); }
+.sample-tabs { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-bottom: 0.9rem; }
+.sample-tab { border: 1px solid var(--line); background: transparent; color: var(--muted); border-radius: 999px; padding: 0.35rem 0.85rem; font-size: 0.82rem; font-weight: 600; cursor: pointer; transition: border-color 0.15s, color 0.15s, background 0.15s; }
+.sample-tab:hover { color: var(--fg); border-color: var(--fg); }
+.sample-tab.on { background: var(--accent-grad); border-color: transparent; color: #fff; }
 .sample-head { display: flex; align-items: center; gap: 0.9rem; }
 .sample-head .play { flex: none; width: 52px; height: 52px; border-radius: 50%; border: 0; background: var(--accent-grad); color: #fff; font-size: 1.05rem; cursor: pointer; box-shadow: 0 10px 24px rgba(106, 61, 245, 0.35); display: grid; place-items: center; }
 .sample-head .play.on { box-shadow: 0 0 0 6px rgba(106, 61, 245, 0.15); }
