@@ -30,6 +30,7 @@ from parlio_voice.models import (
 )
 from parlio_voice.outbound import OutcomeReporter, outcome_tool
 from parlio_voice.transfer import TransferEngine, TransferResult
+from parlio_voice.websearch import SiteIndex, site_index
 
 log = logging.getLogger("parlio.tools")
 
@@ -346,6 +347,27 @@ class ReceptionistTools:
         self.caller_ctx: dict[str, Any] | None = None
         self.hangup: Callable[[str], Awaitable[None]] | None = None
         self.ended_as_spam = False
+        self.site: SiteIndex | None = None
+        ws = cfg.website_search
+        if ws.enabled and cfg.business.website:
+            self.site = site_index(cfg.business.website, ws.extra_urls, ws.max_pages)
+
+    async def warm_website(self) -> None:
+        if self.site is not None:
+            try:
+                await self.site.build()
+            except Exception:
+                log.warning("website index failed for %s", self.cfg.assistant_id, exc_info=True)
+
+    async def search_website(self, query: str) -> dict[str, Any]:
+        if self.site is None:
+            return {"ok": False, "error": "website search is not enabled"}
+        await self.warm_website()
+        hits = self.site.search(query)
+        log.info("website search on call %s: %r -> %d hits", self.call_id, query[:120], len(hits))
+        if not hits:
+            return {"ok": True, "results": [], "note": "nothing on the website matches"}
+        return {"ok": True, "results": hits}
 
     # -- call screening (Phase 20d) --------------------------------------------------------
     async def end_call(self, reason: str, farewell: str | None = None) -> dict[str, Any]:
@@ -1002,6 +1024,22 @@ def build_tools(t: ReceptionistTools) -> list[Any]:
             return await t.send_payment_link(amount, description, to, consent)
 
         tools.append(send_payment_link)
+
+    if t.site is not None:
+
+        @function_tool(
+            name="search_website",
+            description=(
+                "Look something up on the business's own website - prices, services, opening "
+                "times, policies, locations, products - when it is not already in your "
+                "knowledge. Pass the caller's question as a short search phrase. Only quote what "
+                "the results say; if nothing matches, say you will check and take a message."
+            ),
+        )
+        async def search_website(query: str) -> dict[str, Any]:
+            return await t.search_website(query)
+
+        tools.append(search_website)
 
     if t.reporter is not None:
         tools.append(outcome_tool(t.reporter))

@@ -14,6 +14,7 @@ import {
   type SmsScenario,
   type SpeakingStyle,
   type VersionSummary,
+  type WebsiteSearchConfig,
   fetchSuggestedFaqs,
   fetchVersions,
   post,
@@ -30,7 +31,8 @@ const TABS = ["persona", "speaking", "business", "hours", "rules", "faqs", "fiel
 type Tab = (typeof TABS)[number];
 /** Guide anchors (docs/guide/assistant-studio.md headings) → the tab that shows them. */
 const ANCHOR_TABS: Record<string, Tab> = {
-  "identity-personality": "persona", voice: "persona", "speaking-style": "speaking", "business-hours": "hours",
+  "identity-personality": "persona", voice: "persona", "speaking-style": "speaking", interruptions: "speaking", glossary: "speaking",
+  "live-website-search": "business", "business-hours": "hours",
   "key-business-rules": "rules", faqs: "faqs", "information-to-collect": "fields", "sms-scenarios": "sms",
   languages: "languages", "recording-consent": "recording", "call-screening": "blocked", "blocked-numbers": "blocked",
   "closed-hours-persona": "afterhours", "no-answer-behaviour": "afterhours", "version-history": "versions", "publish-checks": "versions",
@@ -89,12 +91,12 @@ export default function Studio({ initial, versions: initialVersions, requiredFie
     flash(`Restored version ${v} as version ${r.assistant_version}`);
   };
 
-  const listEdit = <T,>(key: "rules" | "faqs" | "sms_scenarios", i: number, patch: Partial<T>) => {
+  const listEdit = <T,>(key: "rules" | "faqs" | "sms_scenarios" | "glossary", i: number, patch: Partial<T>) => {
     const arr = [...(cfg[key] as T[])];
     arr[i] = { ...arr[i], ...patch };
     upd({ [key]: arr } as Partial<Assistant>);
   };
-  const listRemove = (key: "rules" | "faqs" | "sms_scenarios", i: number) =>
+  const listRemove = (key: "rules" | "faqs" | "sms_scenarios" | "glossary", i: number) =>
     upd({ [key]: (cfg[key] as unknown[]).filter((_, j) => j !== i) } as Partial<Assistant>);
 
   const faqCategories = Array.from(new Set(cfg.faqs.map((f) => f.category))).sort();
@@ -173,6 +175,22 @@ export default function Studio({ initial, versions: initialVersions, requiredFie
                 onBlur={() => set({ extra_rules: s.extra_rules.map((r) => r.trim()).filter(Boolean) })}
               />
             </label>
+            <h2 style={{ marginTop: "1.2rem" }} id="interruptions">Interruptions</h2>
+            <label className="row" style={{ alignItems: "flex-start", gap: 10 }}>
+              <input type="checkbox" checked={cfg.turn?.allow_interruptions ?? true} onChange={(e) => upd({ turn: { ...cfg.turn, allow_interruptions: e.target.checked } })} style={{ marginTop: 4 }} />
+              <span><strong>Let callers interrupt the assistant</strong><br /><span className="muted small">On (recommended): the assistant stops talking as soon as the caller speaks. Off: it finishes each sentence first — useful on noisy lines or where callers talk over hold-style announcements.</span></span>
+            </label>
+            <h2 style={{ marginTop: "1.2rem" }} id="glossary">Glossary &amp; pronunciations</h2>
+            <p className="hint">Brand, product, place and staff names the assistant must recognise and say correctly. “Say as” is how it is spoken (e.g. <i>Saoirse</i> → <i>Seer-sha</i>); “Meaning” tells the assistant what the term is.</p>
+            {(cfg.glossary ?? []).map((g, i) => (
+              <div key={i} className="row" style={{ gap: 8, alignItems: "center" }}>
+                <input placeholder="Term" value={g.term} onChange={(e) => listEdit("glossary", i, { ...g, term: e.target.value })} style={{ flex: 1 }} />
+                <input placeholder="Say as (optional)" value={g.say_as} onChange={(e) => listEdit("glossary", i, { ...g, say_as: e.target.value })} style={{ flex: 1 }} />
+                <input placeholder="Meaning (optional)" value={g.meaning} onChange={(e) => listEdit("glossary", i, { ...g, meaning: e.target.value })} style={{ flex: 2 }} />
+                <button className="ghost" onClick={() => listRemove("glossary", i)}>Remove</button>
+              </div>
+            ))}
+            <button className="ghost" onClick={() => upd({ glossary: [...(cfg.glossary ?? []), { term: "", say_as: "", meaning: "" }] })}>+ Add term</button>
             <p className="muted small">Changes apply to the next call after you save a new version. Use Simulate to hear the effect before publishing.</p>
           </div>
         );
@@ -190,6 +208,29 @@ export default function Studio({ initial, versions: initialVersions, requiredFie
           <label><span className="row" style={{ alignItems: "center" }}>Services (one per line) <AskAi assistantId={cfg.assistant_id} field="services" current={cfg.business.services.join("\n")} website={cfg.business.website} placeholder="e.g. List the services a domestic plumbing firm offers, taken from www.parliodemo.co.uk" onInsert={(t) => upd({ business: { ...cfg.business, services: t.split("\n").map((s) => s.trim()).filter(Boolean) } })} /></span>
             <textarea value={cfg.business.services.join("\n")} onChange={(e) => upd({ business: { ...cfg.business, services: e.target.value.split("\n").map((s) => s.trim()).filter(Boolean) } })} />
           </label>
+          {(() => {
+            const ws: WebsiteSearchConfig = cfg.website_search ?? { enabled: false, extra_urls: [], max_pages: 12 };
+            const setWs = (p: Partial<WebsiteSearchConfig>) => upd({ website_search: { ...ws, ...p } });
+            return (
+              <>
+                <h2 style={{ marginTop: "1.2rem" }} id="live-website-search">Live website search</h2>
+                <p className="hint">Let the assistant look answers up on <b>your own website only</b> during a call — prices, opening times, policies, products — when they are not in its FAQs. It never browses anywhere else and only quotes what your pages say.</p>
+                <label className="small check">
+                  <input type="checkbox" checked={ws.enabled} disabled={!cfg.business.website} onChange={(e) => setWs({ enabled: e.target.checked })} /> Search {cfg.business.website ? <code>{cfg.business.website}</code> : "the website above (enter one first)"} during calls
+                </label>
+                {ws.enabled && (
+                  <div className="two">
+                    <label>Extra pages to include (one URL per line, same website)
+                      <textarea value={ws.extra_urls.join("\n")} placeholder={`${cfg.business.website ?? ""}/prices`} onChange={(e) => setWs({ extra_urls: e.target.value.split("\n") })} onBlur={() => setWs({ extra_urls: ws.extra_urls.map((u) => u.trim()).filter(Boolean) })} />
+                    </label>
+                    <label>Pages to index (1–40)
+                      <input type="number" min={1} max={40} value={ws.max_pages} onChange={(e) => setWs({ max_pages: Math.min(40, Math.max(1, Number(e.target.value) || 1)) })} />
+                    </label>
+                  </div>
+                )}
+              </>
+            );
+          })()}
         </div>
       )}
 

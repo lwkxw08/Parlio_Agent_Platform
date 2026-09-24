@@ -514,3 +514,38 @@ async def test_create_assistant_plan_limit_clone_and_isolation(client: AsyncClie
         headers={"X-Parlio-User": "stranger@example.com"},
     )
     assert r.status_code == 403
+
+
+async def test_block_caller_from_call_detail(client: AsyncClient) -> None:
+    await _call(client, "bk1", "+447700900333")
+    aid = (await client.get("/v1/assistants", params={"tenant_id": DEV_TENANT})).json()[0]
+    before = aid["assistant_version"]
+
+    r = await client.post("/v1/calls/bk1/block")
+    assert r.status_code == 200, r.text
+    assert r.json()["blocked"] is True and r.json()["number"] == "+447700900333"
+    assert r.json()["blocked_numbers"] == ["+447700900333"]
+    assert r.json()["assistant_version"] == before + 1
+    cfg = (await client.get("/v1/assistants", params={"tenant_id": DEV_TENANT})).json()[0]
+    assert cfg["blocked_numbers"] == ["+447700900333"]
+
+    # idempotent: blocking again does not duplicate or publish another version
+    r = await client.post("/v1/calls/bk1/block")
+    assert r.json()["blocked_numbers"] == ["+447700900333"]
+    assert r.json()["assistant_version"] == before + 1
+
+    r = await client.post("/v1/calls/bk1/block", params={"block": False})
+    assert r.json()["blocked"] is False and r.json()["blocked_numbers"] == []
+
+    # a viewer in the tenant can see the call but not change the blocked list
+    r = await client.post(
+        f"/v1/organisations/{DEV_TENANT}/members",
+        json={"email": "viewer@example.com", "role": "viewer"},
+    )
+    assert r.status_code == 201
+    r = await client.post("/v1/calls/bk1/block", headers={"X-Parlio-User": "viewer@example.com"})
+    assert r.status_code == 403
+    # strangers cannot even find it
+    r = await client.post("/v1/calls/bk1/block", headers={"X-Parlio-User": "stranger@example.com"})
+    assert r.status_code in (403, 404)
+    assert (await client.post("/v1/calls/missing/block")).status_code == 404

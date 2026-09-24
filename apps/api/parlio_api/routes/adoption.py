@@ -3,7 +3,7 @@
 Tenant (``/v1``):
 * ``GET/POST/DELETE /whiteglove``            eligibility + open request / request / cancel.
 * ``GET  /setup/first-week``                 first-week impact report for the Setup page.
-* ``POST /assistants/{id}/faqs/import``      text / CSV / URL -> suggested FAQs for review.
+* ``POST /assistants/{id}/faqs/import``      text / CSV / URL / PDF / DOCX -> suggested FAQs.
 * ``POST /assistants/{id}/faqs/apply``       approved FAQs -> new Studio version.
 * ``GET  /announcements`` ``POST /announcements/read``  in-app feed + unread count.
 * ``GET  /roadmap`` ``POST /roadmap/{id}/vote`` ``POST /feedback``.
@@ -36,6 +36,7 @@ from parlio_api.adoption import (
     WhiteGloveRequest,
     WhiteGloveRequestIn,
     WhiteGloveUpdate,
+    document_text,
     faqs_from_url,
     first_week_report,
     merge_faqs,
@@ -146,6 +147,15 @@ async def import_faqs(
             raise HTTPException(
                 status.HTTP_400_BAD_REQUEST, f"could not read that page: {e}"
             ) from e
+    elif body.source == "document":
+        try:
+            text = document_text(body.filename, body.document_bytes())
+        except ValueError as e:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, str(e)) from e
+        if body.filename.lower().endswith(".csv"):
+            found = parse_faq_csv(text, body.category)
+        else:
+            found = parse_faq_text(text, body.category)
     else:
         found = parse_faq_text(body.content, body.category)
     res = review_import(found, cfg.faqs)
