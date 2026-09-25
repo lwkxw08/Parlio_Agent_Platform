@@ -61,6 +61,7 @@ from parlio_voice.tools import (
     caller_context_instruction,
     caller_id_instruction,
     guess_department,
+    mentions_checking,
     mentions_connecting,
     screening_instruction,
 )
@@ -430,18 +431,32 @@ async def entrypoint(ctx: JobContext) -> None:
         await bridge_.add_system_note(note)
         session.generate_reply()
 
+    async def _lookup_if_promised(calls_before: int) -> None:
+        # "Let me check that for you, one moment" with no tool call in the same turn leaves the
+        # caller in silence until they speak again. Nudge the model to do the lookup now.
+        await asyncio.sleep(2.5)
+        if tools.tool_calls != calls_before or tools.caller_gone:
+            return
+        if session.current_speech is not None:
+            return
+        log.info("assistant promised to check something without calling a tool; prompting it")
+        await SessionBridge(session).add_system_note(
+            "You told the caller you would check something but did not call any tool. Do the "
+            "lookup now (check_calendar for appointment slots, or whichever tool fits) and tell "
+            "the caller the result straight away. Do not wait for them to speak."
+        )
+        session.generate_reply()
+
     @session.on("conversation_item_added")
     def _on_item(ev: ConversationItemAddedEvent) -> None:
         if ev.item.type != "message":
             return
         text = ev.item.text_content or ""
-        if (
-            ev.item.role == "assistant"
-            and outbound is None
-            and not tools.transfer_attempted
-            and mentions_connecting(text)
-        ):
-            background.append(asyncio.create_task(_transfer_if_promised(text)))
+        if ev.item.role == "assistant" and outbound is None:
+            if not tools.transfer_attempted and mentions_connecting(text):
+                background.append(asyncio.create_task(_transfer_if_promised(text)))
+            elif mentions_checking(text) and not ev.item.interrupted:
+                background.append(asyncio.create_task(_lookup_if_promised(tools.tool_calls)))
         events.emit(
             cfg,
             call_id,

@@ -158,6 +158,21 @@ _QUESTION_OPENERS = re.compile(
 )
 
 
+_CHECKING_PHRASES = re.compile(
+    r"\b(let me (just |quickly )?(check|look|see|find|have a look|pull up)"
+    r"|i('ll| will) (just |quickly )?(check|look|find|pull up)"
+    r"|(one|just a|give me a|bear with me( for)? a) (moment|second|sec|minute|mo)"
+    r"|bear with me|hold on|hang on|checking (our|the|for|what|availability)"
+    r"|looking (that|this|it) up)\b",
+    re.IGNORECASE,
+)
+
+
+def mentions_checking(text: str) -> bool:
+    """True when the assistant tells the caller to wait while it looks something up."""
+    return bool(_CHECKING_PHRASES.search(text))
+
+
 def mentions_connecting(text: str) -> bool:
     """True when the assistant *promises* a transfer ("connecting you now"), not when it asks
     about one ("so I can transfer you to the right department?")."""
@@ -335,6 +350,7 @@ class ReceptionistTools:
         self.transfer_declined_at: int = 0
         self.caller_gone = False
         self.user_turns = 0
+        self.tool_calls = 0
         self.connected_transfer_id: str | None = None
         self.ticket_id: str | None = None
         self.booking_id: str | None = None
@@ -360,6 +376,7 @@ class ReceptionistTools:
                 log.warning("website index failed for %s", self.cfg.assistant_id, exc_info=True)
 
     async def search_website(self, query: str) -> dict[str, Any]:
+        self.tool_calls += 1
         if self.site is None:
             return {"ok": False, "error": "website search is not enabled"}
         await self.warm_website()
@@ -460,6 +477,7 @@ class ReceptionistTools:
 
     # -- transfer -----------------------------------------------------------------------------
     async def transfer(self, department: str | None, reason: str) -> TransferResult:
+        self.tool_calls += 1
         urgent = bool(self.urgent_hit)
         plan = self.engine.plan(department, urgent)
         if not self.availability(department)["someone_available"]:
@@ -552,6 +570,7 @@ class ReceptionistTools:
         department: str | None,
         source: str = "ai_intake",
     ) -> dict[str, Any]:
+        self.tool_calls += 1
         try:
             priority = TicketPriority(urgency.lower())
         except ValueError:
@@ -587,6 +606,7 @@ class ReceptionistTools:
     async def send_sms(
         self, trigger: str, to: str | None = None, caller_name: str | None = None
     ) -> dict[str, Any]:
+        self.tool_calls += 1
         try:
             trig = SmsTrigger(trigger)
         except ValueError:
@@ -704,6 +724,7 @@ class ReceptionistTools:
     async def calendar_availability(
         self, days: int = 7, service: str | None = None
     ) -> dict[str, Any]:
+        self.tool_calls += 1
         if self.api is None:
             return {"slots": [], "error": "calendar unavailable"}
         try:
@@ -741,6 +762,7 @@ class ReceptionistTools:
         service: str | None = None,
         address: str | None = None,
     ) -> dict[str, Any]:
+        self.tool_calls += 1
         if self.api is None:
             return {"status": "unsent"}
         req = {
@@ -1076,7 +1098,10 @@ def booking_first_instruction(cfg: AssistantConfig) -> str:
     )
     return (
         "When a caller asks for an appointment, book it: use check_calendar to offer two or "
-        "three slots and book_appointment to confirm. If check_calendar lists services, ask "
+        "three slots and book_appointment to confirm. Never tell the caller to wait while you "
+        "check without calling check_calendar in that same turn - say a short line like 'let me "
+        "check' and call the tool immediately, then read out the options. If check_calendar "
+        "lists services, ask "
         "which one the caller needs first and use it for both calls. Before booking, collect "
         "the caller's name, the best phone number, a clear description of what they need and, "
         "when the business comes to the customer, the full address with postcode - the calendar "
