@@ -255,14 +255,25 @@ function ExtractedDetails({ extracted, missed }: { extracted: Record<string, unk
     .map(([k, v]) => [k, fieldValue(v)] as const)
     .filter(([, v]) => v !== "");
   const missing = missed.filter((m) => !(m in extracted) || fieldValue(extracted[m]) === "");
-  if (captured.length === 0 && missing.length === 0) return null;
   const total = captured.length + missing.length;
+  const [copied, setCopied] = useState(false);
+  const copy = async () => {
+    await navigator.clipboard.writeText(JSON.stringify(Object.fromEntries(captured), null, 2));
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  };
   return (
     <div className="section" id="extracted-details">
       <h2 style={{ display: "flex", alignItems: "center", gap: "0.6rem" }}>
         Extracted details
-        <span className={`pill ${missing.length === 0 ? "ok" : "bad"}`}>{captured.length} of {total} captured</span>
+        {total > 0 && <span className={`pill ${missing.length === 0 ? "ok" : "bad"}`}>{captured.length} of {total} captured</span>}
+        {captured.length > 0 && (
+          <button className="ghost small" style={{ marginLeft: "auto" }} onClick={copy}>{copied ? "Copied" : "Copy as JSON"}</button>
+        )}
       </h2>
+      {total === 0 && (
+        <p className="small muted">No details were captured on this call. The assistant records the caller&apos;s name, number, email, reason and booking details when they come up; set the ones you always need under Studio → Call rules → Required fields. All calls, with their extracted details, can be downloaded from Calls → Export CSV.</p>
+      )}
       {captured.length > 0 && (
         <dl className="kv">
           {captured.map(([k, v]) => (

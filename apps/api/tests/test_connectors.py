@@ -384,11 +384,24 @@ def test_calls_csv() -> None:
                 assistant_id="a",
                 caller="+44",
                 summary="s, quoted",
-            )
+                extracted={"name": "Ann", "postcode": "M1 1AA", "services": ["boiler", "tap"]},
+                missed_fields=["address"],
+            ),
+            CallRecord(
+                call_id="k2",
+                tenant_id="t",
+                company_id="c",
+                assistant_id="a",
+                extracted={"address": "1 High St"},
+            ),
         ]
     )
     lines = out.strip().splitlines()
     assert lines[0].startswith("call_id,started_at,caller") and '"s, quoted"' in lines[1]
+    header = lines[0].split(",")
+    assert header[-4:] == ["address", "postcode", "services", "missed_fields"]
+    assert lines[1].endswith(',M1 1AA,"boiler, tap",address')
+    assert lines[2].endswith("1 High St,,,")
 
 
 # -- API ----------------------------------------------------------------------------------------
