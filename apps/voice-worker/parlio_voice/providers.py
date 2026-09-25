@@ -6,6 +6,7 @@ outage degrades to the next provider instead of dropping the call.
 
 from __future__ import annotations
 
+import importlib
 import logging
 
 from livekit.agents import llm, stt, tts, vad
@@ -50,6 +51,31 @@ _ALLOWED: dict[RegionProfile, tuple[set[STTProvider], set[LLMProvider], set[TTSP
 
 def load_vad() -> vad.VAD:
     return silero.VAD.load(min_silence_duration=0.35, prefix_padding_duration=0.3)
+
+
+# Modules the vendor SDKs import lazily on first request. Loading them in the job process
+# at warm-up keeps the ~1s of import work off the audio loop of the first call.
+_LAZY_MODULES = (
+    "openai.resources",
+    "openai.resources.chat.completions",
+    "openai.types.chat",
+    "openai.types.fine_tuning",
+    "anthropic.resources",
+    "anthropic.types",
+    "secrets",
+    "certifi",
+)
+
+
+def prewarm_imports() -> int:
+    loaded = 0
+    for name in _LAZY_MODULES:
+        try:
+            importlib.import_module(name)
+            loaded += 1
+        except ImportError as e:  # pragma: no cover - optional vendor SDK
+            log.debug("prewarm skipped %s: %s", name, e)
+    return loaded
 
 
 def _filter[T](chain: list[T], allowed: set[T], layer: str, profile: RegionProfile) -> list[T]:

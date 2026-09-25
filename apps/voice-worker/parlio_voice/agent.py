@@ -80,6 +80,7 @@ HUMAN_PREFIX = "human-"
 
 def prewarm(proc: JobProcess) -> None:
     proc.userdata["vad"] = providers.load_vad()
+    providers.prewarm_imports()
 
 
 class Receptionist(Agent):

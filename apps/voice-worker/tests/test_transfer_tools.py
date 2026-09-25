@@ -540,3 +540,12 @@ async def test_livekit_confirm_human_keypress_hangup_and_timeout() -> None:
     # silence (a voicemail greeting) times out
     assert await bridge.confirm_human("human-a-3", 0) is False
     assert room.handlers["sip_dtmf_received"] == []
+
+
+def test_prewarm_imports_loads_vendor_modules() -> None:
+    import sys
+
+    from parlio_voice import providers
+
+    assert providers.prewarm_imports() >= 4
+    assert "openai.resources" in sys.modules
