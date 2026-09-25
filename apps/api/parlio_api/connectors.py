@@ -1296,7 +1296,22 @@ class RetryLoop:
 # -- CSV export --------------------------------------------------------------------------------
 
 
+CSV_FIXED_EXTRACTED = ("name", "reason", "email")
+
+
+def _csv_cell(v: object) -> str:
+    if v is None or v == "":
+        return ""
+    if isinstance(v, list):
+        return ", ".join(_csv_cell(x) for x in v if _csv_cell(x))
+    if isinstance(v, dict):
+        return json.dumps(v, ensure_ascii=False)
+    return str(v)
+
+
 def calls_csv(calls: list[CallRecord]) -> str:
+    """One row per call; every extracted field seen across the export gets its own column."""
+    extra = sorted({k for c in calls for k in c.extracted if k not in CSV_FIXED_EXTRACTED})
     buf = io.StringIO()
     w = csv.writer(buf)
     w.writerow(
@@ -1313,6 +1328,8 @@ def calls_csv(calls: list[CallRecord]) -> str:
             "email",
             "ticket_ids",
             "recording",
+            *extra,
+            "missed_fields",
         ]
     )
     for c in calls:
@@ -1330,6 +1347,8 @@ def calls_csv(calls: list[CallRecord]) -> str:
                 c.extracted.get("email", ""),
                 " ".join(c.ticket_ids),
                 c.recordings[0] if c.recordings else "",
+                *(_csv_cell(c.extracted.get(k)) for k in extra),
+                " ".join(c.missed_fields),
             ]
         )
     return buf.getvalue()

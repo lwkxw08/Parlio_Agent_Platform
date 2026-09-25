@@ -1090,7 +1090,7 @@ export async function fetchRecordingUrl(call_id: string, index: number): Promise
 }
 
 /** Browser-only: fetch a CSV export with auth headers and trigger a file download. */
-export async function downloadCsv(what: "calls" | "contacts" | "tickets" | "audit", tenant_id: string): Promise<string | null> {
+export async function downloadCsv(what: "calls" | "contacts" | "tickets" | "audit", tenant_id?: string): Promise<string | null> {
   const path = what === "audit" ? "/v1/compliance/audit.csv" : `/v1/export/${what}.csv`;
   const res = await fetch(`${API_URL}${path}${qs({ tenant_id })}`, { headers: await authHeaders() });
   if (!res.ok) return res.statusText;

@@ -311,9 +311,13 @@ async def revoke_api_key(user: UserDep, cx: ConnectorsDep, tenant_id: str, key_i
 
 @router.get("/export/{what}.csv", response_class=PlainTextResponse)
 async def export_csv(
-    user: UserDep, store: StoreDep, tenant_id: str, what: str, limit: int = Query(5000, le=50_000)
+    user: UserDep,
+    store: StoreDep,
+    what: str,
+    tenant_id: str | None = None,
+    limit: int = Query(5000, le=50_000),
 ) -> PlainTextResponse:
-    user.require_tenant(tenant_id)
+    tenant_id = user.scope(tenant_id)
     if what == "calls":
         body = calls_csv(await store.list_calls(tenant_id, limit))
     elif what == "contacts":

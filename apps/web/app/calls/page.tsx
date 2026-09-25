@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { type SearchHit, callParty, fetchCalls, fetchSites, ms, phone, searchCalls, secs, when } from "@/lib/api";
 import { humanize } from "@/app/breakdown";
+import { ExportCallsButton } from "./export-button";
 
 export const dynamic = "force-dynamic";
 
@@ -61,7 +62,10 @@ export default async function Calls({ searchParams }: { searchParams: Promise<Se
 
   return (
     <>
-      <h1>Calls</h1>
+      <div className="row between" style={{ marginBottom: "1rem" }}>
+        <h1 style={{ margin: 0 }}>Calls</h1>
+        <ExportCallsButton />
+      </div>
       <div className="chips" style={{ marginBottom: "0.8rem" }}>
         {KINDS.map(([k, label]) => (
           <Link key={k} href={href({ kind: k || undefined })} className={(sp.kind ?? "") === k ? "active" : ""}>{label}</Link>
