@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useHashTab } from "@/app/help";
 import {
   type AfterHoursPersona,
@@ -63,6 +63,13 @@ export default function Studio({ initial, versions: initialVersions, requiredFie
   const [blocked, setBlocked] = useState<RegressionCheck | null>(null);
   const [saving, setSaving] = useState(false);
 
+  useEffect(() => {
+    if (!dirty) return;
+    const warn = (e: BeforeUnloadEvent) => { e.preventDefault(); };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [dirty]);
+
   const upd = (p: Partial<Assistant>) => { setCfg((c) => ({ ...c, ...p })); setDirty(true); };
   const flash = (m: string) => { setToast(m); setTimeout(() => setToast(null), 2500); };
 
@@ -104,10 +111,10 @@ export default function Studio({ initial, versions: initialVersions, requiredFie
 
   return (
     <>
-      <div className="tabs">
+      <div className="tabs sticky-bar">
         {TABS.map((t) => <button key={t} className={tab === t ? "active" : ""} onClick={() => setTab(t)}>{LABELS[t]}</button>)}
         <span style={{ marginLeft: "auto", display: "flex", gap: 8, alignItems: "center" }}>
-          {dirty && <span className="muted small">unsaved changes</span>}
+          {dirty && <span className="pill warn">Unsaved changes</span>}
           <button className="primary" disabled={!dirty || saving} onClick={() => save()}>{saving ? "Checking regression pack…" : "Save new version"}</button>
         </span>
       </div>
@@ -582,6 +589,12 @@ export default function Studio({ initial, versions: initialVersions, requiredFie
             <button onClick={() => setBlocked(null)}>Keep editing</button>
             <button className="ghost" disabled={saving} onClick={() => save(true)}>Publish anyway</button>
           </div>
+        </div>
+      )}
+      {dirty && (
+        <div className="card" style={{ marginTop: "1rem", display: "flex", gap: 12, alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", borderColor: "var(--warn-fg)" }}>
+          <span className="small">You have unsaved changes — they won&apos;t take effect on calls until you save a new version.</span>
+          <button className="primary" disabled={saving} onClick={() => save()}>{saving ? "Checking regression pack…" : "Save new version"}</button>
         </div>
       )}
       <SetupNextStep tenant={cfg.tenant_id} step="assistant" refreshKey={versions.length} done="Your assistant is set up. Publish any changes, then carry on with the checklist." />

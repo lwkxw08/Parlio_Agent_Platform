@@ -125,6 +125,7 @@ main :where(input, select, textarea):disabled { opacity: 0.6; cursor: not-allowe
 .tabs { display: flex; gap: 0.3rem; border-bottom: 1px solid var(--line); margin-bottom: 1rem; flex-wrap: wrap; }
 .tabs a, .tabs button { background: none; border: 0; border-bottom: 2px solid transparent; color: var(--muted); padding: 0.5rem 0.8rem; cursor: pointer; text-decoration: none; font-size: 0.9rem; }
 .tabs a.active, .tabs button.active { color: var(--fg); border-bottom-color: var(--accent); }
+.sticky-bar { position: sticky; top: 0; z-index: 20; background: var(--side-bg); backdrop-filter: blur(10px); padding-top: 0.5rem; margin-top: -0.5rem; }
 .form { display: flex; flex-direction: column; gap: 0.8rem; }
 .form label { display: flex; flex-direction: column; gap: 0.3rem; font-size: 0.85rem; color: var(--muted); }
 .form textarea { min-height: 5rem; resize: vertical; }
