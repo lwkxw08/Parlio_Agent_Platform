@@ -41,10 +41,11 @@ export default function FeaturesPage() {
           </div>
           <div className="grid c3">
             {[
-              ["Assistant Studio", "Greeting, instructions, FAQs, rules, business hours, blocked numbers, languages — with “Ask AI to draft” and version history / rollback."],
+              ["Assistant Studio", "Greeting, instructions, FAQs, rules, business hours, languages, a pronunciation glossary for brand and staff names, and a switch for whether callers can interrupt — with “Ask AI to draft” and version history / rollback."],
+              ["Knows your business", "Upload a brochure, price list or FAQ sheet (PDF or Word) and review the drafted FAQs; switch on live website search and the assistant checks your own site mid-call — never the wider web."],
               ["Ask ParlioTec help", "A ? on every screen with that page's guide and a Q&A box grounded on the real documentation, linking to the exact setting."],
               ["Onboarding wizard", "Paste your website, pick a voice, connect your calendar and place a test call in minutes; a setup checklist tracks the rest."],
-              ["Call screening", "Reject withheld numbers, screen unknown callers, flag spam — before a minute is spent."],
+              ["Call screening", "Reject withheld numbers, screen unknown callers, flag spam, and block a nuisance caller in one click from the call record."],
               ["Numbers & telephony", "New UK numbers by area code, divert your existing line, or connect a PBX / SIP trunk with DDI routing and registration health."],
               ["Live monitoring", "Watch transcripts in real time, listen in, whisper to the assistant or take over the call yourself."],
               ["Human approvals", "Sensitive actions pause for a yes/no from your team by SMS or Slack tap link."],
