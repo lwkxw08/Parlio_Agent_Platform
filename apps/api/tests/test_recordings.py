@@ -152,3 +152,24 @@ def test_content_types() -> None:
     assert content_type_for("x/agent.ogg") == "audio/ogg"
     assert content_type_for("x/agent.mp4") == "audio/mp4"
     assert content_type_for("x/agent.bin") == "application/octet-stream"
+
+
+async def test_contacts_list_is_scoped_to_the_callers_organisation(
+    client: AsyncClient, app: FastAPI
+) -> None:
+    store = app.state.store
+    await store.touch_contact("demo", "demo-main", "+447700900010")
+    await store.touch_contact("acme", "acme-main", "+447700900020")
+    await store.upsert_member(
+        Member(tenant_id="acme", user_id="u-acme", email="intruder@other.example", role="owner")
+    )
+    r = await client.get("/v1/contacts", headers=INTRUDER)
+    assert r.status_code == 200
+    assert {c["tenant_id"] for c in r.json()} == {"acme"}
+    assert (
+        await client.get("/v1/contacts", params={"tenant_id": "demo"}, headers=INTRUDER)
+    ).status_code == 403
+    # a signed-in user with no organisation sees nothing rather than everyone's contacts
+    assert (
+        await client.get("/v1/contacts", headers={"X-Parlio-User": "nobody@example.com"})
+    ).status_code == 403

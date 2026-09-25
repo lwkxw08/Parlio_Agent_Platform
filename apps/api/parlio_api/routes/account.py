@@ -184,9 +184,7 @@ async def remove_member(tenant_id: str, user_id: str, user: UserDep, store: Stor
 async def list_contacts(
     user: UserDep, store: StoreDep, tenant_id: str | None = None, q: str | None = None
 ) -> list[Contact]:
-    if tenant_id:
-        user.require_tenant(tenant_id)
-    return await store.list_contacts(tenant_id, q)
+    return await store.list_contacts(user.scope(tenant_id), q)
 
 
 @router.get("/contacts/rules", response_model=ContactRules)
