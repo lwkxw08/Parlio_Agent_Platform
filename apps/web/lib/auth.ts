@@ -28,7 +28,9 @@ export async function signInWithPassword(email: string, password: string): Promi
   return null;
 }
 
-export async function signUp(email: string, password: string): Promise<string | null> {
+export type SignUpResult = { error: string } | { signedIn: boolean };
+
+export async function signUp(email: string, password: string): Promise<SignUpResult> {
   const res = await fetch(`${SUPABASE_URL}/auth/v1/signup`, {
     method: "POST",
     headers: { "content-type": "application/json", apikey: SUPABASE_ANON_KEY },
@@ -36,11 +38,21 @@ export async function signUp(email: string, password: string): Promise<string | 
   });
   if (!res.ok) {
     const b = (await res.json().catch(() => ({}))) as { msg?: string };
-    return b.msg ?? "sign-up failed";
+    return { error: b.msg ?? "sign-up failed" };
   }
   const s = (await res.json()) as Partial<Session>;
   if (s.access_token) setToken(s.access_token, s.expires_in);
-  return null;
+  return { signedIn: !!s.access_token };
+}
+
+/** Re-send the sign-up confirmation email. */
+export async function resendConfirmation(email: string): Promise<string | null> {
+  const res = await fetch(`${SUPABASE_URL}/auth/v1/resend`, {
+    method: "POST",
+    headers: { "content-type": "application/json", apikey: SUPABASE_ANON_KEY },
+    body: JSON.stringify({ type: "signup", email }),
+  });
+  return res.ok ? null : "could not resend the email - try again in a minute";
 }
 
 export function signInWithGoogle() {
