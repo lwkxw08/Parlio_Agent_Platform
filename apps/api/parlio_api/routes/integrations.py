@@ -290,14 +290,14 @@ async def oauth_callback(
     code: str | None = None,
     error: str | None = None,
 ) -> RedirectResponse:
-    dest = f"{settings.dashboard_url.rstrip('/')}/integrations"
+    dest = f"{settings.dashboard_url.rstrip('/')}/integrations?tab=calendar"
     if error or not code:
-        return RedirectResponse(f"{dest}?calendar=error&reason={error or 'no_code'}")
+        return RedirectResponse(f"{dest}&calendar=error&reason={error or 'no_code'}")
     try:
         await cal.oauth_callback(state, code)
     except ValueError as e:
-        return RedirectResponse(f"{dest}?calendar=error&reason={e}")
-    return RedirectResponse(f"{dest}?calendar=connected")
+        return RedirectResponse(f"{dest}&calendar=error&reason={e}")
+    return RedirectResponse(f"{dest}&calendar=connected")
 
 
 @router.get("/calendar/availability", response_model=AvailabilityResult)

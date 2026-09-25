@@ -1140,7 +1140,9 @@ export const ms = (s: number | null | undefined) =>
 export const pct = (v: number | null | undefined, digits = 0) =>
   v == null ? "—" : `${(v * 100).toFixed(digits)}%`;
 
-export const when = (iso: string) => new Date(iso).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" });
+/** UK wall-clock time. Pinned to Europe/London so server-rendered pages (which run in UTC) agree with the browser. */
+export const TZ = "Europe/London";
+export const when = (iso: string) => new Date(iso).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short", timeZone: TZ });
 
 // -- Phase 9: outbound & speed-to-lead -----------------------------------------------------------
 export type OutboundPurpose = "lead_followup" | "ticket_callback" | "reminder" | "confirmation" | "no_show" | "review_request";

@@ -26,6 +26,7 @@ import AskAi from "./ask-ai";
 import FaqImport from "./faq-import";
 import VoicePicker from "./voice-picker";
 import { humanize } from "@/app/breakdown";
+import { SetupNextStep } from "@/app/setup-next-step";
 
 const TABS = ["persona", "speaking", "business", "hours", "rules", "faqs", "fields", "sms", "languages", "recording", "blocked", "afterhours", "versions"] as const;
 type Tab = (typeof TABS)[number];
@@ -583,6 +584,7 @@ export default function Studio({ initial, versions: initialVersions, requiredFie
           </div>
         </div>
       )}
+      <SetupNextStep tenant={cfg.tenant_id} step="assistant" refreshKey={versions.length} done="Your assistant is set up. Publish any changes, then carry on with the checklist." />
       {toast && <div className="toast">{toast}</div>}
     </>
   );

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { useHashTab } from "@/app/help";
+import { SetupNextStep } from "@/app/setup-next-step";
 import {
   type Assistant,
   type Booking,
@@ -105,6 +106,8 @@ export default function Integrations(p: Props) {
       {tab === "notifications" && <Notifications {...p} />}
       {tab === "sms" && <SmsLog messages={p.messages} assistants={p.assistants} />}
       {tab === "calendar" && <Calendar {...p} />}
+      {tab === "calendar" && <SetupNextStep tenant={p.tenant} step="calendar" refreshKey={p.connections.length} done="Calendar connected — callers can now book straight into it. Carry on with the checklist." pending="Connect Google or Microsoft, or add a booking link, so callers can book. You can skip this and come back later." />}
+      {tab === "notifications" && <SetupNextStep tenant={p.tenant} step="alerts" refreshKey={p.rules.length} done="Alerts set — your team hears about messages, urgent calls and leads. Carry on with the checklist." pending="Add at least one alert rule (email, SMS or Slack) so nothing gets missed." />}
     </>
   );
 }

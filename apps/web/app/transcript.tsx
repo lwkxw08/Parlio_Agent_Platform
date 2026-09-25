@@ -1,3 +1,5 @@
+import { TZ } from "@/lib/api";
+
 export type TranscriptTurn = { role: string; text: string; interrupted?: boolean; at?: string };
 
 function clock(iso: string | undefined, start: string | undefined): string | null {
@@ -9,7 +11,7 @@ function clock(iso: string | undefined, start: string | undefined): string | nul
     const d = Math.round((t - s) / 1000);
     return `${Math.floor(d / 60)}:${String(d % 60).padStart(2, "0")}`;
   }
-  return new Date(t).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
+  return new Date(t).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", timeZone: TZ });
 }
 
 /** Chat-style rendering of a call transcript, shared by the call detail page and public share links. */

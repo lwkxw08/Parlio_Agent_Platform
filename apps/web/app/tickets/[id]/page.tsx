@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { fetchTicket, secs, ticketRef } from "@/lib/api";
+import { fetchTicket, secs, ticketRef, when } from "@/lib/api";
 import TicketActions from "./actions";
 import { humanize } from "@/app/breakdown";
 
@@ -22,7 +22,7 @@ export default async function TicketPage({ params, searchParams }: { params: Pro
         <span className="pill">{humanize(t.status)}</span>
       </div>
       <p className="muted small">
-        Ticket {ticketRef(t.id)} · raised {new Date(t.created_at).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" })}
+        Ticket {ticketRef(t.id)} · raised {when(t.created_at)}
         {t.department ? ` · ${t.department}` : ""} <span title="Full reference" style={{ opacity: 0.6 }}>({t.id})</span>
       </p>
       <TicketActions ticket={t} openAi={ai === "1"} />
@@ -51,7 +51,7 @@ export default async function TicketPage({ params, searchParams }: { params: Pro
               ) : "—"}
             </td>
           </tr>
-          <tr><th>Created</th><td>{new Date(t.created_at).toLocaleString("en-GB")}</td></tr>
+          <tr><th>Created</th><td>{when(t.created_at)}</td></tr>
         </tbody>
       </table>
       <h2>Activity</h2>
@@ -60,7 +60,7 @@ export default async function TicketPage({ params, searchParams }: { params: Pro
         <tbody>
           {events.map((e, i) => (
             <tr key={i}>
-              <td>{new Date(e.at).toLocaleString("en-GB")}</td>
+              <td>{when(e.at)}</td>
               <td>{e.type}</td>
               <td>{e.actor ?? "—"}</td>
               <td className="muted">{e.note ?? ""}</td>

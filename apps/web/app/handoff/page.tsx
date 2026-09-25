@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { fetchAssistants, fetchHandoffAnalytics, fetchTransfers, secs } from "@/lib/api";
+import { fetchAssistants, fetchHandoffAnalytics, fetchTransfers, secs, when } from "@/lib/api";
 import { Breakdown, humanize } from "@/app/breakdown";
 import Destinations from "./destinations";
 
@@ -49,7 +49,7 @@ export default async function Handoff() {
         <tbody>
           {(transfers ?? []).map((t) => (
             <tr key={t.id}>
-              <td>{new Date(t.started_at).toLocaleString("en-GB")}</td>
+              <td>{when(t.started_at)}</td>
               <td><Link href={`/calls/${t.call_id}`}>Open call</Link></td>
               <td>{t.destination}</td>
               <td>{t.department ?? "—"}</td>

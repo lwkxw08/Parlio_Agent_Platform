@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { fetchConnections, fetchMe, fetchMembers, fetchResources, fetchScheduler, fetchSites, fetchTeamSettings } from "@/lib/api";
+import { SetupNextStep } from "@/app/setup-next-step";
 import Members from "./members";
 import Resources from "./resources";
 
@@ -53,6 +54,7 @@ export default async function Team({ searchParams }: { searchParams: Promise<{ t
           canManage={canManage}
         />
       )}
+      <SetupNextStep tenant={tenant} step="team" done="Invite colleagues so they can see calls, tickets and the inbox — then carry on with the checklist." />
     </>
   );
 }
