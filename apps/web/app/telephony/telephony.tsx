@@ -142,9 +142,22 @@ function DivertCodes({ numbers }: { numbers: TenantNumber[] }) {
         </div>
       ))}
       <p className="small muted">
-        {op.note ? `${op.note} ` : ""}Test it: ring your own number from another phone{scenario === "no_answer" ? " and don't answer" : ""} — the assistant should pick up. To undo, choose &ldquo;Cancel all diverts&rdquo;.
+        {op.note ? `${op.note} ` : ""}Test it: ring your own number from another phone{scenario === "no_answer" ? " and don't answer" : ""} — the assistant should pick up.
         {op.kind === "landline" ? " Some providers (VoIP, Teams, PBX) set diverts in their app or portal instead of by dial code." : ""}
       </p>
+      {scenario !== "cancel" && (
+        <div style={{ marginTop: "0.6rem", paddingTop: "0.6rem", borderTop: "1px solid rgba(128,128,128,.25)" }}>
+          <p className="small" style={{ margin: 0 }}><b>Turn forwarding off</b> — dial {op.kind === "mobile" ? "this" : "these"} from the same phone to cancel every divert and take your calls back yourself:</p>
+          <div className="row" style={{ alignItems: "center", gap: 12, flexWrap: "wrap", marginTop: 4 }}>
+            {divertCodes(op, "cancel", e164, ring).map((c) => (
+              <span key={c} className="row" style={{ alignItems: "center", gap: 8 }}>
+                <code style={{ fontSize: "1.1rem", fontWeight: 600 }}>{c}</code>
+                <button type="button" className="small" onClick={() => copy(c)}>{copied === c ? "Copied" : "Copy"}</button>
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
