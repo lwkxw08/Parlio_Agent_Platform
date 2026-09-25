@@ -20,7 +20,7 @@ import Integrations from "./integrations";
 
 export const dynamic = "force-dynamic";
 
-export default async function Page({ searchParams }: { searchParams: Promise<{ tenant?: string; tab?: string; connector?: string; reason?: string }> }) {
+export default async function Page({ searchParams }: { searchParams: Promise<{ tenant?: string; tab?: string; connector?: string; calendar?: string; reason?: string }> }) {
   const sp = await searchParams;
   const me = await fetchMe();
   if (!me.ok) return <><h1>Integrations</h1><p className="muted">{me.status === 401 ? <Link href="/login">Sign in</Link> : "API unreachable"}</p></>;
@@ -36,7 +36,9 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ t
     fetchReminderPolicy(tenant), fetchReminders(tenant),
   ]);
   const banner = sp.connector === "connected" ? "Connected — send a sample to check it works."
-    : sp.connector === "error" ? `Connection failed (${sp.reason ?? "unknown"}). Try again.` : null;
+    : sp.connector === "error" ? `Connection failed (${sp.reason ?? "unknown"}). Try again.`
+    : sp.calendar === "connected" ? "Calendar connected — bookings the assistant makes will now land in it."
+    : sp.calendar === "error" ? `Calendar connection failed (${sp.reason ?? "unknown"}). Try again.` : null;
   return (
     <>
       <h1>Integrations</h1>

@@ -5,7 +5,6 @@ import { useEffect, useState } from "react";
 import {
   type Assistant,
   type DdiRoute,
-  type SetupChecklist,
   type IssuedCredentials,
   type ProviderGuide,
   type SipTrunk,
@@ -14,7 +13,6 @@ import {
   type TrunkMode,
   type TrunkView,
   del,
-  fetchChecklist,
   fetchNumbers,
   post,
   request,
@@ -22,6 +20,7 @@ import {
 } from "@/lib/api";
 import { humanize } from "@/app/breakdown";
 import { NumberPicker, provisionedMessage } from "@/app/number-picker";
+import { SetupNextStep } from "@/app/setup-next-step";
 
 const MODES: { id: TrunkMode; title: string; blurb: string }[] = [
   { id: "forward", title: "Forward to your ParlioTec number", blurb: "Keep your provider. Forward calls (always or on no-answer) to the number ParlioTec gives you. No SIP setup." },
@@ -142,9 +141,22 @@ function DivertCodes({ numbers }: { numbers: TenantNumber[] }) {
         </div>
       ))}
       <p className="small muted">
-        {op.note ? `${op.note} ` : ""}Test it: ring your own number from another phone{scenario === "no_answer" ? " and don't answer" : ""} — the assistant should pick up. To undo, choose &ldquo;Cancel all diverts&rdquo;.
+        {op.note ? `${op.note} ` : ""}Test it: ring your own number from another phone{scenario === "no_answer" ? " and don't answer" : ""} — the assistant should pick up.
         {op.kind === "landline" ? " Some providers (VoIP, Teams, PBX) set diverts in their app or portal instead of by dial code." : ""}
       </p>
+      {scenario !== "cancel" && (
+        <div style={{ marginTop: "0.6rem", paddingTop: "0.6rem", borderTop: "1px solid rgba(128,128,128,.25)" }}>
+          <p className="small" style={{ margin: 0 }}><b>Turn forwarding off</b> — dial {op.kind === "mobile" ? "this" : "these"} from the same phone to cancel every divert and take your calls back yourself:</p>
+          <div className="row" style={{ alignItems: "center", gap: 12, flexWrap: "wrap", marginTop: 4 }}>
+            {divertCodes(op, "cancel", e164, ring).map((c) => (
+              <span key={c} className="row" style={{ alignItems: "center", gap: 8 }}>
+                <code style={{ fontSize: "1.1rem", fontWeight: 600 }}>{c}</code>
+                <button type="button" className="small" onClick={() => copy(c)}>{copied === c ? "Copied" : "Copy"}</button>
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -173,31 +185,6 @@ function GetNumber({ tenant, assistants, canManage, onProvisioned }: { tenant: s
 }
 
 /** Where to go once the number is live and the divert is in place. */
-function NextStep({ tenant, numbers }: { tenant: string; numbers: TenantNumber[] }) {
-  const [checklist, setChecklist] = useState<SetupChecklist | null>(null);
-  const live = numbers.some((n) => n.status === "active");
-  useEffect(() => {
-    fetchChecklist(tenant).then((c) => c && setChecklist(c));
-  }, [tenant, live]);
-  const next = checklist?.next_step && checklist.next_step.key !== "number" ? checklist.next_step : null;
-  return (
-    <div className="card" style={{ marginTop: "1rem", borderColor: "var(--accent)" }}>
-      <h3 style={{ margin: 0 }}>Step 3 — What&apos;s next</h3>
-      <p className="small muted">
-        {live
-          ? "Once your divert is set and your test call reached the assistant, this step is done."
-          : "Your number is still activating. Set the divert once we email you that it's live, then test it."}
-        {checklist ? ` You've completed ${checklist.completed} of ${checklist.total} setup steps.` : ""}
-      </p>
-      <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
-        {next && <Link className="btn primary small" href={next.href}>Next: {next.title}</Link>}
-        <Link className="btn small" href="/setup">Back to setup checklist</Link>
-        <Link className="btn small" href="/calls">See my calls</Link>
-      </div>
-    </div>
-  );
-}
-
 /** Forwarding mode: the ParlioTec number(s) the customer diverts their existing line to. */
 function DivertTo({ tenant, numbers, asstName }: { tenant: string; numbers: TenantNumber[]; asstName: (id: string) => string }) {
   const [copied, setCopied] = useState<string | null>(null);
@@ -221,7 +208,14 @@ function DivertTo({ tenant, numbers, asstName }: { tenant: string; numbers: Tena
         ))}
       </div>
       {numbers.some((n) => n.status !== "failed") && <DivertCodes numbers={numbers} />}
-      <NextStep tenant={tenant} numbers={numbers} />
+      <SetupNextStep
+        tenant={tenant}
+        step="number"
+        title="Step 3 — What's next"
+        refreshKey={numbers.some((n) => n.status === "active")}
+        done="Once your divert is set and your test call reached the assistant, this step is done."
+        pending="Your number is still activating. Set the divert once we email you that it's live, then test it."
+      />
       <p className="small muted" style={{ marginTop: "0.8rem" }}>Need another number or want to release one? <Link href="/billing?tab=numbers">Billing → Numbers</Link>.</p>
     </div>
   );

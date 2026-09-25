@@ -2,14 +2,14 @@
 title: Telephony
 route: /telephony
 summary: How calls reach ParlioTec — forwarding from your existing number, connecting your phone system (PBX) or registering a SIP handset — plus number routing.
-keywords: telephony, forwarding, divert, forward calls, pbx, sip, trunk, registration, ddi, numbers, routing, test call, extension transfers, mobile divert, bt, vodafone, teams
+keywords: telephony, forwarding, divert, cancel divert, turn off forwarding, stop forwarding, forward calls, pbx, sip, trunk, registration, ddi, numbers, routing, test call, extension transfers, mobile divert, bt, vodafone, teams
 ---
 
 ## Your connections
 
 Three ways to get calls to your assistant. You can use more than one.
 
-1. **Forward your number** – the simplest. If you don't have a ParlioTec number yet, the panel at the top of the Telephony page (**Step 1 — Get your ParlioTec number**) lets you pick an area code and order one in a couple of clicks; it is usually live within minutes and you get an email when it is. Once you have a number the same panel becomes **Step 2 — Divert your calls to this number**: while the number shows *Activating…* the page refreshes itself and flips to *Live* automatically; then divert your existing landline or mobile to it. Nothing to install. **Step 3 — What's next** at the bottom of the panel takes you to the next unfinished setup step or back to the setup checklist. Divert codes for BT, Virgin, Vodafone, EE, O2, Three and Microsoft Teams are on the *Launch guide*.
+1. **Forward your number** – the simplest. If you don't have a ParlioTec number yet, the panel at the top of the Telephony page (**Step 1 — Get your ParlioTec number**) lets you pick an area code and order one in a couple of clicks; it is usually live within minutes and you get an email when it is. Once you have a number the same panel becomes **Step 2 — Divert your calls to this number**: while the number shows *Activating…* the page refreshes itself and flips to *Live* automatically; then divert your existing landline or mobile to it. Nothing to install. **Step 3 — What's next** at the bottom of the panel takes you to the next unfinished setup step or back to the setup checklist. The **Get your divert code** card generates the exact dial code for your provider, and always shows the **Turn forwarding off** code underneath it (mobiles: `##002#`; landlines: `#21#`, `#61#`, `#67#`) so you can cancel the divert and take calls back yourself at any time. Divert codes for BT, Virgin, Vodafone, EE, O2, Three and Microsoft Teams are also on the *Launch guide*.
 2. **Connect your phone system (PBX)** – ParlioTec gives you SIP credentials (shown once — copy them). Point your PBX at them, and set the **PBX address** so the assistant can transfer callers to internal extensions. **Allowed source IPs** restricts who may send calls on this connection.
 3. **Register a SIP handset or provider** – enter the **Registrar**, **Username / extension**, **Password**, optional **Outbound proxy**, **Transport** (UDP/TCP/TLS) and **DTMF** mode. ParlioTec registers to your provider as if it were a phone, so your existing number rings the assistant with no forwarding.
 

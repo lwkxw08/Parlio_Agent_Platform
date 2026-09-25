@@ -3,8 +3,9 @@
 import { useEffect, useState } from "react";
 import {
   type BusinessInfo, type Faq, type OnboardingResult, type Schedule, type Vertical, type VerticalPlaybook,
-  type WebsiteAnalysis, fetchVerticals, request,
+  type VoiceConfig, type WebsiteAnalysis, fetchVerticals, request,
 } from "@/lib/api";
+import VoicePicker from "@/app/assistant/voice-picker";
 
 type Place = { place_id: string; name: string; address: string | null; phone: string | null; website: string | null; rating: number | null; opening_hours: string[] };
 type Analyse = { analysis: WebsiteAnalysis; config_patch: { business_name?: string; business?: BusinessInfo; faqs?: Faq[] } };
@@ -28,6 +29,7 @@ export default function Onboarding() {
   const [faqs, setFaqs] = useState<Faq[]>([]);
   const [assistantName, setAssistantName] = useState("ParlioTec");
   const [greeting, setGreeting] = useState("");
+  const [voice, setVoice] = useState<VoiceConfig | null>(null);
   const [result, setResult] = useState<OnboardingResult | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -68,7 +70,7 @@ export default function Onboarding() {
     const r = await request<OnboardingResult>("/v1/onboarding", {
       method: "POST",
       body: JSON.stringify({
-        organisation_name: orgName, assistant_name: assistantName, business, hours, faqs, languages: ["en"], greeting: greeting || null, vertical,
+        organisation_name: orgName, assistant_name: assistantName, business, hours, faqs, languages: ["en"], greeting: greeting || null, voice, vertical,
       }),
     });
     setBusy(false);
@@ -176,9 +178,12 @@ export default function Onboarding() {
               <span className="small muted">Leave blank to use the greeting shown.</span>
             </label>
           </div>
+          <h3 style={{ margin: "0.5rem 0 0.25rem" }}>Voice</h3>
+          <p className="small muted" style={{ marginTop: 0 }}>Listen and pick the voice {assistantName || "your assistant"} will answer with. You can change it any time in Assistant Studio → Voice.</p>
+          <VoicePicker value={voice ?? { provider: "cartesia", voice_id: "", speed: null }} businessName={orgName} onChange={setVoice} />
           <p className="hint">
             {faqs.length ? `${faqs.length} FAQs from your website${selectedPlaybook ? ` and ${selectedPlaybook.faqs.length} starter FAQs` : ""} will be loaded.` : selectedPlaybook ? `${selectedPlaybook.faqs.length} starter FAQs will be loaded.` : ""}
-            {" "}Voice, FAQs, business rules and more can be fine-tuned in Assistant Studio after setup.
+            {" "}FAQs, business rules and more can be fine-tuned in Assistant Studio after setup.
           </p>
           {error && <p className="small" style={{ color: "var(--bad-fg)" }}>{error}</p>}
           <div style={{ display: "flex", gap: 8 }}>
@@ -192,7 +197,7 @@ export default function Onboarding() {
         <div className="section">
           <h2>{result.assistant.name} is ready for {result.assistant.business_name}</h2>
           <p className="hint">
-            Your free trial runs until {trialEnds ?? "the trial ends"} with every feature unlocked — no card needed. Next: make a test call, get your phone number and divert your line. You can pick a plan under Billing whenever you&apos;re ready.
+            Your free trial runs until {trialEnds ?? "the trial ends"} with every feature unlocked — no card needed. Next: make a test call, get your phone number and divert your line. You can pick a plan under Billing whenever you&apos;re ready, and change the voice or greeting in Assistant Studio → Voice.
           </p>
           {error && <p className="small" style={{ color: "var(--bad-fg)" }}>{error}</p>}
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>

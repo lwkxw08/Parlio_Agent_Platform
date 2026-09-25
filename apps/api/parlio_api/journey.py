@@ -462,14 +462,14 @@ async def setup_checklist(
             title="Alerts to your team",
             detail="Email, SMS or Slack when a message, urgent call or lead comes in",
             done=bool(rules),
-            href="/integrations",
+            href="/integrations?tab=notifications",
         ),
         ChecklistItem(
             key="calendar",
             title="Calendar connected",
             detail="Google / Microsoft calendar or a booking link so callers can book",
             done=bool(cal),
-            href="/integrations",
+            href="/integrations?tab=calendar",
             optional=True,
         ),
         ChecklistItem(

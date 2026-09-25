@@ -19,6 +19,7 @@ import {
   when,
 } from "@/lib/api";
 import { NumberPicker, provisionedMessage } from "@/app/number-picker";
+import { SetupNextStep } from "@/app/setup-next-step";
 
 const TABS = [["usage", "Usage"], ["plan", "Plan"], ["numbers", "Numbers"], ["latency", "Latency"]] as const;
 type Tab = (typeof TABS)[number][0];
@@ -60,6 +61,7 @@ export default function Billing(props: {
         <Numbers tenant={tenant} canManage={canManage} numbers={numbers} setNumbers={setNumbers} usage={usage} assistants={assistants} setMsg={setMsg} onChange={reload} />
       )}
       {tab === "latency" && <Latency report={latency} tenant={tenant} />}
+      <SetupNextStep tenant={tenant} step="billing" refreshKey={sub.plan_id} done="Pick the plan that fits once your trial is under way — everything else on the checklist works meanwhile." />
     </>
   );
 }

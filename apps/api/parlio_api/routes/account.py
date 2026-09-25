@@ -33,7 +33,7 @@ from parlio_api.onboarding import (
     search_places,
 )
 from parlio_api.store import CallStore, Contact, ContactUpdate, Member, TenantDoc
-from parlio_voice.models import AssistantConfig, BusinessInfo, Faq, Schedule
+from parlio_voice.models import AssistantConfig, BusinessInfo, Faq, Schedule, VoiceConfig
 
 router = APIRouter(prefix="/v1", tags=["account"])
 public = APIRouter(prefix="/v1/public", tags=["public"])
@@ -311,6 +311,7 @@ class OnboardingRequest(BaseModel):
     faqs: list[Faq] = Field(default_factory=list)
     languages: list[str] = Field(default_factory=lambda: ["en"])
     greeting: str | None = None
+    voice: VoiceConfig | None = None
     numbers: list[str] = Field(default_factory=list)
     vertical: Vertical = "general"
     questionnaire: Questionnaire | None = None
@@ -359,6 +360,8 @@ async def complete_onboarding(
     )
     if body.greeting:
         cfg.greeting = body.greeting
+    if body.voice:
+        cfg.voice = body.voice
     cfg = apply_playbook(cfg, body.vertical)
     await store.upsert_assistant(cfg, body.numbers)
     if body.plan_id and body.plan_id in PLAN_BY_ID and not PLAN_BY_ID[body.plan_id].enterprise:
