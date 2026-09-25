@@ -115,6 +115,11 @@ class Settings(BaseSettings):
     # to its DID list so the dispatch rule picks them up (unset = trunk accepts what it has).
     inbound_trunk_id: str | None = None
     trial_days: int = 14
+    # No-card trial lifecycle: calls keep being answered for `trial_grace_days` after the trial
+    # ends, then pause; the account closes (numbers back to stock) `trial_close_days` after it.
+    trial_grace_days: int = 3
+    trial_close_days: int = 30
+    trial_sweep_interval_s: float = 3600.0
     otlp_endpoint: str | None = None
     metrics_token: str | None = None
     target_turn_latency_s: float = 1.5

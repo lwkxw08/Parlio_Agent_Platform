@@ -49,7 +49,7 @@ from parlio_voice.latency import LatencyTracker
 from parlio_voice.models import AssistantConfig, CallEventType, SiteRef, TurnLatency
 from parlio_voice.outbound import OutboundJob, OutcomeReporter, dial_callee, parse_outbound
 from parlio_voice.recording import CallRecorder
-from parlio_voice.settings import get_settings
+from parlio_voice.settings import Settings, get_settings
 from parlio_voice.speech import speakable_stream
 from parlio_voice.supervisor import Supervisor
 from parlio_voice.tools import (
@@ -148,6 +148,19 @@ async def _admit(api: CoreApiClient, dialed: str, call_id: str) -> dict[str, obj
     except Exception:
         log.warning("trunk admission check failed; answering anyway", exc_info=True)
         return None
+
+
+async def _speak_notice(
+    ctx: JobContext, cfg: AssistantConfig, settings: Settings, text: str
+) -> None:
+    """Play a short spoken notice (e.g. account paused) with the tenant's voice, TTS only."""
+    try:
+        session: AgentSession[None] = AgentSession(tts=providers.build_tts(cfg, settings))
+        await session.start(agent=Agent(instructions=""), room=ctx.room)
+        await session.say(text, allow_interruptions=False).wait_for_playout()
+        await session.aclose()
+    except Exception:
+        log.warning("could not play notice on call in room %s", ctx.room.name, exc_info=True)
 
 
 async def _caller_context(
@@ -281,13 +294,21 @@ async def entrypoint(ctx: JobContext) -> None:
         admitted = await _admit(core_api, dialed, call_id)
     if admitted is not None and not admitted.get("allowed", True):
         reason = str(admitted.get("reason") or "not admitted")
+        notice = admitted.get("notice")
         log.info("call %s declined by trunk routing: %s", call_id, reason)
+        if notice:
+            await _speak_notice(ctx, cfg, settings, str(notice))
         events.emit(
             cfg,
             call_id,
             CallEventType.CALL_ENDED,
             {"reason": "declined", "detail": reason, "duration_s": 0},
         )
+        if notice:
+            try:
+                await lk.room.delete_room(api.DeleteRoomRequest(room=ctx.room.name))
+            except Exception:
+                log.warning("room delete failed for declined call %s", call_id, exc_info=True)
         ctx.shutdown(reason="declined")
         return
     if admitted is not None and admitted.get("department"):

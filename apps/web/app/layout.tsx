@@ -3,7 +3,7 @@ import { fetchMe, fetchPublicStatus } from "@/lib/api";
 import Sidebar, { type Account } from "./sidebar";
 import HelpDrawer from "./help";
 import AuthGate from "./auth-gate";
-import { StatusBanner, ViewAsBanner } from "./banners";
+import { StatusBanner, TrialBanner, ViewAsBanner } from "./banners";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -47,7 +47,13 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         <main>
           {status?.active && <StatusBanner status={status} />}
           {account.kind === "user" && account.viewAs && <ViewAsBanner tenant={account.viewAs} />}
-          <AuthGate signedOut={account.kind === "signin"} checkCookie={account.kind === "user" && !account.dev}>{children}</AuthGate>
+          <AuthGate signedOut={account.kind === "signin"} checkCookie={account.kind === "user" && !account.dev}>
+            {account.kind === "user" && account.tenantId && !account.viewAs && !account.staff ? (
+              <TrialBanner tenant={account.tenantId}>{children}</TrialBanner>
+            ) : (
+              children
+            )}
+          </AuthGate>
         </main>
         {account.kind === "user" && <HelpDrawer />}
       </body>
