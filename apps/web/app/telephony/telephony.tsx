@@ -18,6 +18,7 @@ import {
   when,
 } from "@/lib/api";
 import { humanize } from "@/app/breakdown";
+import { NumberPicker, provisionedMessage } from "@/app/number-picker";
 
 const MODES: { id: TrunkMode; title: string; blurb: string }[] = [
   { id: "forward", title: "Forward to your ParlioTec number", blurb: "Keep your provider. Forward calls (always or on no-answer) to the number ParlioTec gives you. No SIP setup." },
@@ -145,8 +146,31 @@ function DivertCodes({ numbers }: { numbers: TenantNumber[] }) {
   );
 }
 
+/** No ParlioTec number yet: the first thing a new tenant needs, so order it right here. */
+function GetNumber({ tenant, assistants, canManage, onProvisioned }: { tenant: string; assistants: Assistant[]; canManage: boolean; onProvisioned: (n: TenantNumber) => void }) {
+  const [err, setErr] = useState<string | null>(null);
+  return (
+    <div className="section" style={{ borderColor: "var(--accent)" }}>
+      <h2>Step 1 — Get your ParlioTec number</h2>
+      <p className="hint">
+        Your assistant answers calls on a ParlioTec number. You don&apos;t have one yet, so this is the first step: pick the area code your customers
+        expect to see, then click a number to order it. It&apos;s usually live within minutes and we&apos;ll email you when it is. Your first number is included in every plan.
+      </p>
+      {canManage ? (
+        <NumberPicker tenant={tenant} assistants={assistants} onProvisioned={onProvisioned} onError={setErr} compact />
+      ) : (
+        <p className="small">Only an owner or admin can order a number — ask them to open this page.</p>
+      )}
+      {err && <p className="small" style={{ color: "var(--bad, #c33)", marginTop: "0.6rem" }}>{err}</p>}
+      <p className="small muted" style={{ marginTop: "1rem" }}>
+        <b>Step 2</b> — once the number is live, divert your existing line to it (we&apos;ll show you the exact dial code for your provider), or skip the number and connect a PBX / SIP account below instead.
+      </p>
+    </div>
+  );
+}
+
 /** Forwarding mode: the ParlioTec number(s) the customer diverts their existing line to. */
-function DivertTo({ numbers, asstName, canManage }: { numbers: TenantNumber[]; asstName: (id: string) => string; canManage: boolean }) {
+function DivertTo({ numbers, asstName }: { numbers: TenantNumber[]; asstName: (id: string) => string }) {
   const [copied, setCopied] = useState<string | null>(null);
   const copy = async (e164: string) => {
     try { await navigator.clipboard.writeText(e164); setCopied(e164); setTimeout(() => setCopied(null), 2000); } catch { /* clipboard unavailable */ }
@@ -154,31 +178,27 @@ function DivertTo({ numbers, asstName, canManage }: { numbers: TenantNumber[]; a
   return (
     <div className="section" style={{ borderColor: "var(--accent)" }}>
       <h2>Divert your calls to this number</h2>
-      {numbers.length ? (
-        <>
-          <p className="hint">Set a divert (always, or on no-answer / busy) from your existing landline or mobile to your ParlioTec number below. Microsoft Teams, VoIP and PBX instructions are on the <Link href="/launch">Launch guide</Link>.</p>
-          <div className="grid">
-            {numbers.map((n) => (
-              <div key={n.id} className="card">
-                <div style={{ fontSize: "1.6rem", fontWeight: 600, letterSpacing: ".02em" }}>{prettyUk(n.e164)}</div>
-                <div className="small muted"><code>{n.e164}</code> · answered by {asstName(n.assistant_id)}{n.label ? ` · ${n.label}` : ""}</div>
-                {n.status === "pending" && <p className="small" style={{ marginTop: 6 }}><span className="pill warn">Activating…</span> The carrier is completing its regulatory check - usually minutes, occasionally a few hours. Hold off diverting until we email you that it&apos;s live.</p>}
-                {n.status === "failed" && <p className="small" style={{ marginTop: 6 }}><span className="pill bad">Needs attention</span> The carrier declined this number; we&apos;re arranging a replacement.</p>}
-                <button type="button" style={{ marginTop: 8 }} onClick={() => copy(n.e164)}>{copied === n.e164 ? "Copied" : "Copy number"}</button>
-              </div>
-            ))}
+      <p className="hint">Set a divert (always, or on no-answer / busy) from your existing landline or mobile to your ParlioTec number below. Microsoft Teams, VoIP and PBX instructions are on the <Link href="/launch">Launch guide</Link>.</p>
+      <div className="grid">
+        {numbers.map((n) => (
+          <div key={n.id} className="card">
+            <div style={{ fontSize: "1.6rem", fontWeight: 600, letterSpacing: ".02em" }}>{prettyUk(n.e164)}</div>
+            <div className="small muted"><code>{n.e164}</code> · answered by {asstName(n.assistant_id)}{n.label ? ` · ${n.label}` : ""}</div>
+            {n.status === "pending" && <p className="small" style={{ marginTop: 6 }}><span className="pill warn">Activating…</span> The carrier is completing its regulatory check - usually minutes, occasionally a few hours. Hold off diverting until we email you that it&apos;s live.</p>}
+            {n.status === "failed" && <p className="small" style={{ marginTop: 6 }}><span className="pill bad">Needs attention</span> The carrier declined this number; we&apos;re arranging a replacement.</p>}
+            <button type="button" style={{ marginTop: 8 }} onClick={() => copy(n.e164)}>{copied === n.e164 ? "Copied" : "Copy number"}</button>
           </div>
-          {numbers.some((n) => n.status !== "failed") && <DivertCodes numbers={numbers} />}
-        </>
-      ) : (
-        <p className="hint">You don&apos;t have a ParlioTec number yet. {canManage ? <>Choose one on <Link href="/billing">Billing → Your numbers</Link>, then divert your existing line to it.</> : "Ask an owner or admin to add one under Billing → Your numbers."}</p>
-      )}
+        ))}
+      </div>
+      {numbers.some((n) => n.status !== "failed") && <DivertCodes numbers={numbers} />}
+      <p className="small muted" style={{ marginTop: "0.8rem" }}>Need another number or want to release one? <Link href="/billing?tab=numbers">Billing → Numbers</Link>.</p>
     </div>
   );
 }
 
-export default function Telephony({ tenant, canManage, trunks: initial, guides, assistants, numbers }: { tenant: string; canManage: boolean; trunks: SipTrunk[]; guides: ProviderGuide[]; assistants: Assistant[]; numbers: TenantNumber[] }) {
+export default function Telephony({ tenant, canManage, trunks: initial, guides, assistants, numbers: initialNumbers }: { tenant: string; canManage: boolean; trunks: SipTrunk[]; guides: ProviderGuide[]; assistants: Assistant[]; numbers: TenantNumber[] }) {
   const [trunks, setTrunks] = useState(initial);
+  const [numbers, setNumbers] = useState(initialNumbers);
   const [creds, setCreds] = useState<IssuedCredentials | null>(null);
   const [test, setTest] = useState<Record<string, TestCallResult>>({});
   const [msg, setMsg] = useState<string | null>(null);
@@ -244,7 +264,10 @@ export default function Telephony({ tenant, canManage, trunks: initial, guides, 
 
   return (
     <>
-      {forwarding && <DivertTo numbers={numbers} asstName={asstName} canManage={canManage} />}
+      {msg && <p className="small" style={{ color: "var(--accent)" }}>{msg}</p>}
+      {forwarding && (numbers.length
+        ? <DivertTo numbers={numbers} asstName={asstName} />
+        : <GetNumber tenant={tenant} assistants={assistants} canManage={canManage} onProvisioned={(n) => { setNumbers((ns) => [...ns, n]); setMsg(provisionedMessage(n, asstName(n.assistant_id))); }} />)}
       {creds && (
         <div className="section" style={{ borderColor: "var(--accent)" }}>
           <h2>PBX credentials — copy now, shown once</h2>
@@ -284,7 +307,6 @@ export default function Telephony({ tenant, canManage, trunks: initial, guides, 
             {!trunks.length && <tr><td colSpan={8} className="muted">No connection yet — pick a mode below.</td></tr>}
           </tbody>
         </table>
-        {msg && <p className="muted small">{msg}</p>}
       </div>
 
       {canManage && !form && (
