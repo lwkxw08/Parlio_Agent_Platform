@@ -1,10 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   type Assistant,
   type DdiRoute,
+  type SetupChecklist,
   type IssuedCredentials,
   type ProviderGuide,
   type SipTrunk,
@@ -13,6 +14,8 @@ import {
   type TrunkMode,
   type TrunkView,
   del,
+  fetchChecklist,
+  fetchNumbers,
   post,
   request,
   when,
@@ -169,28 +172,56 @@ function GetNumber({ tenant, assistants, canManage, onProvisioned }: { tenant: s
   );
 }
 
+/** Where to go once the number is live and the divert is in place. */
+function NextStep({ tenant, numbers }: { tenant: string; numbers: TenantNumber[] }) {
+  const [checklist, setChecklist] = useState<SetupChecklist | null>(null);
+  const live = numbers.some((n) => n.status === "active");
+  useEffect(() => {
+    fetchChecklist(tenant).then((c) => c && setChecklist(c));
+  }, [tenant, live]);
+  const next = checklist?.next_step && checklist.next_step.key !== "number" ? checklist.next_step : null;
+  return (
+    <div className="card" style={{ marginTop: "1rem", borderColor: "var(--accent)" }}>
+      <h3 style={{ margin: 0 }}>Step 3 — What&apos;s next</h3>
+      <p className="small muted">
+        {live
+          ? "Once your divert is set and your test call reached the assistant, this step is done."
+          : "Your number is still activating. Set the divert once we email you that it's live, then test it."}
+        {checklist ? ` You've completed ${checklist.completed} of ${checklist.total} setup steps.` : ""}
+      </p>
+      <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
+        {next && <Link className="btn primary small" href={next.href}>Next: {next.title}</Link>}
+        <Link className="btn small" href="/setup">Back to setup checklist</Link>
+        <Link className="btn small" href="/calls">See my calls</Link>
+      </div>
+    </div>
+  );
+}
+
 /** Forwarding mode: the ParlioTec number(s) the customer diverts their existing line to. */
-function DivertTo({ numbers, asstName }: { numbers: TenantNumber[]; asstName: (id: string) => string }) {
+function DivertTo({ tenant, numbers, asstName }: { tenant: string; numbers: TenantNumber[]; asstName: (id: string) => string }) {
   const [copied, setCopied] = useState<string | null>(null);
   const copy = async (e164: string) => {
     try { await navigator.clipboard.writeText(e164); setCopied(e164); setTimeout(() => setCopied(null), 2000); } catch { /* clipboard unavailable */ }
   };
   return (
     <div className="section" style={{ borderColor: "var(--accent)" }}>
-      <h2>Divert your calls to this number</h2>
+      <h2>Step 2 — Divert your calls to this number</h2>
       <p className="hint">Set a divert (always, or on no-answer / busy) from your existing landline or mobile to your ParlioTec number below. Microsoft Teams, VoIP and PBX instructions are on the <Link href="/launch">Launch guide</Link>.</p>
       <div className="grid">
         {numbers.map((n) => (
           <div key={n.id} className="card">
             <div style={{ fontSize: "1.6rem", fontWeight: 600, letterSpacing: ".02em" }}>{prettyUk(n.e164)}</div>
             <div className="small muted"><code>{n.e164}</code> · answered by {asstName(n.assistant_id)}{n.label ? ` · ${n.label}` : ""}</div>
-            {n.status === "pending" && <p className="small" style={{ marginTop: 6 }}><span className="pill warn">Activating…</span> The carrier is completing its regulatory check - usually minutes, occasionally a few hours. Hold off diverting until we email you that it&apos;s live.</p>}
+            {n.status === "pending" && <p className="small" style={{ marginTop: 6 }}><span className="pill warn">Activating…</span> The carrier is completing its regulatory check - usually minutes, occasionally a few hours. This page updates itself when it&apos;s live; we&apos;ll email you too.</p>}
+            {n.status === "active" && <p className="small" style={{ marginTop: 6 }}><span className="pill ok">Live</span> Ready to take calls.</p>}
             {n.status === "failed" && <p className="small" style={{ marginTop: 6 }}><span className="pill bad">Needs attention</span> The carrier declined this number; we&apos;re arranging a replacement.</p>}
             <button type="button" style={{ marginTop: 8 }} onClick={() => copy(n.e164)}>{copied === n.e164 ? "Copied" : "Copy number"}</button>
           </div>
         ))}
       </div>
       {numbers.some((n) => n.status !== "failed") && <DivertCodes numbers={numbers} />}
+      <NextStep tenant={tenant} numbers={numbers} />
       <p className="small muted" style={{ marginTop: "0.8rem" }}>Need another number or want to release one? <Link href="/billing?tab=numbers">Billing → Numbers</Link>.</p>
     </div>
   );
@@ -206,6 +237,17 @@ export default function Telephony({ tenant, canManage, trunks: initial, guides, 
   const [guide, setGuide] = useState<string | null>(null);
   const q = `?tenant_id=${tenant}`;
   const asstName = (id: string) => assistants.find((a) => a.assistant_id === id)?.name ?? id;
+  const pending = numbers.some((n) => n.status === "pending");
+
+  useEffect(() => {
+    if (!pending) return;
+    const tick = async () => {
+      const ns = await fetchNumbers(tenant);
+      if (ns) setNumbers(ns);
+    };
+    const id = setInterval(tick, 30_000);
+    return () => clearInterval(id);
+  }, [pending, tenant]);
 
   const refresh = async (t: SipTrunk) => {
     const upd = await post<SipTrunk>(`/v1/telephony/trunks/${t.id}/refresh${q}`);
@@ -266,7 +308,7 @@ export default function Telephony({ tenant, canManage, trunks: initial, guides, 
     <>
       {msg && <p className="small" style={{ color: "var(--accent)" }}>{msg}</p>}
       {forwarding && (numbers.length
-        ? <DivertTo numbers={numbers} asstName={asstName} />
+        ? <DivertTo tenant={tenant} numbers={numbers} asstName={asstName} />
         : <GetNumber tenant={tenant} assistants={assistants} canManage={canManage} onProvisioned={(n) => { setNumbers((ns) => [...ns, n]); setMsg(provisionedMessage(n, asstName(n.assistant_id))); }} />)}
       {creds && (
         <div className="section" style={{ borderColor: "var(--accent)" }}>
