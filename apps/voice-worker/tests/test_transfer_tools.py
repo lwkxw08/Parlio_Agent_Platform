@@ -25,6 +25,7 @@ from parlio_voice.tools import (
     caller_id_instruction,
     declines_transfer,
     guess_department,
+    mentions_checking,
     mentions_connecting,
     normalise_number,
     spoken_number,
@@ -280,6 +281,16 @@ def test_caller_id_instruction_offers_own_number_or_asks() -> None:
     assert "0 7 9 3 0, 9 3 4, 0 9 8" in caller_id_instruction("+447930934098")
     assert "withheld" in caller_id_instruction(None)
     assert "withheld" in caller_id_instruction("unknown")
+
+
+def test_promised_lookup_detection() -> None:
+    assert mentions_checking(
+        "Let me check our earliest available slots for you. One moment, please."
+    )
+    assert mentions_checking("Bear with me while I look that up.")
+    assert mentions_checking("I'll just check the diary.")
+    assert not mentions_checking("Can I have your full name, please?")
+    assert not mentions_checking("We have Tuesday at 10 or Wednesday at 2. Which suits?")
 
 
 def test_promised_transfer_detection() -> None:
