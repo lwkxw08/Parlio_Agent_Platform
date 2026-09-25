@@ -290,6 +290,30 @@ class SubscriptionStatus(StrEnum):
 
 SERVING_STATUSES = {SubscriptionStatus.TRIALING, SubscriptionStatus.ACTIVE}
 
+# status_reason values the trial lifecycle sets, so a Stripe dunning past_due (or a staff
+# suspension) is never mistaken for an unpaid trial.
+TRIAL_GRACE_REASON = "trial ended - no payment details yet"
+TRIAL_PAUSED_REASON = "trial ended - calls paused until a plan is chosen"
+TRIAL_CLOSED_REASON = "trial ended - account closed after the grace period"
+TRIAL_REASONS = {TRIAL_GRACE_REASON, TRIAL_PAUSED_REASON, TRIAL_CLOSED_REASON}
+TRIAL_REMINDER_DAYS = (7, 3, 1)
+
+TrialEvent = Literal["reminder_7", "reminder_3", "reminder_1", "expired", "paused", "closed"]
+
+
+def _reminder_event(days: int) -> TrialEvent:
+    if days == 7:
+        return "reminder_7"
+    if days == 3:
+        return "reminder_3"
+    return "reminder_1"
+
+
+UNAVAILABLE_NOTICE = (
+    "Sorry, this number is temporarily unavailable. Please try again later or contact the "
+    "business another way. Goodbye."
+)
+
 
 class Subscription(BaseModel):
     tenant_id: str
@@ -304,11 +328,35 @@ class Subscription(BaseModel):
     subscription_ref: str | None = None
     trial_ends_at: datetime | None = None
     status_reason: str | None = None
+    trial_notices: list[str] = Field(default_factory=list)  # TrialEvent names already sent
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
     @property
     def plan(self) -> Plan:
         return PLAN_BY_ID.get(self.plan_id, PLANS[0])
+
+    @property
+    def unpaid_trial(self) -> bool:
+        """A trial (running or lapsed) with no payment details on file."""
+        if self.subscription_ref or self.trial_ends_at is None:
+            return False
+        if self.status == SubscriptionStatus.TRIALING:
+            return True
+        return self.status_reason in TRIAL_REASONS
+
+
+TrialState = Literal["none", "trialing", "grace", "paused", "closed"]
+
+
+class TrialStatus(BaseModel):
+    """What the dashboard needs to explain where a no-card trial is and what happens next."""
+
+    state: TrialState
+    days_left: int = 0  # until the next transition (trial end, pause or close)
+    trial_ends_at: datetime | None = None
+    grace_ends_at: datetime | None = None
+    closes_at: datetime | None = None
+    calls_answered: bool = True
 
 
 class Credit(BaseModel):
@@ -877,6 +925,8 @@ class BillingService:
         sip_uri: str = "sip:parlio.local",
         trial_days: int = 14,
         edge: InboundEdge | None = None,
+        trial_grace_days: int = 3,
+        trial_close_days: int = 30,
     ) -> None:
         self.store = store
         self.sms = sms
@@ -884,9 +934,12 @@ class BillingService:
         self.numbers = numbers
         self.edge = edge
         self.on_number_status: Callable[[TenantNumber], Awaitable[None]] | None = None
+        self.on_trial_event: Callable[[Subscription, TrialEvent], Awaitable[None]] | None = None
         self.rates = rates or CostRates()
         self.sip_uri = sip_uri
         self.trial_days = trial_days
+        self.trial_grace_days = trial_grace_days
+        self.trial_close_days = trial_close_days
 
     def trial_days_for(self, plan_id: str) -> int:
         plan = PLAN_BY_ID.get(plan_id)
@@ -937,6 +990,117 @@ class BillingService:
     async def entitled(self, tenant_id: str, key: str) -> bool:
         return (await self.entitlements(tenant_id)).get(key, False)
 
+    async def serving(self, tenant_id: str) -> bool:
+        """Whether this tenant's numbers should be answered right now.
+
+        Trials in their grace period (past_due, no card) keep answering; paused/suspended,
+        closed and cancelled accounts do not.
+        """
+        sub = await self.subscription(tenant_id)
+        if sub.status in SERVING_STATUSES:
+            return True
+        return sub.status == SubscriptionStatus.PAST_DUE
+
+    def trial_status(self, sub: Subscription) -> TrialStatus:
+        if not sub.unpaid_trial or sub.trial_ends_at is None:
+            return TrialStatus(state="none")
+        ends = sub.trial_ends_at
+        grace_end = ends + timedelta(days=self.trial_grace_days)
+        close_at = ends + timedelta(days=self.trial_close_days)
+        now = datetime.now(UTC)
+
+        def days_until(t: datetime) -> int:
+            return max(0, math.ceil((t - now).total_seconds() / 86400))
+
+        if sub.status == SubscriptionStatus.TRIALING:
+            state: TrialState = "trialing"
+            nxt = ends
+        elif sub.status == SubscriptionStatus.PAST_DUE:
+            state, nxt = "grace", grace_end
+        elif sub.status == SubscriptionStatus.SUSPENDED:
+            state, nxt = "paused", close_at
+        else:
+            state, nxt = "closed", now
+        return TrialStatus(
+            state=state,
+            days_left=days_until(nxt),
+            trial_ends_at=ends,
+            grace_ends_at=grace_end,
+            closes_at=close_at,
+            calls_answered=state in ("trialing", "grace"),
+        )
+
+    async def sweep_trials(self, now: datetime | None = None) -> list[tuple[str, str]]:
+        """Advance every no-card trial one step if due and send the matching owner notice.
+
+        trialing -> (T-7 / T-3 / T-1 reminders) -> past_due at trial end (grace: calls still
+        answered) -> suspended after ``trial_grace_days`` (calls paused, dashboard walled)
+        -> cancelled after ``trial_close_days`` (numbers returned to the platform pool).
+        Subscribing at any point (Checkout) leaves the lifecycle. Returns (tenant, event) pairs.
+        """
+        now = now or datetime.now(UTC)
+        fired: list[tuple[str, str]] = []
+        for sub in await self.all_subscriptions():
+            if not sub.unpaid_trial or sub.trial_ends_at is None:
+                continue
+            ends = sub.trial_ends_at
+            event: TrialEvent | None = None
+            upd: dict[str, Any] = {}
+            # Every reminder that is now due counts as sent once the sweep fires, so a trial
+            # that is already inside T-3 gets one "3 days left" mail rather than 7-then-3.
+            sent = set(sub.trial_notices)
+            if sub.status == SubscriptionStatus.TRIALING:
+                if now >= ends:
+                    event = "expired"
+                    sent.update(f"reminder_{d}" for d in TRIAL_REMINDER_DAYS)
+                    upd = {
+                        "status": SubscriptionStatus.PAST_DUE,
+                        "status_reason": TRIAL_GRACE_REASON,
+                    }
+                else:
+                    left = math.ceil((ends - now).total_seconds() / 86400)
+                    due = [d for d in TRIAL_REMINDER_DAYS if left <= d]
+                    fresh = [d for d in due if f"reminder_{d}" not in sent]
+                    if fresh:
+                        event = _reminder_event(min(fresh))
+                        sent.update(f"reminder_{d}" for d in due)
+            elif sub.status == SubscriptionStatus.PAST_DUE and now >= ends + timedelta(
+                days=self.trial_grace_days
+            ):
+                event = "paused"
+                upd = {
+                    "status": SubscriptionStatus.SUSPENDED,
+                    "status_reason": TRIAL_PAUSED_REASON,
+                }
+            elif sub.status == SubscriptionStatus.SUSPENDED and now >= ends + timedelta(
+                days=self.trial_close_days
+            ):
+                event = "closed"
+                upd = {
+                    "status": SubscriptionStatus.CANCELLED,
+                    "status_reason": TRIAL_CLOSED_REASON,
+                }
+            if event is None or event in sub.trial_notices:
+                continue
+            if event == "closed":
+                for num in await self.list_numbers(sub.tenant_id):
+                    try:
+                        await self.return_number_to_pool(sub.tenant_id, num.id)
+                    except Exception:
+                        log.warning("could not pool %s on close", num.e164, exc_info=True)
+            sent.add(event)
+            upd["trial_notices"] = sorted(sent)
+            sub = await self._save(sub.model_copy(update=upd))
+            fired.append((sub.tenant_id, event))
+            if self.on_trial_event is not None:
+                try:
+                    await self.on_trial_event(sub, event)
+                except Exception:
+                    log.warning(
+                        "trial notice %s for %s failed", event, sub.tenant_id, exc_info=True
+                    )
+        return fired
+
     async def all_subscriptions(self) -> list[Subscription]:
         docs = await self.store.list_docs(self.KIND, None, limit=100000)
         return [Subscription.model_validate(d.data) for d in docs]
@@ -968,9 +1132,9 @@ class BillingService:
         if left is not None:
             left -= 1
         coupon = sub.coupon if left is None or left > 0 else None
-        status = sub.status
-        if status == SubscriptionStatus.TRIALING:
-            status = SubscriptionStatus.PAST_DUE if not sub.subscription_ref else status
+        status, reason = sub.status, sub.status_reason
+        if status == SubscriptionStatus.TRIALING and not sub.subscription_ref:
+            status, reason = SubscriptionStatus.PAST_DUE, TRIAL_GRACE_REASON
         return await self._save(
             sub.model_copy(
                 update={
@@ -979,6 +1143,7 @@ class BillingService:
                     "coupon": coupon,
                     "coupon_months_left": left if coupon else None,
                     "status": status,
+                    "status_reason": reason,
                 }
             )
         )
@@ -1055,6 +1220,8 @@ class BillingService:
         if self.provider.name == "simulated":
             upd["status"] = SubscriptionStatus.ACTIVE
             upd["subscription_ref"] = session.session_ref
+            if sub.status_reason in TRIAL_REASONS:
+                upd["status_reason"] = None
         await self._save(sub.model_copy(update=upd))
         return session
 
@@ -1078,6 +1245,7 @@ class BillingService:
                     else SubscriptionStatus.ACTIVE
                 ),
                 "subscription_ref": obj.get("subscription"),
+                "status_reason": None if sub.status_reason in TRIAL_REASONS else sub.status_reason,
             }
             plan_id = (obj.get("metadata") or {}).get("plan_id")
             if plan_id in PLAN_BY_ID:
@@ -1117,15 +1285,23 @@ class BillingService:
             "trial_ends_at": new_end,
             "period_end": max(sub.period_end, new_end),
         }
-        if sub.status in (SubscriptionStatus.PAST_DUE, SubscriptionStatus.TRIALING):
+        if sub.status == SubscriptionStatus.TRIALING or sub.unpaid_trial:
             upd["status"] = SubscriptionStatus.TRIALING
+            upd["status_reason"] = None
+            upd["trial_notices"] = []
         return await self._save(sub.model_copy(update=upd))
 
     async def convert_trial(self, tenant_id: str) -> Subscription:
         """Activate without a card (invoiced / enterprise-style) - staff only."""
         sub = await self.subscription(tenant_id)
         return await self._save(
-            sub.model_copy(update={"status": SubscriptionStatus.ACTIVE, "trial_ends_at": None})
+            sub.model_copy(
+                update={
+                    "status": SubscriptionStatus.ACTIVE,
+                    "trial_ends_at": None,
+                    "status_reason": None,
+                }
+            )
         )
 
     async def grant_credit(
@@ -1676,6 +1852,26 @@ class BillingService:
                 await self.on_number_status(num)
         return changed
 
+    async def return_number_to_pool(self, tenant_id: str, number_id: str) -> bool:
+        """Take a number off a tenant and put it back into platform stock (carrier untouched)."""
+        doc = await self.store.get_doc(self.NUMBER_KIND, number_id)
+        if doc is None or doc.tenant_id != tenant_id:
+            return False
+        num = TenantNumber.model_validate(doc.data)
+        await self.store.unassign_number(num.e164)
+        await self.store.delete_doc(self.NUMBER_KIND, number_id)
+        await self._put_pool(
+            PoolNumber(
+                e164=num.e164,
+                country=num.country,
+                provider=num.provider,
+                provider_ref=num.provider_ref,
+                status=num.status,
+                bought_by=f"returned from {tenant_id}",
+            )
+        )
+        return True
+
     async def release_number(self, tenant_id: str, number_id: str) -> bool:
         doc = await self.store.get_doc(self.NUMBER_KIND, number_id)
         if doc is None or doc.tenant_id != tenant_id:
@@ -1713,6 +1909,32 @@ class NumberActivationLoop:
                 await self.billing.activate_pending_numbers()
             except Exception:
                 log.warning("number activation sweep crashed", exc_info=True)
+
+    async def stop(self) -> None:
+        if self._task is not None:
+            self._task.cancel()
+            with suppress(asyncio.CancelledError):
+                await self._task
+
+
+class TrialLifecycleLoop:
+    """Runs ``BillingService.sweep_trials`` on a timer (reminders, grace, pause, close)."""
+
+    def __init__(self, billing: BillingService, interval_s: float = 3600.0) -> None:
+        self.billing, self.interval_s = billing, interval_s
+        self._task: asyncio.Task[None] | None = None
+
+    def start(self) -> None:
+        if self.interval_s > 0:
+            self._task = asyncio.create_task(self._run())
+
+    async def _run(self) -> None:
+        while True:
+            try:
+                await self.billing.sweep_trials()
+            except Exception:
+                log.warning("trial lifecycle sweep crashed", exc_info=True)
+            await asyncio.sleep(self.interval_s)
 
     async def stop(self) -> None:
         if self._task is not None:

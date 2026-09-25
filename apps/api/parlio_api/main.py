@@ -33,8 +33,12 @@ from parlio_api.billing import (
     SimulatedNumbers,
     StripeBilling,
     StripeMode,
+    Subscription,
+    SubscriptionStatus,
     SwitchableStripeBilling,
     TenantNumber,
+    TrialEvent,
+    TrialLifecycleLoop,
 )
 from parlio_api.browser_voice import (
     AgentDispatcher,
@@ -444,8 +448,64 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         sip_uri=settings.telnyx_sip_uri or f"sip:{settings.sip_domain}",
         trial_days=settings.trial_days,
         edge=build_inbound_edge(settings),
+        trial_grace_days=settings.trial_grace_days,
+        trial_close_days=settings.trial_close_days,
     )
     app.state.billing = billing
+
+    async def _owner_emails(tenant_id: str) -> list[str]:
+        return [
+            m.email
+            for m in await store.list_members(tenant_id)
+            if m.role in ("owner", "admin") and m.status == "active"
+        ]
+
+    async def _trial_event(sub: Subscription, event: TrialEvent) -> None:
+        billing_url = f"{settings.dashboard_url}/billing?tenant={sub.tenant_id}&tab=plan"
+        ends = sub.trial_ends_at.strftime("%d %B %Y") if sub.trial_ends_at else "soon"
+        if event.startswith("reminder_"):
+            days = event.removeprefix("reminder_")
+            subject = f"Your ParlioTec free trial ends in {days} day{'s' if days != '1' else ''}"
+            body = (
+                f"Your free trial ends on {ends}.\n\n"
+                f"To keep your assistant answering calls, choose a plan and add payment details "
+                f"before then: {billing_url}\n\n"
+                f"If you do nothing, calls are still answered for {settings.trial_grace_days} more "
+                f"days after the trial ends, then paused until a plan is chosen."
+            )
+        elif event == "expired":
+            subject = "Your ParlioTec free trial has ended"
+            body = (
+                f"Your free trial ended on {ends}. Calls are still being answered for "
+                f"{settings.trial_grace_days} days as a courtesy.\n\n"
+                f"Choose a plan now to keep your number live: {billing_url}"
+            )
+        elif event == "paused":
+            subject = "ParlioTec has paused answering your calls"
+            body = (
+                "Your free trial and grace period have ended without a plan being chosen, so "
+                "callers to your ParlioTec number now hear a short 'temporarily unavailable' "
+                "message.\n\nNothing has been deleted - choose a plan and calls resume "
+                f"immediately: {billing_url}\n\n"
+                f"If no plan is chosen within {settings.trial_close_days} days of the trial ending "
+                "the account is closed and the number released."
+            )
+        else:
+            subject = "Your ParlioTec trial account has been closed"
+            body = (
+                "Your trial account has been closed and its ParlioTec number released. Your "
+                "call history is retained per our retention policy. If you'd like to come back, "
+                f"reply to this email or sign in and choose a plan: {billing_url}"
+            )
+        for to in await _owner_emails(sub.tenant_id):
+            try:
+                await email.send(to, subject, body)
+            except Exception:
+                log.warning("trial %s email to %s failed", event, to, exc_info=True)
+
+    billing.on_trial_event = _trial_event
+    trial_loop = TrialLifecycleLoop(billing, settings.trial_sweep_interval_s)
+    trial_loop.start()
 
     async def _number_status_changed(num: TenantNumber) -> None:
         owners = [
@@ -750,6 +810,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         await inbox_sla.aclose()
         await ops_loop.stop()
         await number_activation.stop()
+        await trial_loop.stop()
         await checkins.stop()
         await digest.stop()
         await advisor.stop()
@@ -849,6 +910,22 @@ def create_app() -> FastAPI:
                 status_code=429,
                 headers={"Retry-After": "60", "X-RateLimit-Remaining": "0"},
             )
+        # Paused / closed no-card trials are read-only until a plan is chosen; Billing stays
+        # open so the tenant can subscribe. Platform staff routes are not tenant-scoped here.
+        if (
+            request.method not in ("GET", "HEAD", "OPTIONS")
+            and tenant
+            and not path.startswith(("/v1/billing", "/v1/admin", "/v1/me", "/v1/account"))
+        ):
+            sub = await request.app.state.billing.subscription(tenant)
+            if sub.unpaid_trial and sub.status in (
+                SubscriptionStatus.SUSPENDED,
+                SubscriptionStatus.CANCELLED,
+            ):
+                return JSONResponse(
+                    {"detail": "Your trial has ended - choose a plan to make changes."},
+                    status_code=402,
+                )
         resp = await call_next(request)
         resp.headers["X-RateLimit-Remaining"] = str(remaining)
         return resp

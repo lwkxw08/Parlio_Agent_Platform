@@ -15,6 +15,7 @@ from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, Field
 
 from parlio_api.auth import UserDep
+from parlio_api.billing import UNAVAILABLE_NOTICE
 from parlio_api.calendar import (
     AvailabilityResult,
     Booking,
@@ -26,6 +27,7 @@ from parlio_api.calendar import (
     SyncLogEntry,
 )
 from parlio_api.deps import (
+    BillingDep,
     CalendarDep,
     HubDep,
     NotificationsDep,
@@ -502,7 +504,17 @@ async def test_call(
 
 
 @worker.post("/telephony/admit", response_model=AdmitResult)
-async def admit_call(sip: SipDep, number: str, call_id: str) -> AdmitResult:
+async def admit_call(
+    sip: SipDep, store: StoreDep, billing: BillingDep, number: str, call_id: str
+) -> AdmitResult:
+    cfg = await store.resolve_number(number)
+    if cfg is not None and not await billing.serving(cfg.tenant_id):
+        return AdmitResult(
+            allowed=False,
+            assistant_id=cfg.assistant_id,
+            reason="subscription paused",
+            notice=UNAVAILABLE_NOTICE,
+        )
     return await sip.admit(number, call_id)
 
 

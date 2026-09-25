@@ -1114,6 +1114,11 @@ export const fetchTrunks = (tenant_id: string) => get<SipTrunk[]>(`/v1/telephony
 export const fetchGuides = () => get<ProviderGuide[]>("/v1/telephony/guides");
 export const fetchPlans = () => get<Plan[]>("/v1/billing/plans");
 export const fetchSubscription = (tenant_id: string) => get<Subscription>(`/v1/billing/subscription${qs({ tenant_id })}`);
+export type TrialStatus = {
+  state: "none" | "trialing" | "grace" | "paused" | "closed"; days_left: number; trial_ends_at: string | null;
+  grace_ends_at: string | null; closes_at: string | null; calls_answered: boolean;
+};
+export const fetchTrialStatus = (tenant_id: string) => get<TrialStatus>(`/v1/billing/trial${qs({ tenant_id })}`);
 export const fetchUsage = (tenant_id: string) => get<UsageSummary>(`/v1/billing/usage${qs({ tenant_id })}`);
 export const fetchNumbers = (tenant_id: string) => get<TenantNumber[]>(`/v1/numbers${qs({ tenant_id })}`);
 export const fetchLatency = (tenant_id: string, days = 7) => get<LatencyReport>(`/v1/observability/latency${qs({ tenant_id, days })}`);

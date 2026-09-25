@@ -23,6 +23,7 @@ from parlio_api.billing import (
     Plan,
     Subscription,
     TenantNumber,
+    TrialStatus,
     UsageSummary,
 )
 from parlio_api.compliance import (
@@ -87,6 +88,13 @@ async def list_plans() -> list[Plan]:
 async def get_subscription(user: UserDep, billing: BillingDep, tenant_id: str) -> Subscription:
     user.require_tenant(tenant_id)
     return await billing.subscription(tenant_id)
+
+
+@router.get("/billing/trial", response_model=TrialStatus)
+async def get_trial_status(user: UserDep, billing: BillingDep, tenant_id: str) -> TrialStatus:
+    """Where a no-card trial is (trialing / grace / paused / closed) and when it moves on."""
+    user.require_tenant(tenant_id)
+    return billing.trial_status(await billing.subscription(tenant_id))
 
 
 class Cap(BaseModel):

@@ -13,6 +13,10 @@ Your plan (Starter, Growth, Scale or Enterprise), trial or renewal date, and thi
 
 **Subscribe** opens a secure Stripe checkout page (card, Apple Pay or Google Pay; promotion codes accepted). If you are still in your free trial your card is saved but not charged until the trial ends; after that the plan renews monthly and invoices appear below. ParlioTec never sees or stores your card details.
 
+## When the free trial ends
+
+No card is taken at sign-up and nothing is charged unless you subscribe. During the last 7 days of the trial the account owner receives reminder emails (7, 3 and 1 day before) and a banner appears at the top of the dashboard. If the trial ends without a plan: for **3 days** calls are still answered as normal (grace period); after that calls to your ParlioTec number are **paused** — callers hear a short "temporarily unavailable" message — and the dashboard becomes read-only with a "Choose a plan" prompt; nothing is deleted. Choosing a plan at any point resumes calls immediately. After **30 days** without a plan the account is closed and its ParlioTec number released; your data is kept for the retention period and you can reopen by choosing a plan.
+
 ## Minutes per day, Largest calls, By assistant
 
 Where your minutes go: daily minutes, the longest calls (worth a listen if they're unexpectedly long) and, with several assistants, a split per assistant. **Turn p95 by day** is the assistant's response time — how long callers wait after they stop speaking.

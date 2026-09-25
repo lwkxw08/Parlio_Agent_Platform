@@ -123,9 +123,10 @@ function PlanTab({ tenant, canManage, plans, sub, entitlements, onChange, setMsg
     if (r.ok) { setCoupon(r.data); setMsg(`Coupon ${r.data.code}: ${r.data.percent_off ? `${r.data.percent_off}% off` : `${gbp(r.data.amount_off_pence ?? 0)} off`}${r.data.months ? ` for ${r.data.months} months` : ""}`); }
     else { setCoupon(null); setMsg(`Coupon not valid: ${r.error}`); }
   };
+  const needsCheckout = sub.status === "trialing" || sub.status === "cancelled" || !sub.subscription_ref;
   const choose = async (p: Plan) => {
     if (p.enterprise) return;
-    if (sub.status === "trialing" || sub.status === "cancelled") {
+    if (needsCheckout) {
       const r = await request<CheckoutSession>(`/v1/billing/checkout${q}`, { method: "POST", body: JSON.stringify({ plan_id: p.id, return_url: window.location.href }) });
       if (!r.ok) return setMsg(`Checkout failed: ${r.error}`);
       if (r.data.provider !== "simulated") { window.location.href = r.data.url; return; }
@@ -144,6 +145,7 @@ function PlanTab({ tenant, canManage, plans, sub, entitlements, onChange, setMsg
         <h2>Current subscription</h2>
         <dl className="kv">
           <dt>Plan</dt><dd>{plans.find((p) => p.id === sub.plan_id)?.name ?? sub.plan_id} {statusPill(sub.status)}</dd>
+          {sub.status_reason && <><dt>Status</dt><dd>{sub.status_reason}</dd></>}
           <dt>Period</dt><dd>{day(sub.period_start)} – {day(sub.period_end)}</dd>
           <dt>Coupon</dt><dd>{sub.coupon ? `${sub.coupon}${sub.coupon_months_left != null ? ` (${sub.coupon_months_left} months left)` : ""}` : "—"}</dd>
           <dt>Payments</dt><dd>{sub.provider === "simulated" ? <span className="pill warn">simulated — Stripe not connected</span> : sub.provider}</dd>
@@ -200,7 +202,7 @@ function PlanTab({ tenant, canManage, plans, sub, entitlements, onChange, setMsg
                 </details>
               )}
               {canManage && !current && (
-                p.enterprise ? <a className="small" href="mailto:sales@parlio.co.uk">Talk to us</a> : <button className="primary" style={{ marginTop: "0.6rem" }} onClick={() => choose(p)}>{sub.status === "trialing" || sub.status === "cancelled" ? "Subscribe" : "Switch"}</button>
+                p.enterprise ? <a className="small" href="mailto:sales@parlio.co.uk">Talk to us</a> : <button className="primary" style={{ marginTop: "0.6rem" }} onClick={() => choose(p)}>{needsCheckout ? "Subscribe" : "Switch"}</button>
               )}
             </div>
           );

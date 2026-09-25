@@ -254,6 +254,7 @@ class AdmitResult(BaseModel):
     assistant_id: str | None = None
     department: str | None = None
     reason: str | None = None
+    notice: str | None = None  # spoken to the caller before hanging up (declined = silent)
     active_calls: int = 0
     max_concurrent_calls: int | None = None
 
