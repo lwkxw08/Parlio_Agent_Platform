@@ -34,6 +34,7 @@ type Props = {
 
 const DAY_MS = 86_400_000;
 const addDays = (ymd: string, n: number) => new Date(new Date(`${ymd}T00:00:00Z`).getTime() + n * DAY_MS).toISOString().slice(0, 10);
+const localYmd = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 const parts = (iso: string, tz: string) => {
   const p = new Intl.DateTimeFormat("en-GB", { timeZone: tz, hourCycle: "h23", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }).formatToParts(new Date(iso));
   const g = (t: string) => p.find((x) => x.type === t)?.value ?? "00";
@@ -69,8 +70,8 @@ export default function ScheduleBoard({ tenant, initial, error: initialError, st
     setBusy(false);
     if (r.ok) { setView(r.data); setError(null); } else setError(r.error);
   };
-  // Filters re-query the read model; date/range changes go through the URL so they're shareable.
-  useEffect(() => { void load(); }, [siteId, serviceId, resourceId]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Filters and the URL-driven date/range both re-query the read model.
+  useEffect(() => { void load(); }, [start, days, siteId, serviceId, resourceId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const nav = (s: string, d = days) => router.push(`/schedule?tenant=${tenant}&start=${s}&days=${d}`);
   const dayList = useMemo(() => Array.from({ length: days }, (_, i) => addDays(start, i)), [start, days]);
@@ -93,7 +94,7 @@ export default function ScheduleBoard({ tenant, initial, error: initialError, st
         <button className="ghost" onClick={() => nav(addDays(start, -days))} aria-label="Previous">‹</button>
         <input type="date" value={start} onChange={(e) => e.target.value && nav(e.target.value)} />
         <button className="ghost" onClick={() => nav(addDays(start, days))} aria-label="Next">›</button>
-        <button className="ghost" onClick={() => nav(new Date().toISOString().slice(0, 10))}>Today</button>
+        <button className="ghost" onClick={() => nav(localYmd())}>Today</button>
         <div className="tabs" style={{ border: 0, margin: 0 }}>
           <button className={days === 1 ? "active" : ""} onClick={() => nav(start, 1)}>Day</button>
           <button className={days === 7 ? "active" : ""} onClick={() => nav(start, 7)}>Week</button>
