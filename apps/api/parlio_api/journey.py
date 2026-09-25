@@ -446,7 +446,7 @@ async def setup_checklist(
         ChecklistItem(
             key="number",
             title="Phone number connected",
-            detail="Get a ParlioTec number, forward your line to it, or connect your PBX",
+            detail="Order your ParlioTec number in a couple of clicks, then divert your line to it",
             done=has_route,
             href="/telephony",
         ),
